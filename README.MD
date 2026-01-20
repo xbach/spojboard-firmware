@@ -37,6 +37,8 @@ Standalone operation with web-based configuration, no external server required f
 - **Demo Mode**: Preview custom departure data on the display before API configuration - available in both setup and normal modes
 - **Firmware Updates**: GitHub-based OTA updates with user confirmation - check for new releases directly from the web interface
 - **Optional Telnet Logging**: Remote debugging via telnet (port 23) when debug mode is enabled - mirrors all logs over WiFi
+- **Weather Display**: Optional weather info in status bar showing temperature and condition icon from Open-Meteo API (free, no API key required)
+- **Rest Mode**: Scheduled display power saving - configure time periods when the display turns off automatically
 
 ## Hardware
 
@@ -129,6 +131,8 @@ The built-in web server provides:
   - Custom line colors with position-based wildcard patterns (e.g., "9*" for 2-digit, "4**" for 3-digit)
   - Debug mode (enables telnet logging on port 23)
   - Scrolling mode (scroll long destination names)
+  - Weather display (enable/disable, latitude/longitude, refresh interval)
+  - Rest mode (time periods when display turns off, e.g., "23:00-07:00")
 - **Actions**:
   - Force refresh
   - Display demo (preview custom departures)
@@ -173,9 +177,14 @@ No stop IDs needed - configure your MQTT broker to aggregate and filter departur
 │ [31] Sídliště Řepy           12' │  Row 1
 │ [7 ] Radlická                 5' │  Row 2
 │ [A ] Depo Hostivař            2' │  Row 3
-│ Mon| Feb 15              14:35    │  Row 4 (Date/Time)
+│ Mon| Feb 15    ☀ 18°    14:35    │  Row 4 (Date/Time + Weather)
 └────────────────────────────────────┘
 ```
+
+**Weather in Status Bar** (when enabled):
+- Weather icon and temperature displayed between date and time
+- Temperature color-coded: blue (cold), white (mild), yellow (warm), red (hot)
+- Icon color indicates condition: yellow (sunny), white (cloudy), cyan (rain), blue (snow)
 
 **Visual Design**:
 - Line numbers displayed in their route color on uniform 18-pixel black background boxes (fits 1-3 characters)
@@ -225,6 +234,60 @@ These colors are used by default and can be customized via the web interface:
 - **Yellow**: 2-5 minutes
 - **Red**: < 2 minutes
 - **Orange**: Delayed
+
+## Weather Display
+
+SpojBoard can optionally display current weather in the status bar using the free [Open-Meteo API](https://open-meteo.com/) (no API key required).
+
+### Enabling Weather
+1. Open the web interface at `http://[device-ip]/`
+2. Enable "Weather Display" in the configuration form
+3. Enter your location's GPS coordinates (latitude and longitude)
+4. Optionally adjust the refresh interval (default: 15 minutes)
+5. Save configuration
+
+### Finding Your Coordinates
+- Use [Google Maps](https://maps.google.com): Right-click any location → coordinates are shown
+- Common cities: Prague (50.0755, 14.4378), Berlin (52.5200, 13.4050)
+
+### Weather Icons
+| Condition | Icon | Color |
+|-----------|------|-------|
+| Clear/Sunny | ☀ | Yellow |
+| Cloudy | ☁ | White |
+| Fog | 🌫 | Purple |
+| Rain/Drizzle | 🌧 | Cyan |
+| Snow | ❄ | Blue |
+| Thunderstorm | ⛈ | Red |
+
+### Temperature Colors
+- **Blue**: Below 8°C (cold)
+- **White**: 8-16°C (mild)
+- **Yellow**: 17-25°C (warm)
+- **Red**: Above 25°C (hot)
+
+## Rest Mode
+
+Rest mode automatically turns off the display during configured time periods to save power and reduce light pollution at night.
+
+### Configuration
+1. Open the web interface at `http://[device-ip]/`
+2. Enter time periods in the "Rest Mode" field
+3. Format: `HH:MM-HH:MM` (24-hour format)
+4. Multiple periods: separate with commas
+
+### Examples
+| Configuration | Behavior |
+|---------------|----------|
+| `23:00-07:00` | Off from 11 PM to 7 AM |
+| `00:00-06:00` | Off from midnight to 6 AM |
+| `22:00-06:00,12:00-13:00` | Off overnight and during lunch |
+| (empty) | Rest mode disabled (default) |
+
+**Notes:**
+- Cross-midnight periods work correctly (e.g., "22:00-06:00")
+- API polling continues during rest mode (data stays fresh)
+- Display resumes automatically when rest period ends
 
 ## Troubleshooting
 

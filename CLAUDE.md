@@ -23,6 +23,8 @@ ESP32-based transit departure display that fetches real-time data from multiple 
 - Demo mode with customizable sample departures
 - Web-based configuration interface with data source selector
 - GitHub-based OTA firmware updates with user confirmation
+- Weather display with Open-Meteo API integration (temperature and weather icon in status bar)
+- Rest mode for scheduled display power saving (configurable time periods)
 
 ## Build & Development Commands
 
@@ -99,6 +101,7 @@ src/
 │   ├── GolemioAPI.h/cpp             # Prague Golemio API client
 │   ├── BvgAPI.h/cpp                 # Berlin BVG API client
 │   ├── MqttAPI.h/cpp                # MQTT API client with configurable field mappings
+│   ├── WeatherAPI.h/cpp             # Open-Meteo weather API client
 │   ├── DepartureData.h/cpp          # Data structures & utilities
 ├── network/
 │   ├── WiFiManager.h/cpp            # WiFi connection & AP mode
@@ -109,6 +112,7 @@ src/
 └── utils/
     ├── Logger.h/cpp                 # Logging utilities
     ├── TimeUtils.h/cpp              # NTP sync & time formatting
+    ├── RestMode.h/cpp               # Scheduled display power saving
     ├── gfxlatin2.h/cpp              # UTF-8 to ISO-8859-2 conversion
     └── decodeutf8.h/cpp             # UTF-8 decoder
 ```
@@ -276,6 +280,47 @@ HUB75 matrix pins are hardcoded for Adafruit MatrixPortal ESP32-S3 (lines 25-40)
 - No stop IDs required - server aggregates and filters departures
 - See `docs/MQTT.md` for complete integration guide with Home Assistant examples
 
+### Weather API (Open-Meteo)
+- Endpoint: `https://api.open-meteo.com/v1/forecast`
+- Authentication: None required (free, open-source weather API)
+- Query parameters: `latitude`, `longitude`, `hourly=temperature_2m,weathercode`, `forecast_hours=3`, `timezone=auto`
+- Response format: JSON with hourly arrays for temperature and WMO weather codes
+- Configuration fields: `config.weatherEnabled`, `config.weatherLatitude`, `config.weatherLongitude`, `config.weatherRefreshInterval`
+- JSON buffer: 2KB
+- Timeout: 8 seconds
+- Retry logic: 2 attempts with exponential backoff
+- Weather data cached and displayed in status bar alongside date/time
+
+### Weather Data Structure
+```cpp
+struct WeatherData {
+    int temperature;       // Temperature in Celsius (e.g., 15 = 15°C)
+    int weatherCode;       // WMO weather code (0-99)
+    time_t timestamp;      // Unix timestamp when data was fetched
+    bool hasError;         // True if fetch encountered an error
+    char errorMsg[64];     // Error message if hasError is true
+};
+```
+
+### WMO Weather Code Mapping
+Weather icons are rendered using the `DepartureWeather4pt8b` font with the following mappings:
+- **Code 0**: Clear sky → sun icon ('a')
+- **Codes 1-3**: Partly cloudy/cloudy → cloud icon ('b')
+- **Codes 45-48**: Fog → fog icon ('f')
+- **Codes 51-57**: Drizzle/light rain → drizzle icon ('g')
+- **Codes 61-67**: Rain → rain icon ('d')
+- **Codes 71-86**: Snow/sleet → snow icon ('e')
+- **Codes 95+**: Thunderstorm → storm icon ('t')
+- **Default**: Cloudy → cloud icon ('c')
+
+### Weather Display Colors
+- **Weather icon**: Colored by condition (yellow=sunny, white=cloudy, purple=fog, cyan=rain, blue=snow, red=storm)
+- **Temperature**: Color-coded by value:
+  - Blue: < 8°C (cold)
+  - White: 8-16°C (mild)
+  - Yellow: 17-25°C (warm)
+  - Red: > 25°C (hot)
+
 ### Multi-Stop Behavior
 - Multiple stops supported via comma separation (max 12 stops)
 - Each stop queried individually with separate API calls (1s delay between calls)
@@ -348,7 +393,14 @@ NVS namespace: "transport"
 - `debugMode` (Bool) - Enable telnet logging
 - `showPlatform` (Bool) - Display platform numbers (stored but not currently implemented)
 - `scrollEnabled` (Bool) - Enable scrolling for long destination names (default: off)
+- `restModePeriods` (String, 256 chars) - Rest mode time periods (format: "HH:MM-HH:MM,HH:MM-HH:MM")
 - `configured` (Bool)
+
+**Weather Settings:**
+- `weatherEnabled` (Bool) - Enable weather display in status bar
+- `weatherLatitude` (Float) - GPS latitude for weather location (e.g., 50.0755 for Prague)
+- `weatherLongitude` (Float) - GPS longitude for weather location (e.g., 14.4378 for Prague)
+- `weatherRefreshInterval` (Int, minutes) - Interval between weather API calls (default: 15)
 
 **Prague API Settings:**
 - `pragueApiKey` (String, 300 chars) - Golemio API key
@@ -390,6 +442,10 @@ NVS namespace: "transport"
 - Debug mode: Disabled
 - Show platform: Disabled
 - Scroll enabled: Disabled
+- Rest mode periods: Empty (disabled)
+- Weather enabled: Disabled
+- Weather refresh interval: 15 minutes
+- Weather coordinates: 0.0, 0.0 (must be configured)
 - MQTT use timestamps: True (timestamp mode)
 - MQTT field mappings: "line", "dest", "eta", "dep", "plt", "ac"
 
@@ -402,6 +458,33 @@ NVS namespace: "transport"
 - ETA calculation: Compares ISO timestamp from API with local time (mktime/difftime)
 - Display format: "Wed 08.Jan 14:35" on bottom row
 
+## Rest Mode
+
+Rest mode allows scheduled display power saving by turning off the LED matrix during configurable time periods.
+
+### Configuration
+- Configure via `restModePeriods` config field (format: "HH:MM-HH:MM,HH:MM-HH:MM")
+- Multiple periods supported, comma-separated
+- Supports cross-midnight periods (e.g., "22:00-06:00" for overnight)
+
+### Behavior
+- Main loop checks `isInRestPeriod()` each cycle
+- When entering rest period: Display cleared, brightness set to 0
+- When exiting rest period: Normal operation resumes automatically
+- API polling continues during rest mode (data stays fresh)
+
+### Implementation
+Located in `/src/utils/RestMode.{h,cpp}`:
+- `isInRestPeriod(const char* restPeriods)` - Check if current time is within any rest period
+- `parseTime(const char* timeStr, int& hours, int& minutes)` - Parse "HH:MM" format
+- `isTimeBetween(...)` - Compare times with midnight-crossing support
+
+### Example Configurations
+- `"23:00-07:00"` - Off overnight (11 PM to 7 AM)
+- `"00:00-06:00,22:00-23:59"` - Off late night and early morning
+- `"09:00-17:00"` - Off during work hours
+- Empty string - Rest mode disabled (default)
+
 ## Font System
 
 ### Custom 8-bit ISO-8859-2 GFXfonts
@@ -413,6 +496,11 @@ Located in `/src/fonts` directory:
   - `DepartureMonoCondensed5pt8b.h` - Condensed font (5pt) - automatically used for destinations >16 chars
   - Character range: 0x20-0xDF (192 printable characters)
   - Full ISO-8859-2 support for Czech, Slovak, Polish, Hungarian, etc.
+- **Weather icon font**:
+  - `DepartureWeather4pt8b.h` - Weather icon font (4pt)
+  - Characters 'a'-'t' map to weather icons (sun, clouds, rain, snow, fog, storm, etc.)
+  - Used in status bar to display current weather condition
+  - WMO weather codes mapped to icon characters via `mapWeatherCodeToIcon()`
 
 **UTF-8 Conversion System:**
 Located in `/src/utils` directory:
