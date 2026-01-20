@@ -395,6 +395,43 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 )rawliteral";
 
+// Rest mode toggle JavaScript
+const char SCRIPT_REST_MODE_TOGGLE[] PROGMEM = R"rawliteral(
+<script>
+async function toggleRestMode() {
+    const btn = document.getElementById('restModeBtn');
+    const isCurrentlyActive = (btn.innerText === 'Disable Rest Mode');
+    const newState = !isCurrentlyActive;
+
+    btn.disabled = true;
+    btn.innerText = newState ? 'Disabling...' : 'Enabling...';
+
+    try {
+        const response = await fetch('/rest-mode', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ enabled: newState })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Reload page to refresh status
+            window.location.reload();
+        } else {
+            alert('Failed to toggle rest mode: ' + (data.error || 'Unknown error'));
+            btn.disabled = false;
+            btn.innerText = isCurrentlyActive ? 'Disable Rest Mode' : 'Enable Rest Mode';
+        }
+    } catch (error) {
+        alert('Error: ' + error.message);
+        btn.disabled = false;
+        btn.innerText = isCurrentlyActive ? 'Disable Rest Mode' : 'Enable Rest Mode';
+    }
+}
+</script>
+)rawliteral";
+
 // Demo page JavaScript
 const char SCRIPT_DEMO[] PROGMEM = R"rawliteral(
 <script>

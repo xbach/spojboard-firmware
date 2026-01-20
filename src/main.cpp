@@ -56,6 +56,7 @@ char apiErrorMsg[64] = "";
 char stopName[64] = "";
 bool demoModeActive = false; // Demo mode flag - stops API polling and display updates
 bool restModeActive = false; // Rest mode flag - pauses API polling and turns off display
+bool restModeManual = false; // True if rest mode was activated via REST API (skip periodic check)
 int lastRestCheckMinute = -1; // Last minute when rest check triggered (0-59)
 WeatherData weatherData = {}; // Global weather state
 
@@ -337,8 +338,9 @@ void onRestMode(bool enabled)
 {
     if (enabled && !restModeActive)
     {
-        // Enter rest mode
+        // Enter rest mode (manual via REST API)
         restModeActive = true;
+        restModeManual = true; // Mark as manually activated - skip periodic checks
         displayManager.getDisplay()->clearScreen();
         displayManager.getDisplay()->flipDMABuffer();
 
@@ -349,6 +351,7 @@ void onRestMode(bool enabled)
     {
         // Exit rest mode
         restModeActive = false;
+        restModeManual = false; // Clear manual flag
         lastApiCall = 0;       // Force immediate API refresh
         lastWeatherCall = 0;   // Force weather refresh
         needsDisplayUpdate = true;
@@ -534,7 +537,10 @@ void loop()
                           apiError,
                           apiErrorMsg,
                           departureCount,
-                          stopName);
+                          stopName,
+                          demoModeActive,
+                          restModeActive,
+                          restModeManual);
 
     // Skip WiFi monitoring and API calls in AP mode
     if (wifiManager.isAPMode())
@@ -594,7 +600,8 @@ void loop()
     wasConnected = isConnected;
 
     // Check rest mode at :00 and :30 minutes (twice per hour, synchronized to clock)
-    if (!wifiManager.isAPMode())
+    // Skip periodic check if rest mode was manually activated via REST API
+    if (!wifiManager.isAPMode() && !restModeManual)
     {
         struct tm timeinfo;
         if (getCurrentTime(&timeinfo))
@@ -609,22 +616,22 @@ void loop()
 
                 if (shouldBeInRest && !restModeActive)
                 {
-                    // Enter rest mode
+                    // Enter rest mode (scheduled)
                     restModeActive = true;
                     displayManager.getDisplay()->clearScreen();
                     displayManager.getDisplay()->flipDMABuffer();
                     logTimestamp();
-                    debugPrintln("RestMode: Activated - display off, API polling paused");
+                    debugPrintln("RestMode: Activated (scheduled) - display off, API polling paused");
                 }
                 else if (!shouldBeInRest && restModeActive)
                 {
-                    // Exit rest mode
+                    // Exit rest mode (scheduled period ended)
                     restModeActive = false;
                     lastApiCall = 0;
                     lastWeatherCall = 0;
                     needsDisplayUpdate = true;
                     logTimestamp();
-                    debugPrintln("RestMode: Deactivated - resuming normal operation");
+                    debugPrintln("RestMode: Deactivated (scheduled) - resuming normal operation");
                 }
             }
         }

@@ -117,7 +117,7 @@ If the device can't connect to WiFi (wrong password, network down, etc.), it wil
 
 The built-in web server provides:
 
-- **Status Dashboard**: WiFi status, API status, memory usage
+- **Status Dashboard**: WiFi status, API status, memory usage, mode indicators (Demo Mode, Rest Mode with manual/scheduled differentiation)
 - **Configuration Form**:
   - WiFi credentials
   - Data source selector (Prague, Berlin, or MQTT)
@@ -136,6 +136,7 @@ The built-in web server provides:
 - **Actions**:
   - Force refresh
   - Display demo (preview custom departures)
+  - Enable/Disable Rest Mode (manual toggle)
   - Update firmware (manual .bin upload)
   - Check for updates (GitHub releases)
   - Reboot device
@@ -268,7 +269,7 @@ SpojBoard can optionally display current weather in the status bar using the fre
 
 ## Rest Mode
 
-Rest mode automatically turns off the display during configured time periods to save power and reduce light pollution at night.
+Rest mode automatically turns off the display during configured time periods to save power and reduce light pollution at night. It can also be controlled manually via the web interface or REST API.
 
 ### Configuration
 1. Open the web interface at `http://[device-ip]/`
@@ -283,6 +284,25 @@ Rest mode automatically turns off the display during configured time periods to 
 | `00:00-06:00` | Off from midnight to 6 AM |
 | `22:00-06:00,12:00-13:00` | Off overnight and during lunch |
 | (empty) | Rest mode disabled (default) |
+
+### Manual Control
+
+You can also enable/disable rest mode manually from the web interface:
+
+1. Open the web interface at `http://[device-ip]/`
+2. Click "Enable Rest Mode" button in Actions section
+3. Display turns off immediately (regardless of scheduled periods)
+4. Click "Disable Rest Mode" to resume normal operation
+
+**Manual vs Scheduled:**
+- **Manual activation**: Takes priority, overrides schedule, indicated as "Rest Mode Active (Manual)" in status
+- **Scheduled activation**: Follows configured time periods, indicated as "Rest Mode Active (Scheduled)" in status
+- **Status indicator**: Shows whether rest mode is "Manual" or "Scheduled" in the dashboard
+
+**Use cases:**
+- Quick display shutoff without editing time periods
+- Integration with home automation (REST API endpoint: `POST /rest-mode`)
+- Testing rest mode before configuring schedule
 
 **Notes:**
 - Cross-midnight periods work correctly (e.g., "22:00-06:00")

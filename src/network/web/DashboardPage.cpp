@@ -12,7 +12,10 @@ String buildDashboardPage(
     bool apiError,
     const char* apiErrorMsg,
     int departureCount,
-    const char* stopName)
+    const char* stopName,
+    bool demoModeActive,
+    bool restModeActive,
+    bool restModeManual)
 {
     String html = FPSTR(HTML_HEADER);
     html += "<h1>SpojBoard</h1>";
@@ -48,6 +51,25 @@ String buildDashboardPage(
 
     if (!apModeActive)
     {
+        // Demo mode status
+        if (demoModeActive)
+        {
+            html += "<div class='status warn' style='background:#9b59b6;'>Demo Mode Active</div>";
+        }
+
+        // Rest mode status
+        if (restModeActive)
+        {
+            if (restModeManual)
+            {
+                html += "<div class='status warn'>Rest Mode Active (Manual)</div>";
+            }
+            else
+            {
+                html += "<div class='status warn'>Rest Mode Active (Scheduled)</div>";
+            }
+        }
+
         // Display current city's configuration status
         bool isPrague = (strcmp(config->city, "Berlin") != 0 && strcmp(config->city, "MQTT") != 0);
         bool isMqtt = (strcmp(config->city, "MQTT") == 0);
@@ -516,6 +538,18 @@ String buildDashboardPage(
         html += "<form method='GET' action='/demo' style='display:inline; margin-top:10px'>";
         html += "<button type='submit' style='background:#9b59b6;'>Display Demo</button>";
         html += "</form>";
+        html += "<form method='GET' action='/preview' style='display:inline; margin-top:10px'>";
+        html += "<button type='submit' style='background:#00d4ff;'>Live Preview</button>";
+        html += "</form>";
+        html += "<button id='restModeBtn' onclick='toggleRestMode()' style='display:inline-block; margin-top:10px; ";
+        if (restModeActive && restModeManual)
+        {
+            html += "background:#ff6b6b;'>Disable Rest Mode</button>";
+        }
+        else
+        {
+            html += "background:#ffa502;'>Enable Rest Mode</button>";
+        }
         html += "<form method='GET' action='/update' style='display:inline; margin-top:10px'>";
         html += "<button type='submit'>Install Firmware</button>";
         html += "</form>";
@@ -553,6 +587,7 @@ String buildDashboardPage(
     {
         html += FPSTR(SCRIPT_LINE_COLORS);
         html += FPSTR(SCRIPT_REST_MODE);
+        html += FPSTR(SCRIPT_REST_MODE_TOGGLE);
     }
 
     html += FPSTR(HTML_FOOTER);

@@ -15,7 +15,10 @@ String buildDashboardPage(
     bool apiError,
     const char* apiErrorMsg,
     int departureCount,
-    const char* stopName
+    const char* stopName,
+    bool demoModeActive,
+    bool restModeActive,
+    bool restModeManual
 );
 
 #endif // DASHBOARD_PAGE_H

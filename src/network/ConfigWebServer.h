@@ -76,6 +76,9 @@ class ConfigWebServer
      * @param apiErrorMsg API error message
      * @param departureCount Number of departures
      * @param stopName Current stop name
+     * @param demoModeActive Demo mode status
+     * @param restModeActive Rest mode status
+     * @param restModeManual True if rest mode was manually activated via REST API
      */
     void updateState(const Config* config,
                      bool wifiConnected,
@@ -86,7 +89,10 @@ class ConfigWebServer
                      bool apiError,
                      const char* apiErrorMsg,
                      int departureCount,
-                     const char* stopName);
+                     const char* stopName,
+                     bool demoModeActive,
+                     bool restModeActive,
+                     bool restModeManual);
 
     /**
      * Get web server instance for direct access
@@ -113,6 +119,9 @@ class ConfigWebServer
     const char* apiErrorMsg;
     int departureCount;
     const char* stopName;
+    bool demoModeActive;
+    bool restModeActive;
+    bool restModeManual;
 
     // Callbacks
     ConfigSaveCallback onSaveCallback;
@@ -137,6 +146,8 @@ class ConfigWebServer
     void handleStartDemo(); // POST: start demo mode with sample data
     void handleStopDemo(); // POST: stop demo mode and resume normal operation
     void handleRestMode(); // POST: control rest mode via REST API
+    void handleDisplayStateAPI(); // GET: JSON with current display state for preview
+    void handlePreviewPage(); // GET: live preview HTML page
     void handleNotFound();
 
     // OTA progress callbacks (static for use as function pointers)

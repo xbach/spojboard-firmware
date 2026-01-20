@@ -137,7 +137,8 @@ src/
 The device operates in two modes with an optional demo state:
 - **AP Mode** (`apModeActive=true`): Creates WiFi network for setup, DNS captive portal active, display shows credentials, demo available
 - **STA Mode** (`apModeActive=false`): Connects to configured WiFi, fetches departures every 30s (configurable), serves web UI, demo available
-- **Demo Mode** (`demoModeActive=true`): Pauses API polling and automatic display updates, shows custom sample departures
+- **Demo Mode** (`demoModeActive=true`): Pauses API polling and automatic display updates, shows custom sample departures, status visible in web UI
+- **Rest Mode** (`restModeActive=true`): Display turned off, can be triggered manually or by scheduled time periods, status visible in web UI with differentiation between manual and scheduled activation
 
 Transitions:
 - Boot → Try STA mode → If fail (20 attempts/~10s) → AP mode
@@ -145,6 +146,8 @@ Transitions:
 - STA mode connection loss → Auto-reconnect attempts every 30s
 - Demo start → Set demoModeActive=true, stop API polling
 - Demo stop → Set demoModeActive=false, resume normal operation
+- Rest mode manual toggle → Set restModeActive=true/false, restModeManual=true
+- Rest mode scheduled activation → Set restModeActive=true, restModeManual=false
 
 ### Display Rendering System
 
@@ -152,6 +155,7 @@ Transitions:
   - Rows 0-2: Departure entries (line number, destination, ETA) - shared by normal and demo modes
   - Row 3: Date/time status bar with pipe separator (e.g., "Mon| Feb 15 14:35")
 - **Uniform route boxes**: All line numbers displayed in 18-pixel wide black background boxes (fits 1-3 characters)
+  - Line numbers are preformatted (zero-padded to consistent width) before rendering
   - Route numbers horizontally centered within boxes using `getTextBounds()` with proper x1 offset compensation
   - All destinations start at fixed X position (22 pixels) for consistent vertical alignment
 - **Adaptive font rendering**: Automatically switches between regular and condensed fonts for optimal display
@@ -189,7 +193,12 @@ Transitions:
 ### Memory Management
 
 - Display DMA buffer allocated at startup (HUB75_I2S_CFG)
-- JSON deserialization uses 8KB DynamicJsonDocument
+- JSON deserialization buffer sizes vary by API:
+  - GolemioAPI (Prague): 12KB - handles busy stops with many departures
+  - BvgAPI (Berlin): 24KB - BVG responses are verbose (~1.7KB per departure)
+  - MqttAPI: 8KB
+  - WeatherAPI: 2KB
+  - GitHubOTA: 8KB
 - Typical free heap: ~200KB
 - NVS flash used for configuration persistence
 - No dynamic allocation in main loop
@@ -260,7 +269,9 @@ HUB75 matrix pins are hardcoded for Adafruit MatrixPortal ESP32-S3 (lines 25-40)
 - Response format: JSON with stops array and departures array
 - Stop ID format: GTFS IDs from PID data (e.g., "U693Z2P")
 - Configuration fields: `config.pragueApiKey`, `config.pragueStopIds`
+- JSON buffer: 12KB (handles busy stops with many departures)
 - Rate limits: Configurable refresh interval (10-300s) to avoid HTTP 429
+- Retry logic: 3 attempts with exponential backoff (2s, 4s, 6s), skips retry on 4xx client errors
 - Find IDs at: https://data.pid.cz/stops/json/stops.json
 
 ### BVG API (Berlin)
@@ -271,6 +282,7 @@ HUB75 matrix pins are hardcoded for Adafruit MatrixPortal ESP32-S3 (lines 25-40)
 - Stop ID format: Numeric stop IDs (e.g., "900013102")
 - Configuration fields: `config.berlinStopIds` (no API key needed)
 - JSON buffer: 24KB (BVG responses are verbose, ~1.7KB per departure)
+- Retry logic: 3 attempts with exponential backoff (2s, 4s, 6s), skips retry on 4xx client errors
 - Find IDs at: https://v6.bvg.transport.rest/ (use /locations endpoint)
 
 ### MQTT API (Home Assistant / Custom)
@@ -334,6 +346,23 @@ Weather icons are rendered using the `DepartureWeather4pt8b` font with the follo
 - All departures collected, sorted by ETA, filtered by minimum departure time, then top N displayed
 - Applies to Prague and Berlin APIs (not MQTT - server handles aggregation)
 
+### HTTP Response Handling
+
+Located in `/src/utils/HttpUtils.{h,cpp}`:
+- `readHttpResponse()` - Unified HTTP response handler for both chunked and non-chunked responses
+- **Automatic chunked transfer encoding detection**: Detects when Content-Length == -1
+- **Memory-efficient streaming**: Reads responses in 512-byte chunks instead of loading entire response into memory
+- **Timeout protection**: 5-second max wait between chunks prevents hanging on slow/stalled connections
+- **Buffer size limits**: Enforces maximum response size per API (12KB Prague, 24KB Berlin, etc.)
+- **Debug logging**: Detailed chunk-by-chunk logging when debug mode enabled
+- Applies to Prague (Golemio) and Berlin (BVG) APIs
+- Reduces peak memory usage during API calls - critical for ESP32 stability
+
+**Implementation Details**:
+- Chunked mode: Parses hex chunk sizes, reads chunk data, handles trailing CRLF
+- Non-chunked mode: Uses Content-Length header to read exact number of bytes
+- Both modes handle connection timeouts and incomplete responses gracefully
+
 ### Departure Data Structure
 ```cpp
 struct Departure {
@@ -369,6 +398,10 @@ Abbreviations are applied in `DepartureData.cpp` before UTF-8 conversion to pres
 - `POST /save` - Save configuration (triggers restart if WiFi or city changed)
 - `POST /refresh` - Force immediate API call
 - `POST /reboot` - Device restart
+- `POST /rest-mode` - Control rest mode via REST API (JSON: {"enabled": true/false})
+  - Can be triggered manually from web UI button or via external automation
+  - Sets manual flag to differentiate from scheduled activation
+  - Returns current state as JSON response
 - `GET /demo` - Demo configuration page with editable sample departures
 - `POST /start-demo` - Start demo mode with custom departure data (JSON)
 - `POST /stop-demo` - Stop demo mode and resume normal operation
@@ -467,7 +500,7 @@ NVS namespace: "transport"
 
 ## Rest Mode
 
-Rest mode allows scheduled display power saving by turning off the LED matrix during configurable time periods.
+Rest mode allows scheduled display power saving by turning off the LED matrix during configurable time periods. It can be triggered either manually via the web UI or automatically based on configured time periods.
 
 ### Configuration
 - Configure via `restModePeriods` config field (format: "HH:MM-HH:MM,HH:MM-HH:MM")
@@ -475,16 +508,44 @@ Rest mode allows scheduled display power saving by turning off the LED matrix du
 - Supports cross-midnight periods (e.g., "22:00-06:00" for overnight)
 
 ### Behavior
-- Main loop checks `isInRestPeriod()` each cycle
+- Main loop checks `isInRestPeriod()` each cycle for scheduled activation
 - When entering rest period: Display cleared, brightness set to 0
 - When exiting rest period: Normal operation resumes automatically
 - API polling continues during rest mode (data stays fresh)
+
+### Manual Control
+- **Web UI Button**: Toggle button in Actions section of dashboard
+  - Button text changes based on state: "Enable Rest Mode" (orange) when inactive, "Disable Rest Mode" (red) when manually active
+  - Reloads page after toggle to refresh status indicators
+- **REST API Endpoint**: `POST /rest-mode` with JSON `{"enabled": true/false}`
+  - Can be used by external automation systems (e.g., Home Assistant, cron jobs)
+  - Returns current state as JSON response
+- **Manual vs Scheduled**: Manual activation takes priority and is tracked separately via `restModeManual` flag
+  - Manual activation: Display turns off immediately regardless of scheduled periods
+  - Scheduled activation: Follows configured time periods
+  - Status indicators differentiate between manual and scheduled activation
+
+### Status Display
+- **Dashboard Status Indicators**: Web UI displays current rest mode state in status section
+  - "Rest Mode Active (Manual)" - shown when manually enabled via button or REST API
+  - "Rest Mode Active (Scheduled)" - shown when activated by time period configuration
+  - Warning badge styling (orange background) makes status clearly visible
+- **Display State**: LED matrix is cleared and brightness set to 0 during rest mode
 
 ### Implementation
 Located in `/src/utils/RestMode.{h,cpp}`:
 - `isInRestPeriod(const char* restPeriods)` - Check if current time is within any rest period
 - `parseTime(const char* timeStr, int& hours, int& minutes)` - Parse "HH:MM" format
 - `isTimeBetween(...)` - Compare times with midnight-crossing support
+
+Located in `/src/network/ConfigWebServer.{h,cpp}`:
+- `POST /rest-mode` endpoint handles manual toggle requests
+- `updateState()` method extended to pass `restModeActive` and `restModeManual` to web UI
+
+Located in `/src/network/web/DashboardPage.{h,cpp}`:
+- Status indicators render based on `restModeActive` and `restModeManual` flags
+- Toggle button in Actions section uses AJAX to call REST API
+- JavaScript in `ClientScripts.h` (SCRIPT_REST_MODE_TOGGLE) handles button click and page reload
 
 ### Example Configurations
 - `"23:00-07:00"` - Off overnight (11 PM to 7 AM)

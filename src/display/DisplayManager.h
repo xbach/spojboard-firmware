@@ -132,6 +132,24 @@ public:
      */
     void clearScreen();
 
+    /**
+     * Get current departures for preview API
+     * @return Pointer to current departures array
+     */
+    const Departure* getCurrentDepartures() const { return currentDepartures; }
+
+    /**
+     * Get current departure count for preview API
+     * @return Number of departures currently displayed
+     */
+    int getCurrentDepartureCount() const { return currentDepartureCount; }
+
+    /**
+     * Get weather data for preview API
+     * @return Pointer to current weather data
+     */
+    const struct WeatherData* getWeatherData() const { return weatherData; }
+
 private:
     MatrixPanel_I2S_DMA* display;
     bool isDrawing;

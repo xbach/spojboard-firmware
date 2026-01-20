@@ -1,6 +1,7 @@
 #include "ConfigWebServer.h"
 #include "../utils/Logger.h"
 #include "../display/DisplayManager.h"
+#include "../api/WeatherAPI.h"
 #include "web/WebTemplates.h"
 #include "web/DashboardPage.h"
 #include "web/DemoPage.h"
@@ -82,6 +83,7 @@ ConfigWebServer::ConfigWebServer()
       wifiConnected(false), apModeActive(false),
       apSSID(""), apPassword(""), apClientCount(0),
       apiError(false), apiErrorMsg(""), departureCount(0), stopName(""),
+      demoModeActive(false), restModeActive(false), restModeManual(false),
       onSaveCallback(nullptr), onRefreshCallback(nullptr), onRebootCallback(nullptr),
       onDemoStartCallback(nullptr), onDemoStopCallback(nullptr), onRestModeCallback(nullptr)
 {
@@ -145,6 +147,10 @@ bool ConfigWebServer::begin()
                { handleStopDemo(); });
     server->on("/rest-mode", HTTP_POST, [this]()
                { handleRestMode(); });
+    server->on("/api/display-state", HTTP_GET, [this]()
+               { handleDisplayStateAPI(); });
+    server->on("/preview", HTTP_GET, [this]()
+               { handlePreviewPage(); });
     server->onNotFound([this]()
                        { handleNotFound(); });
 
@@ -204,7 +210,8 @@ void ConfigWebServer::updateState(const Config *config,
                                   bool connected, bool apMode,
                                   const char *ssid, const char *password, int clientCount,
                                   bool error, const char *errorMsg,
-                                  int depCount, const char *stop)
+                                  int depCount, const char *stop,
+                                  bool demoMode, bool restMode, bool restManual)
 {
     currentConfig = config;
     wifiConnected = connected;
@@ -216,6 +223,9 @@ void ConfigWebServer::updateState(const Config *config,
     apiErrorMsg = errorMsg;
     departureCount = depCount;
     stopName = stop;
+    demoModeActive = demoMode;
+    restModeActive = restMode;
+    restModeManual = restManual;
 }
 
 void ConfigWebServer::handleRoot()
@@ -235,7 +245,10 @@ void ConfigWebServer::handleRoot()
         apiError,
         apiErrorMsg,
         departureCount,
-        stopName
+        stopName,
+        demoModeActive,
+        restModeActive,
+        restModeManual
     );
 
     server->send(200, "text/html", html);
@@ -968,4 +981,282 @@ void ConfigWebServer::handleRestMode()
     response += enabled ? "true" : "false";
     response += "}";
     server->send(200, "application/json", response);
+}
+
+void ConfigWebServer::handleDisplayStateAPI()
+{
+    if (!displayManager)
+    {
+        server->send(500, "application/json", "{\"error\":\"Display not initialized\"}");
+        return;
+    }
+
+    // Get current display data
+    const Departure* departures = displayManager->getCurrentDepartures();
+    int departureCount = displayManager->getCurrentDepartureCount();
+    const WeatherData* weather = displayManager->getWeatherData();
+
+    // Build JSON response
+    String json = "{";
+    json += "\"success\":true,";
+    json += "\"timestamp\":" + String(millis()) + ",";
+
+    // Current time
+    time_t now = time(nullptr);
+    struct tm* timeinfo = localtime(&now);
+    char timeStr[32];
+    strftime(timeStr, sizeof(timeStr), "%a %d.%b %H:%M", timeinfo);
+    json += "\"time\":\"" + String(timeStr) + "\",";
+
+    // Weather (if enabled and available)
+    if (weather && weather->temperature != 0)
+    {
+        json += "\"weather\":{";
+        json += "\"temp\":" + String(weather->temperature) + ",";
+        json += "\"code\":" + String(weather->weatherCode);
+        json += "},";
+    }
+
+    // Departures array
+    json += "\"departures\":[";
+    for (int i = 0; i < departureCount; i++)
+    {
+        if (i > 0)
+            json += ",";
+        json += "{";
+        json += "\"line\":\"" + String(departures[i].line) + "\",";
+        json += "\"destination\":\"" + String(departures[i].destination) + "\",";
+        json += "\"eta\":" + String(departures[i].eta) + ",";
+        json += "\"hasAC\":" + String(departures[i].hasAC ? "true" : "false") + ",";
+        json += "\"isDelayed\":" + String(departures[i].isDelayed ? "true" : "false");
+        json += "}";
+    }
+    json += "]";
+
+    json += "}";
+
+    server->send(200, "application/json", json);
+}
+
+void ConfigWebServer::handlePreviewPage()
+{
+    String html = FPSTR(HTML_HEADER);
+    html += "<h1>Display Preview</h1>";
+    html += "<p style='text-align:center; color:#888; margin-top:-10px; margin-bottom:20px;'>Live view of LED matrix display</p>";
+
+    // CSS Styles for LED Matrix Replica
+    html += "<style>";
+    html += ".led-display { ";
+    html += "  background: #000; ";
+    html += "  border: 3px solid #333; ";
+    html += "  padding: 10px; ";
+    html += "  margin: 20px auto; ";
+    html += "  max-width: 800px; ";
+    html += "  font-family: 'Courier New', monospace; ";
+    html += "  box-shadow: 0 0 20px rgba(0,0,0,0.5); ";
+    html += "}";
+    html += ".led-row { ";
+    html += "  display: flex; ";
+    html += "  align-items: center; ";
+    html += "  height: 40px; ";
+    html += "  margin: 2px 0; ";
+    html += "  padding: 4px 8px; ";
+    html += "}";
+    html += ".led-line-box { ";
+    html += "  min-width: 45px; ";
+    html += "  height: 28px; ";
+    html += "  background: #000; ";
+    html += "  border: 1px solid #333; ";
+    html += "  display: flex; ";
+    html += "  align-items: center; ";
+    html += "  justify-content: center; ";
+    html += "  font-size: 14px; ";
+    html += "  font-weight: bold; ";
+    html += "  margin-right: 8px; ";
+    html += "  text-shadow: 0 0 3px currentColor; ";
+    html += "}";
+    html += ".led-destination { ";
+    html += "  flex: 1; ";
+    html += "  color: #fff; ";
+    html += "  font-size: 14px; ";
+    html += "  white-space: nowrap; ";
+    html += "  overflow: hidden; ";
+    html += "  text-overflow: ellipsis; ";
+    html += "  text-shadow: 0 0 2px #fff; ";
+    html += "}";
+    html += ".led-eta { ";
+    html += "  color: #fff; ";
+    html += "  font-size: 14px; ";
+    html += "  font-weight: bold; ";
+    html += "  margin-left: auto; ";
+    html += "  padding-left: 10px; ";
+    html += "  text-shadow: 0 0 2px #fff; ";
+    html += "}";
+    html += ".led-status { ";
+    html += "  display: flex; ";
+    html += "  justify-content: space-between; ";
+    html += "  color: #fff; ";
+    html += "  font-size: 12px; ";
+    html += "  padding: 8px; ";
+    html += "  border-top: 1px solid #333; ";
+    html += "  text-shadow: 0 0 2px #fff; ";
+    html += "}";
+
+    // Color classes for line boxes
+    html += ".color-red { color: #ff0000; }";
+    html += ".color-green { color: #00ff00; }";
+    html += ".color-blue { color: #0000ff; }";
+    html += ".color-yellow { color: #ffff00; }";
+    html += ".color-orange { color: #ff8800; }";
+    html += ".color-purple { color: #aa00ff; }";
+    html += ".color-cyan { color: #00ffff; }";
+    html += ".color-white { color: #ffffff; }";
+
+    // ETA color classes
+    html += ".eta-normal { color: #ffffff; }";
+    html += ".eta-soon { color: #ffff00; }";
+    html += ".eta-urgent { color: #ff0000; }";
+    html += ".eta-delayed { color: #ff8800; }";
+
+    // Weather colors
+    html += ".weather-cold { color: #0088ff; }";
+    html += ".weather-mild { color: #ffffff; }";
+    html += ".weather-warm { color: #ffff00; }";
+    html += ".weather-hot { color: #ff0000; }";
+
+    html += ".controls { text-align: center; margin: 20px; }";
+    html += ".controls button { ";
+    html += "  padding: 10px 20px; ";
+    html += "  margin: 5px; ";
+    html += "  font-size: 14px; ";
+    html += "  cursor: pointer; ";
+    html += "  background: #2ed573; ";
+    html += "  color: #000; ";
+    html += "  border: none; ";
+    html += "  border-radius: 8px; ";
+    html += "}";
+    html += ".controls button:hover { background: #26de81; }";
+    html += "#status { text-align: center; color: #888; margin: 10px; }";
+    html += "</style>";
+
+    // LED Display Container
+    html += "<div class='led-display' id='ledDisplay'>";
+    html += "<div id='departureRows'></div>";
+    html += "<div class='led-status' id='statusBar'></div>";
+    html += "</div>";
+
+    // Controls
+    html += "<div class='controls'>";
+    html += "<button onclick='toggleAutoRefresh()' id='toggleBtn'>Pause</button>";
+    html += "<button onclick='location.href=\"/\"'>Back to Dashboard</button>";
+    html += "</div>";
+    html += "<p id='status'>Loading...</p>";
+
+    // JavaScript
+    html += "<script>";
+
+    // Color mapping function (matches DisplayColors.cpp logic)
+    html += "function getLineColor(line) {";
+    html += "  if (line === 'A') return 'green';";
+    html += "  if (line === 'B') return 'yellow';";
+    html += "  if (line === 'C') return 'red';";
+    html += "  if (/^S\\d+$/.test(line)) return 'blue';";  // S-trains
+    html += "  if (/^9[1-9]$/.test(line)) return 'cyan';";  // Night trams
+    html += "  if (/^[1-2]\\d$/.test(line)) return 'white';";  // Trams
+    html += "  if (/^(5[0-9]|[1-2]\\d\\d)$/.test(line)) return 'purple';";  // Buses
+    html += "  if (/^9\\d\\d$/.test(line)) return 'cyan';";  // Night buses
+    html += "  return 'yellow';";  // Default
+    html += "}";
+
+    // ETA color function
+    html += "function getEtaColor(eta, isDelayed) {";
+    html += "  if (isDelayed) return 'eta-delayed';";
+    html += "  if (eta < 2) return 'eta-urgent';";
+    html += "  if (eta <= 5) return 'eta-soon';";
+    html += "  return 'eta-normal';";
+    html += "}";
+
+    // Weather color function
+    html += "function getWeatherTempColor(temp) {";
+    html += "  if (temp < 8) return 'weather-cold';";
+    html += "  if (temp <= 16) return 'weather-mild';";
+    html += "  if (temp <= 25) return 'weather-warm';";
+    html += "  return 'weather-hot';";
+    html += "}";
+
+    // Weather icon mapping (using emoji approximations)
+    html += "function getWeatherIcon(code) {";
+    html += "  if (code === 0) return '\\u2600';";  // Clear sky - sun
+    html += "  if (code <= 3) return '\\u2601';";  // Cloudy
+    html += "  if (code <= 48) return '\\u2248';";  // Fog - approximately equal
+    html += "  if (code <= 57) return '\\u2022';";  // Drizzle - bullet
+    html += "  if (code <= 67) return '\\u2248';";  // Rain - approximately equal
+    html += "  if (code <= 86) return '\\u2744';";  // Snow
+    html += "  if (code >= 95) return '\\u26C8';";  // Thunderstorm
+    html += "  return '\\u2601';";  // Default cloudy
+    html += "}";
+
+    // Update display function
+    html += "async function updateDisplay() {";
+    html += "  try {";
+    html += "    const response = await fetch('/api/display-state');";
+    html += "    const data = await response.json();";
+    html += "    if (!data.success) throw new Error('API call failed');";
+
+    // Render departures
+    html += "    const rowsHtml = data.departures.map(dep => {";
+    html += "      const color = getLineColor(dep.line);";
+    html += "      const etaColor = getEtaColor(dep.eta, dep.isDelayed);";
+    html += "      const etaText = dep.eta < 1 ? '<1' : dep.eta;";
+    html += "      const acIndicator = dep.hasAC ? '*' : '';";
+    html += "      return `<div class='led-row'>` +";
+    html += "        `<div class='led-line-box color-${color}'>${dep.line}</div>` +";
+    html += "        `<div class='led-destination'>${dep.destination}${acIndicator}</div>` +";
+    html += "        `<div class='led-eta ${etaColor}'>${etaText}\\'</div>` +";
+    html += "      `</div>`;";
+    html += "    }).join('');";
+    html += "    document.getElementById('departureRows').innerHTML = rowsHtml;";
+
+    // Render status bar
+    html += "    let statusHtml = `<span>${data.time}</span>`;";
+    html += "    if (data.weather) {";
+    html += "      const icon = getWeatherIcon(data.weather.code);";
+    html += "      const tempColor = getWeatherTempColor(data.weather.temp);";
+    html += "      statusHtml += `<span>${icon} <span class='${tempColor}'>${data.weather.temp}\u00B0</span></span>`;";
+    html += "    }";
+    html += "    document.getElementById('statusBar').innerHTML = statusHtml;";
+
+    html += "    document.getElementById('status').textContent = 'Updated: ' + new Date().toLocaleTimeString();";
+    html += "    document.getElementById('status').style.color = '#2ed573';";
+    html += "  } catch (err) {";
+    html += "    document.getElementById('status').textContent = 'Error: ' + err.message;";
+    html += "    document.getElementById('status').style.color = '#ff6b6b';";
+    html += "  }";
+    html += "}";
+
+    // Auto-refresh logic
+    html += "let autoRefresh = true;";
+    html += "let refreshInterval = null;";
+    html += "function toggleAutoRefresh() {";
+    html += "  autoRefresh = !autoRefresh;";
+    html += "  const btn = document.getElementById('toggleBtn');";
+    html += "  btn.textContent = autoRefresh ? 'Pause' : 'Resume';";
+    html += "  if (autoRefresh) startAutoRefresh(); else stopAutoRefresh();";
+    html += "}";
+    html += "function startAutoRefresh() {";
+    html += "  if (refreshInterval) clearInterval(refreshInterval);";
+    html += "  refreshInterval = setInterval(updateDisplay, 3000);";
+    html += "}";
+    html += "function stopAutoRefresh() {";
+    html += "  if (refreshInterval) clearInterval(refreshInterval);";
+    html += "}";
+
+    // Initialize
+    html += "updateDisplay();";
+    html += "startAutoRefresh();";
+    html += "</script>";
+
+    html += FPSTR(HTML_FOOTER);
+
+    server->send(200, "text/html", html);
 }
