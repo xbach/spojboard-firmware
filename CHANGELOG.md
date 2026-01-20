@@ -2,6 +2,21 @@
 
 All notable changes to SpojBoard firmware will be documented in this file.
 
+## [r4] - 2026-01-20
+
+### Added
+- Weather display with Open-Meteo API integration (icon and temperature on status bar)
+- Rest mode for scheduled display power saving with REST API control endpoint
+- MQTT integration for self-hosted transit data (see `docs/MQTT.md`)
+- Configurable destination scrolling option for long names (default: off)
+- Code formatting config (clang-format and editorconfig)
+
+### Performance
+- Chunked HTTP reading for Prague and Berlin APIs (reduced memory usage)
+
+### Fixed
+- Line number preformatting for consistent display alignment
+
 ## [r3] - 2026-01-10
 
 ### Added
