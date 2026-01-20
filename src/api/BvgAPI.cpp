@@ -1,5 +1,6 @@
 #include "BvgAPI.h"
 #include "../utils/Logger.h"
+#include "../utils/HttpUtils.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
@@ -193,8 +194,7 @@ bool BvgAPI::querySingleStop(const char* stopId,
         return false;
     }
 
-    // Parse JSON response
-    String payload = http.getString();
+    String payload = readHttpResponse(http, JSON_BUFFER_SIZE, config.debugMode);
     http.end();
 
     DynamicJsonDocument doc(JSON_BUFFER_SIZE);

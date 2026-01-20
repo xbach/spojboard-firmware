@@ -1,5 +1,6 @@
 #include "GolemioAPI.h"
 #include "../utils/Logger.h"
+#include "../utils/HttpUtils.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
@@ -198,7 +199,7 @@ bool GolemioAPI::querySingleStop(const char* stopId,
 
     if (httpCode == HTTP_CODE_OK)
     {
-        String payload = http.getString();
+        String payload = readHttpResponse(http, JSON_BUFFER_SIZE, config.debugMode);
         DynamicJsonDocument doc(JSON_BUFFER_SIZE);
         DeserializationError error = deserializeJson(doc, payload);
 
