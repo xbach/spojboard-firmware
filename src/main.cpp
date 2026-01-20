@@ -333,6 +333,31 @@ void onDemoStop()
     }
 }
 
+void onRestMode(bool enabled)
+{
+    if (enabled && !restModeActive)
+    {
+        // Enter rest mode
+        restModeActive = true;
+        displayManager.getDisplay()->clearScreen();
+        displayManager.getDisplay()->flipDMABuffer();
+
+        logTimestamp();
+        debugPrintln("RestMode: Activated via REST API - display off, API polling paused");
+    }
+    else if (!enabled && restModeActive)
+    {
+        // Exit rest mode
+        restModeActive = false;
+        lastApiCall = 0;       // Force immediate API refresh
+        lastWeatherCall = 0;   // Force weather refresh
+        needsDisplayUpdate = true;
+
+        logTimestamp();
+        debugPrintln("RestMode: Deactivated via REST API - resuming normal operation");
+    }
+}
+
 // ============================================================================
 // Setup
 // ============================================================================
@@ -424,7 +449,7 @@ void setup()
     }
 
     // Initialize web server with callbacks
-    webServer.setCallbacks(onConfigSave, onRefresh, onReboot, onDemoStart, onDemoStop);
+    webServer.setCallbacks(onConfigSave, onRefresh, onReboot, onDemoStart, onDemoStop, onRestMode);
     webServer.setDisplayManager(&displayManager); // For OTA progress updates
     if (!webServer.begin())
     {

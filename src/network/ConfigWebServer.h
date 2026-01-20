@@ -27,6 +27,7 @@ class ConfigWebServer
     typedef void (*RebootCallback)();
     typedef void (*DemoStartCallback)(const Departure* demoDepartures, int demoCount);
     typedef void (*DemoStopCallback)();
+    typedef void (*RestModeCallback)(bool enabled);
 
     ConfigWebServer();
     ~ConfigWebServer();
@@ -54,7 +55,8 @@ class ConfigWebServer
                       RefreshCallback onRefresh,
                       RebootCallback onReboot,
                       DemoStartCallback onDemoStart = nullptr,
-                      DemoStopCallback onDemoStop = nullptr);
+                      DemoStopCallback onDemoStop = nullptr,
+                      RestModeCallback onRestMode = nullptr);
 
     /**
      * Set display manager for OTA progress updates
@@ -118,6 +120,7 @@ class ConfigWebServer
     RebootCallback onRebootCallback;
     DemoStartCallback onDemoStartCallback;
     DemoStopCallback onDemoStopCallback;
+    RestModeCallback onRestModeCallback;
 
     // HTTP handlers
     void handleRoot();
@@ -133,6 +136,7 @@ class ConfigWebServer
     void handleDemo(); // GET: show demo configuration page
     void handleStartDemo(); // POST: start demo mode with sample data
     void handleStopDemo(); // POST: stop demo mode and resume normal operation
+    void handleRestMode(); // POST: control rest mode via REST API
     void handleNotFound();
 
     // OTA progress callbacks (static for use as function pointers)

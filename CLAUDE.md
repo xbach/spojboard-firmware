@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Important Guidelines
+
+**Before performing these actions, always consult the referenced instruction files:**
+
+- **Creating commits**: See [commit-msg.md](commit-msg.md) for commit message format and guidelines
+- **Updating CLAUDE.md**: See [update-claude-md.md](update-claude-md.md) for when and how to update this file
+
 ## Project Overview
 
 **SpojBoard** - Smart Panel for Onward Journeys

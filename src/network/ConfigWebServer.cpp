@@ -83,7 +83,7 @@ ConfigWebServer::ConfigWebServer()
       apSSID(""), apPassword(""), apClientCount(0),
       apiError(false), apiErrorMsg(""), departureCount(0), stopName(""),
       onSaveCallback(nullptr), onRefreshCallback(nullptr), onRebootCallback(nullptr),
-      onDemoStartCallback(nullptr), onDemoStopCallback(nullptr)
+      onDemoStartCallback(nullptr), onDemoStopCallback(nullptr), onRestModeCallback(nullptr)
 {
     otaManager = new OTAUpdateManager();
     githubOTA = new GitHubOTA();
@@ -143,6 +143,8 @@ bool ConfigWebServer::begin()
                { handleStartDemo(); });
     server->on("/stop-demo", HTTP_POST, [this]()
                { handleStopDemo(); });
+    server->on("/rest-mode", HTTP_POST, [this]()
+               { handleRestMode(); });
     server->onNotFound([this]()
                        { handleNotFound(); });
 
@@ -182,13 +184,15 @@ void ConfigWebServer::handleClient()
 }
 
 void ConfigWebServer::setCallbacks(ConfigSaveCallback onSave, RefreshCallback onRefresh, RebootCallback onReboot,
-                                  DemoStartCallback onDemoStart, DemoStopCallback onDemoStop)
+                                  DemoStartCallback onDemoStart, DemoStopCallback onDemoStop,
+                                  RestModeCallback onRestMode)
 {
     onSaveCallback = onSave;
     onRefreshCallback = onRefresh;
     onRebootCallback = onReboot;
     onDemoStartCallback = onDemoStart;
     onDemoStopCallback = onDemoStop;
+    onRestModeCallback = onRestMode;
 }
 
 void ConfigWebServer::setDisplayManager(DisplayManager *displayMgr)
@@ -917,4 +921,51 @@ void ConfigWebServer::handleStopDemo()
 
     server->sendHeader("Location", "/");
     server->send(302, "text/plain", "");
+}
+
+void ConfigWebServer::handleRestMode()
+{
+    // Block in AP mode
+    if (apModeActive)
+    {
+        server->send(403, "application/json", "{\"success\":false,\"error\":\"Rest mode control not available in AP mode\"}");
+        return;
+    }
+
+    // Parse JSON request body: {"enabled": true/false}
+    String body = server->arg("plain");
+
+    // Simple JSON parsing for "enabled" field
+    bool enabled = false;
+    int enabledStart = body.indexOf("\"enabled\":");
+    if (enabledStart >= 0)
+    {
+        enabledStart += 10; // Length of "\"enabled\":"
+        // Skip whitespace
+        while (enabledStart < (int)body.length() && (body[enabledStart] == ' ' || body[enabledStart] == '\t'))
+        {
+            enabledStart++;
+        }
+        enabled = body.substring(enabledStart, enabledStart + 4) == "true";
+    }
+    else
+    {
+        server->send(400, "application/json", "{\"success\":false,\"error\":\"Missing 'enabled' field\"}");
+        return;
+    }
+
+    // Call callback to control rest mode
+    if (onRestModeCallback != nullptr)
+    {
+        onRestModeCallback(enabled);
+    }
+
+    logTimestamp();
+    Serial.print("Rest mode ");
+    Serial.println(enabled ? "enabled via REST API" : "disabled via REST API");
+
+    String response = "{\"success\":true,\"restMode\":";
+    response += enabled ? "true" : "false";
+    response += "}";
+    server->send(200, "application/json", response);
 }
