@@ -7,7 +7,7 @@
 // ============================================================================
 // Firmware Version
 // ============================================================================
-#define FIRMWARE_RELEASE "3"
+#define FIRMWARE_RELEASE "4"
 
 // Build ID is injected by build script (8 hex characters)
 // Generated from build timestamp using DJB2 hash algorithm
