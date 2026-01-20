@@ -14,7 +14,7 @@
  */
 class TransitAPI
 {
-public:
+  public:
     struct APIResult
     {
         Departure departures[MAX_DEPARTURES];
@@ -39,7 +39,7 @@ public:
      * @param config Configuration with API key, stop IDs, and filters
      * @return APIResult with departures, count, and error status
      */
-    virtual APIResult fetchDepartures(const Config &config) = 0;
+    virtual APIResult fetchDepartures(const Config& config) = 0;
 };
 
 #endif // TRANSITAPI_H

@@ -3,8 +3,7 @@
 #include "../display/DisplayColors.h"
 #include <esp_random.h>
 
-WiFiManager::WiFiManager()
-    : apModeActive(false)
+WiFiManager::WiFiManager() : apModeActive(false)
 {
     apSSID[0] = '\0';
     apPassword[0] = '\0';
@@ -137,7 +136,7 @@ void WiFiManager::generateRandomPassword()
 {
     // Generate 8-character alphanumeric password
     const char charset[] = "abcdefghjkmnpqrstuvwxyz23456789"; // Excluded confusing chars: i,l,o,0,1
-    randomSeed(esp_random());                                 // Use hardware RNG
+    randomSeed(esp_random()); // Use hardware RNG
 
     for (int i = 0; i < 8; i++)
     {

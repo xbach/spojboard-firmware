@@ -7,17 +7,18 @@
 // Departure Data Structures
 // ============================================================================
 
-#define MAX_DEPARTURES 12  // Increased for better caching with filtering
+#define MAX_DEPARTURES 12 // Increased for better caching with filtering
 
 struct Departure
 {
-    char line[8];         // Line number (e.g., "31", "A", "S9")
-    char destination[32]; // Destination/headsign
-    int eta;              // Minutes until departure (recalculated from departureTime)
+    char line[8]; // Line number (e.g., "31", "A", "S9")
+    char destination[64]; // Destination/headsign
+    int eta; // Minutes until departure (recalculated from departureTime)
     time_t departureTime; // Unix timestamp of departure (from API)
-    bool hasAC;           // Air conditioning
-    bool isDelayed;       // Has delay
-    int delayMinutes;     // Delay in minutes
+    char platform[8]; // Platform/track (e.g., "D", "3", optional)
+    bool hasAC; // Air conditioning
+    bool isDelayed; // Has delay
+    int delayMinutes; // Delay in minutes
 };
 
 // ============================================================================
@@ -45,5 +46,19 @@ void shortenDestination(char* destination);
  * @return Minutes until departure (0 if already departed)
  */
 int calculateETA(time_t departureTime);
+
+/**
+ * Remove all spaces from a string (leading, trailing, and middle)
+ * Modifies the string in-place
+ * @param str String to strip spaces from
+ */
+void stripSpaces(char* str);
+
+/**
+ * Remove all bracket characters from a string: < [ { ( ) } ] >
+ * Modifies the string in-place
+ * @param str String to strip brackets from
+ */
+void stripBrackets(char* str);
 
 #endif // DEPARTUREDATA_H

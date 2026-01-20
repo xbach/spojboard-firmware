@@ -20,13 +20,14 @@ class DisplayManager;
  */
 class ConfigWebServer
 {
-public:
+  public:
     // Callback types for configuration events
     typedef void (*ConfigSaveCallback)(const Config& newConfig, bool wifiChanged);
     typedef void (*RefreshCallback)();
     typedef void (*RebootCallback)();
     typedef void (*DemoStartCallback)(const Departure* demoDepartures, int demoCount);
     typedef void (*DemoStopCallback)();
+    typedef void (*RestModeCallback)(bool enabled);
 
     ConfigWebServer();
     ~ConfigWebServer();
@@ -50,8 +51,12 @@ public:
     /**
      * Set callback functions for configuration events
      */
-    void setCallbacks(ConfigSaveCallback onSave, RefreshCallback onRefresh, RebootCallback onReboot,
-                     DemoStartCallback onDemoStart = nullptr, DemoStopCallback onDemoStop = nullptr);
+    void setCallbacks(ConfigSaveCallback onSave,
+                      RefreshCallback onRefresh,
+                      RebootCallback onReboot,
+                      DemoStartCallback onDemoStart = nullptr,
+                      DemoStopCallback onDemoStop = nullptr,
+                      RestModeCallback onRestMode = nullptr);
 
     /**
      * Set display manager for OTA progress updates
@@ -73,17 +78,25 @@ public:
      * @param stopName Current stop name
      */
     void updateState(const Config* config,
-                    bool wifiConnected, bool apModeActive,
-                    const char* apSSID, const char* apPassword, int apClientCount,
-                    bool apiError, const char* apiErrorMsg,
-                    int departureCount, const char* stopName);
+                     bool wifiConnected,
+                     bool apModeActive,
+                     const char* apSSID,
+                     const char* apPassword,
+                     int apClientCount,
+                     bool apiError,
+                     const char* apiErrorMsg,
+                     int departureCount,
+                     const char* stopName);
 
     /**
      * Get web server instance for direct access
      */
-    WebServer* getServer() { return server; }
+    WebServer* getServer()
+    {
+        return server;
+    }
 
-private:
+  private:
     WebServer* server;
     OTAUpdateManager* otaManager;
     GitHubOTA* githubOTA;
@@ -107,31 +120,29 @@ private:
     RebootCallback onRebootCallback;
     DemoStartCallback onDemoStartCallback;
     DemoStopCallback onDemoStopCallback;
+    RestModeCallback onRestModeCallback;
 
     // HTTP handlers
     void handleRoot();
     void handleSave();
     void handleRefresh();
     void handleReboot();
-    void handleClearConfig();      // POST: clear all settings (factory reset)
-    void handleUpdate();           // GET: show OTA upload form
-    void handleUpdateProgress();   // POST: handle firmware upload chunks
-    void handleUpdateComplete();   // POST: handle firmware upload completion
-    void handleCheckUpdate();      // GET: check GitHub for updates (AJAX)
-    void handleDownloadUpdate();   // POST: download and install from GitHub (AJAX)
-    void handleDemo();             // GET: show demo configuration page
-    void handleStartDemo();        // POST: start demo mode with sample data
-    void handleStopDemo();         // POST: stop demo mode and resume normal operation
+    void handleClearConfig(); // POST: clear all settings (factory reset)
+    void handleUpdate(); // GET: show OTA upload form
+    void handleUpdateProgress(); // POST: handle firmware upload chunks
+    void handleUpdateComplete(); // POST: handle firmware upload completion
+    void handleCheckUpdate(); // GET: check GitHub for updates (AJAX)
+    void handleDownloadUpdate(); // POST: download and install from GitHub (AJAX)
+    void handleDemo(); // GET: show demo configuration page
+    void handleStartDemo(); // POST: start demo mode with sample data
+    void handleStopDemo(); // POST: stop demo mode and resume normal operation
+    void handleRestMode(); // POST: control rest mode via REST API
     void handleNotFound();
 
     // OTA progress callbacks (static for use as function pointers)
     static void otaProgressCallback(size_t progress, size_t total);
     static void githubOtaProgressCallback(size_t progress, size_t total);
-    static ConfigWebServer* instanceForCallback;  // Static instance pointer for callbacks
-
-    // HTML templates
-    static const char* HTML_HEADER;
-    static const char* HTML_FOOTER;
+    static ConfigWebServer* instanceForCallback; // Static instance pointer for callbacks
 };
 
 #endif // CONFIGWEBSERVER_H

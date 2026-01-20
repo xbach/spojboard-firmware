@@ -1,19 +1,18 @@
 #include "GolemioAPI.h"
 #include "../utils/Logger.h"
+#include "../utils/HttpUtils.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
 
-GolemioAPI::GolemioAPI() : statusCallback(nullptr)
-{
-}
+GolemioAPI::GolemioAPI() : statusCallback(nullptr) {}
 
 void GolemioAPI::setStatusCallback(APIStatusCallback callback)
 {
     statusCallback = callback;
 }
 
-TransitAPI::APIResult GolemioAPI::fetchDepartures(const Config &config)
+TransitAPI::APIResult GolemioAPI::fetchDepartures(const Config& config)
 {
     TransitAPI::APIResult result = {};
     result.departureCount = 0;
@@ -42,7 +41,7 @@ TransitAPI::APIResult GolemioAPI::fetchDepartures(const Config &config)
     char stopIdsCopy[128];
     strlcpy(stopIdsCopy, config.pragueStopIds, sizeof(stopIdsCopy));
 
-    char *stopId = strtok(stopIdsCopy, ",");
+    char* stopId = strtok(stopIdsCopy, ",");
     bool firstStop = true;
 
     while (stopId != NULL && tempCount < MAX_TEMP_DEPARTURES)
@@ -81,8 +80,8 @@ TransitAPI::APIResult GolemioAPI::fetchDepartures(const Config &config)
     {
         // if (tempDepartures[i].eta >= config.minDepartureTime) // removed as we use API for this now
         // {
-            result.departures[result.departureCount] = tempDepartures[i];
-            result.departureCount++;
+        result.departures[result.departureCount] = tempDepartures[i];
+        result.departureCount++;
         // }
     }
 
@@ -103,9 +102,12 @@ TransitAPI::APIResult GolemioAPI::fetchDepartures(const Config &config)
     return result;
 }
 
-bool GolemioAPI::querySingleStop(const char *stopId, const Config &config,
-                                 Departure *tempDepartures, int &tempCount,
-                                 char *stopName, bool &isFirstStop)
+bool GolemioAPI::querySingleStop(const char* stopId,
+                                 const Config& config,
+                                 Departure* tempDepartures,
+                                 int& tempCount,
+                                 char* stopName,
+                                 bool& isFirstStop)
 {
     char queryMsg[96];
     snprintf(queryMsg, sizeof(queryMsg), "API: Querying stop %s", stopId);
@@ -116,8 +118,10 @@ bool GolemioAPI::querySingleStop(const char *stopId, const Config &config,
     char url[512];
 
     // Query each stop with MAX_DEPARTURES to ensure good caching and sorting
-    snprintf(url, sizeof(url),
-             "https://api.golemio.cz/v2/pid/departureboards?ids=%s&total=%d&preferredTimezone=Europe/Prague&minutesBefore=%d&minutesAfter=120",
+    snprintf(url,
+             sizeof(url),
+             "https://api.golemio.cz/v2/pid/departureboards?ids=%s&total=%d&preferredTimezone=Europe/"
+             "Prague&minutesBefore=%d&minutesAfter=120",
              stopId,
              MAX_DEPARTURES,
              config.minDepartureTime > 0 ? config.minDepartureTime * -1 : 0);
@@ -195,7 +199,7 @@ bool GolemioAPI::querySingleStop(const char *stopId, const Config &config,
 
     if (httpCode == HTTP_CODE_OK)
     {
-        String payload = http.getString();
+        String payload = readHttpResponse(http, JSON_BUFFER_SIZE, config.debugMode);
         DynamicJsonDocument doc(JSON_BUFFER_SIZE);
         DeserializationError error = deserializeJson(doc, payload);
 
@@ -212,7 +216,7 @@ bool GolemioAPI::querySingleStop(const char *stopId, const Config &config,
         // Get stop name from first stop (for display)
         if (isFirstStop && doc.containsKey("stops") && doc["stops"].size() > 0)
         {
-            const char *name = doc["stops"][0]["stop_name"];
+            const char* name = doc["stops"][0]["stop_name"];
             if (name)
             {
                 strlcpy(stopName, name, 64);
@@ -231,7 +235,7 @@ bool GolemioAPI::querySingleStop(const char *stopId, const Config &config,
                 if (tempCount >= MAX_TEMP_DEPARTURES)
                     break;
 
-                parseDepartureObject(dep, tempDepartures, tempCount);
+                parseDepartureObject(dep, config, tempDepartures, tempCount);
             }
         }
 
@@ -241,8 +245,12 @@ bool GolemioAPI::querySingleStop(const char *stopId, const Config &config,
     else
     {
         char failMsg[128];
-        snprintf(failMsg, sizeof(failMsg), "API: Failed after %d attempts for stop %s - HTTP %d",
-                 MAX_RETRIES, stopId, httpCode);
+        snprintf(failMsg,
+                 sizeof(failMsg),
+                 "API: Failed after %d attempts for stop %s - HTTP %d",
+                 MAX_RETRIES,
+                 stopId,
+                 httpCode);
         logTimestamp();
         debugPrintln(failMsg);
         http.end();
@@ -250,13 +258,18 @@ bool GolemioAPI::querySingleStop(const char *stopId, const Config &config,
     }
 }
 
-void GolemioAPI::parseDepartureObject(JsonObject depJson, Departure *tempDepartures, int &tempCount)
+void GolemioAPI::parseDepartureObject(JsonObject depJson,
+                                      const Config& config,
+                                      Departure* tempDepartures,
+                                      int& tempCount)
 {
     // Route/Line info
-    const char *line = depJson["route"]["short_name"];
+    const char* line = depJson["route"]["short_name"];
     if (line)
     {
         strlcpy(tempDepartures[tempCount].line, line, sizeof(tempDepartures[0].line));
+        stripSpaces(tempDepartures[tempCount].line);
+        stripBrackets(tempDepartures[tempCount].line);
     }
     else
     {
@@ -264,7 +277,7 @@ void GolemioAPI::parseDepartureObject(JsonObject depJson, Departure *tempDepartu
     }
 
     // Destination/Headsign
-    const char *headsign = depJson["trip"]["headsign"];
+    const char* headsign = depJson["trip"]["headsign"];
     if (headsign)
     {
         strlcpy(tempDepartures[tempCount].destination, headsign, sizeof(tempDepartures[0].destination));
@@ -277,7 +290,7 @@ void GolemioAPI::parseDepartureObject(JsonObject depJson, Departure *tempDepartu
     }
 
     // Parse and store departure timestamp
-    const char *timestamp = depJson["departure_timestamp"]["predicted"];
+    const char* timestamp = depJson["departure_timestamp"]["predicted"];
     if (!timestamp)
     {
         timestamp = depJson["departure_timestamp"]["scheduled"];
@@ -314,6 +327,46 @@ void GolemioAPI::parseDepartureObject(JsonObject depJson, Departure *tempDepartu
     {
         tempDepartures[tempCount].isDelayed = false;
         tempDepartures[tempCount].delayMinutes = 0;
+    }
+
+    // Platform/track info (optional, from stop object)
+    tempDepartures[tempCount].platform[0] = '\0'; // Initialize empty
+
+    // Extract platform_code from stop object (nested in departure)
+    if (depJson.containsKey("stop") && depJson["stop"].containsKey("platform_code"))
+    {
+        const char* platformCode = depJson["stop"]["platform_code"];
+        if (platformCode && strlen(platformCode) > 0)
+        {
+            // Truncate to 3 characters if longer
+            strncpy(tempDepartures[tempCount].platform, platformCode, 3);
+            tempDepartures[tempCount].platform[3] = '\0';
+
+            if (config.debugMode && strlen(platformCode) > 3)
+            {
+                char warnMsg[64];
+                snprintf(
+                    warnMsg, sizeof(warnMsg), "Golemio: Platform truncated '%s' -> '%.3s'", platformCode, platformCode);
+                debugPrintln(warnMsg);
+            }
+        }
+    }
+
+    // Debug log for first few departures (only if debug mode enabled)
+    if (config.debugMode && tempCount < 3)
+    {
+        logTimestamp();
+        char debugMsg[128];
+        snprintf(debugMsg,
+                 sizeof(debugMsg),
+                 "Golemio: Line %s to %s - ETA:%d (Plt:%s, AC:%d, Delay:%d)",
+                 tempDepartures[tempCount].line,
+                 tempDepartures[tempCount].destination,
+                 tempDepartures[tempCount].eta,
+                 tempDepartures[tempCount].platform[0] ? tempDepartures[tempCount].platform : "-",
+                 tempDepartures[tempCount].hasAC ? 1 : 0,
+                 tempDepartures[tempCount].delayMinutes);
+        debugPrintln(debugMsg);
     }
 
     tempCount++;

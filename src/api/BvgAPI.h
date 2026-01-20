@@ -16,7 +16,7 @@
  */
 class BvgAPI : public TransitAPI
 {
-public:
+  public:
     BvgAPI();
 
     /**
@@ -30,12 +30,12 @@ public:
      * @param config Configuration with stop IDs and filters
      * @return APIResult with departures, count, and error status
      */
-    virtual APIResult fetchDepartures(const Config &config) override;
+    virtual APIResult fetchDepartures(const Config& config) override;
 
-private:
+  private:
     APIStatusCallback statusCallback;
-    static constexpr int MAX_TEMP_DEPARTURES = MAX_DEPARTURES * 12;  // Buffer for up to 12 stops at full capacity
-    static constexpr int JSON_BUFFER_SIZE = 24576;  // 24KB - BVG API returns verbose responses (~1.7KB per departure)
+    static constexpr int MAX_TEMP_DEPARTURES = MAX_DEPARTURES * 12; // Buffer for up to 12 stops at full capacity
+    static constexpr int JSON_BUFFER_SIZE = 24576; // 24KB - BVG API returns verbose responses (~1.7KB per departure)
     static constexpr int HTTP_TIMEOUT_MS = 10000;
 
     /**
@@ -48,17 +48,21 @@ private:
      * @param isFirstStop Whether this is the first stop being queried
      * @return true if query succeeded
      */
-    bool querySingleStop(const char *stopId, const Config &config,
-                         Departure *tempDepartures, int &tempCount,
-                         char *stopName, bool &isFirstStop);
+    bool querySingleStop(const char* stopId,
+                         const Config& config,
+                         Departure* tempDepartures,
+                         int& tempCount,
+                         char* stopName,
+                         bool& isFirstStop);
 
     /**
      * Parse departure JSON object and add to temp array
      * @param depJson JSON object for single departure
+     * @param config Configuration (for debug flag)
      * @param tempDepartures Array to add to
      * @param tempCount Current count (will be incremented)
      */
-    void parseDepartureObject(JsonObject depJson, Departure *tempDepartures, int &tempCount);
+    void parseDepartureObject(JsonObject depJson, const Config& config, Departure* tempDepartures, int& tempCount);
 };
 
 #endif // BVGAPI_H

@@ -3,15 +3,12 @@
 #include <Update.h>
 #include <Arduino.h>
 
-OTAUpdateManager::OTAUpdateManager()
-    : updating(false), totalSize(0), uploadedSize(0), progressCallback(nullptr)
+OTAUpdateManager::OTAUpdateManager() : updating(false), totalSize(0), uploadedSize(0), progressCallback(nullptr)
 {
     errorMsg[0] = '\0';
 }
 
-OTAUpdateManager::~OTAUpdateManager()
-{
-}
+OTAUpdateManager::~OTAUpdateManager() {}
 
 bool OTAUpdateManager::begin()
 {

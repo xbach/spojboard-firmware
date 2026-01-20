@@ -16,7 +16,7 @@
  */
 class CaptivePortal
 {
-public:
+  public:
     CaptivePortal();
     ~CaptivePortal();
 
@@ -46,9 +46,12 @@ public:
     /**
      * Check if captive portal is active
      */
-    bool isActive() const { return active; }
+    bool isActive() const
+    {
+        return active;
+    }
 
-private:
+  private:
     DNSServer dnsServer;
     bool active;
     IPAddress apIP;

@@ -13,7 +13,7 @@
  */
 class TelnetLogger
 {
-public:
+  public:
     /**
      * Get singleton instance
      */
@@ -58,7 +58,7 @@ public:
      */
     void end();
 
-private:
+  private:
     TelnetLogger();
     TelnetLogger(const TelnetLogger&) = delete;
     TelnetLogger& operator=(const TelnetLogger&) = delete;

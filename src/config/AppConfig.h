@@ -7,7 +7,7 @@
 // ============================================================================
 // Firmware Version
 // ============================================================================
-#define FIRMWARE_RELEASE "3"
+#define FIRMWARE_RELEASE "4"
 
 // Build ID is injected by build script (8 hex characters)
 // Generated from build timestamp using DJB2 hash algorithm
@@ -65,13 +65,41 @@ struct Config
     char berlinStopIds[128];   // Berlin stop IDs (e.g., "900013102")
     // Note: Berlin BVG API requires no authentication
 
+    // MQTT-specific configuration
+    char mqttBroker[128];          // MQTT broker IP/hostname
+    int mqttPort;                   // MQTT broker port (default 1883)
+    char mqttUsername[64];         // MQTT username (optional, empty = no auth)
+    char mqttPassword[64];         // MQTT password (optional)
+    char mqttRequestTopic[64];     // MQTT request topic
+    char mqttResponseTopic[64];    // MQTT response topic
+    bool mqttUseEtaMode;           // true = ETA mode, false = Timestamp mode
+
+    // MQTT JSON field mappings
+    char mqttFieldLine[32];        // Line number field name (e.g., "line")
+    char mqttFieldDestination[32]; // Destination field name (e.g., "dest")
+    char mqttFieldEta[32];         // ETA field name (e.g., "eta")
+    char mqttFieldTimestamp[32];   // Timestamp field name (e.g., "dep")
+    char mqttFieldPlatform[32];    // Platform field name (e.g., "plt")
+    char mqttFieldAC[32];          // AC flag field name (e.g., "ac")
+
     int refreshInterval;    // Seconds between API calls
     int numDepartures;      // Number of departures to display (1-3 rows on LED matrix)
     int minDepartureTime;   // Minimum departure time in minutes (filter out departures < this)
     int brightness;         // Display brightness (0-255)
     char lineColorMap[256]; // Line color mappings (format: "A=GREEN,B=YELLOW,9*=CYAN")
     char city[16];          // Transit city: "Prague" or "Berlin"
+    char language[8];       // Display language: "en", "cs", "de"
     bool debugMode;         // Enable telnet logging and verbose output
+    bool showPlatform;      // Display platform/track between destination and ETA
+    bool scrollEnabled;     // Enable scrolling for long destination names (default: off)
+    char restModePeriods[256]; // Rest mode time periods (format: "HH:MM-HH:MM,HH:MM-HH:MM")
+
+    // Weather configuration
+    bool weatherEnabled;        // Enable weather display
+    float weatherLatitude;      // GPS latitude (e.g., 50.0755 for Prague)
+    float weatherLongitude;     // GPS longitude (e.g., 14.4378 for Prague)
+    int weatherRefreshInterval; // Minutes between weather fetches (default: 15)
+
     bool configured;
 };
 

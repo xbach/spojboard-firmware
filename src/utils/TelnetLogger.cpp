@@ -2,9 +2,7 @@
 #include "Logger.h"
 #include <Arduino.h>
 
-TelnetLogger::TelnetLogger() : active(false)
-{
-}
+TelnetLogger::TelnetLogger() : active(false) {}
 
 TelnetLogger& TelnetLogger::getInstance()
 {

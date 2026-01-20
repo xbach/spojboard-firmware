@@ -1,10 +1,7 @@
 #include "CaptivePortal.h"
 #include "../utils/Logger.h"
 
-CaptivePortal::CaptivePortal()
-    : active(false), apIP(0, 0, 0, 0)
-{
-}
+CaptivePortal::CaptivePortal() : active(false), apIP(0, 0, 0, 0) {}
 
 CaptivePortal::~CaptivePortal()
 {
@@ -55,8 +52,7 @@ void CaptivePortal::processRequests()
 void CaptivePortal::handleCaptivePortalRedirect(WebServer* server, IPAddress apIP)
 {
     char redirectUrl[32];
-    snprintf(redirectUrl, sizeof(redirectUrl), "http://%d.%d.%d.%d/",
-             apIP[0], apIP[1], apIP[2], apIP[3]);
+    snprintf(redirectUrl, sizeof(redirectUrl), "http://%d.%d.%d.%d/", apIP[0], apIP[1], apIP[2], apIP[3]);
 
     server->sendHeader("Location", redirectUrl);
     server->send(302, "text/plain", "");
@@ -68,36 +64,20 @@ void CaptivePortal::setupDetectionHandlers(WebServer* server)
     IPAddress ip = apIP;
 
     // Android captive portal detection
-    server->on("/generate_204", [server, ip]() {
-        handleCaptivePortalRedirect(server, ip);
-    });
-    server->on("/gen_204", [server, ip]() {
-        handleCaptivePortalRedirect(server, ip);
-    });
+    server->on("/generate_204", [server, ip]() { handleCaptivePortalRedirect(server, ip); });
+    server->on("/gen_204", [server, ip]() { handleCaptivePortalRedirect(server, ip); });
 
     // iOS/macOS captive portal detection
-    server->on("/hotspot-detect.html", [server, ip]() {
-        handleCaptivePortalRedirect(server, ip);
-    });
-    server->on("/library/test/success.html", [server, ip]() {
-        handleCaptivePortalRedirect(server, ip);
-    });
+    server->on("/hotspot-detect.html", [server, ip]() { handleCaptivePortalRedirect(server, ip); });
+    server->on("/library/test/success.html", [server, ip]() { handleCaptivePortalRedirect(server, ip); });
 
     // Windows captive portal detection
-    server->on("/ncsi.txt", [server, ip]() {
-        handleCaptivePortalRedirect(server, ip);
-    });
-    server->on("/connecttest.txt", [server, ip]() {
-        handleCaptivePortalRedirect(server, ip);
-    });
-    server->on("/redirect", [server, ip]() {
-        handleCaptivePortalRedirect(server, ip);
-    });
+    server->on("/ncsi.txt", [server, ip]() { handleCaptivePortalRedirect(server, ip); });
+    server->on("/connecttest.txt", [server, ip]() { handleCaptivePortalRedirect(server, ip); });
+    server->on("/redirect", [server, ip]() { handleCaptivePortalRedirect(server, ip); });
 
     // Firefox captive portal detection
-    server->on("/success.txt", [server, ip]() {
-        handleCaptivePortalRedirect(server, ip);
-    });
+    server->on("/success.txt", [server, ip]() { handleCaptivePortalRedirect(server, ip); });
 
     logTimestamp();
     Serial.println("Captive portal detection handlers registered");

@@ -3,13 +3,9 @@
 #include <Update.h>
 #include <WiFi.h>
 
-GitHubOTA::GitHubOTA()
-{
-}
+GitHubOTA::GitHubOTA() {}
 
-GitHubOTA::~GitHubOTA()
-{
-}
+GitHubOTA::~GitHubOTA() {}
 
 void GitHubOTA::setError(ReleaseInfo& info, const char* msg)
 {
@@ -264,7 +260,7 @@ bool GitHubOTA::downloadAndInstall(const char* assetUrl, size_t expectedSize, Pr
     HTTPClient http;
     http.begin(assetUrl);
     http.setTimeout(HTTP_TIMEOUT_MS);
-    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);  // Follow redirects automatically
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); // Follow redirects automatically
 
     int httpCode = http.GET();
 
@@ -356,10 +352,10 @@ bool GitHubOTA::downloadAndInstall(const char* assetUrl, size_t expectedSize, Pr
             // Call progress callback (every 10KB or 1%)
             if (onProgress)
             {
-                size_t progressThreshold = contentLength / 100;  // 1%
+                size_t progressThreshold = contentLength / 100; // 1%
                 if (progressThreshold < 10240)
                 {
-                    progressThreshold = 10240;  // At least 10KB
+                    progressThreshold = 10240; // At least 10KB
                 }
 
                 if (written - lastProgressUpdate >= progressThreshold || written >= (size_t)contentLength)
@@ -370,7 +366,7 @@ bool GitHubOTA::downloadAndInstall(const char* assetUrl, size_t expectedSize, Pr
             }
         }
 
-        delay(1);  // Yield to watchdog
+        delay(1); // Yield to watchdog
     }
 
     http.end();

@@ -1,0 +1,56 @@
+# ClangFormat configuration for SpojBoard
+# Matches VSCode C/C++ extension defaults (Visual Studio style)
+
+Language: Cpp
+BasedOnStyle: Microsoft
+
+# Indentation
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+IndentCaseLabels: false
+NamespaceIndentation: All
+
+# Line length
+ColumnLimit: 120
+
+# Pointer/reference alignment - align with type
+PointerAlignment: Left
+ReferenceAlignment: Left
+
+# Spaces
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+SpacesInAngles: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+
+# Alignment
+AlignAfterOpenBracket: Align
+AlignConsecutiveAssignments: false
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: false
+
+# Short statements
+AllowShortBlocksOnASingleLine: Empty
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: Empty
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+
+# Breaking
+BinPackArguments: false
+BinPackParameters: false
+BreakBeforeBinaryOperators: None
+BreakBeforeTernaryOperators: true
+BreakConstructorInitializers: BeforeColon
+
+# Include sorting - disabled to preserve manual ordering
+SortIncludes: Never
+IncludeBlocks: Preserve
+
+# Other
+Cpp11BracedListStyle: true
+DerivePointerAlignment: false
+MaxEmptyLinesToKeep: 2
+ReflowComments: false

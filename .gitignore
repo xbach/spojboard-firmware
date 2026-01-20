@@ -1,5 +1,10 @@
 .pio
-.vscode
+.vscode/c_cpp_properties.json
+.vscode/launch.json
 .claude
 .DS_Store
 dist/
+
+# Local Claude Code instruction files
+commit-msg.md
+update-claude-md.md

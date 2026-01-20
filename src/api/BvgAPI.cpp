@@ -1,20 +1,19 @@
 #include "BvgAPI.h"
 #include "../utils/Logger.h"
+#include "../utils/HttpUtils.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
 #include <cstring>
 
-BvgAPI::BvgAPI() : statusCallback(nullptr)
-{
-}
+BvgAPI::BvgAPI() : statusCallback(nullptr) {}
 
 void BvgAPI::setStatusCallback(APIStatusCallback callback)
 {
     statusCallback = callback;
 }
 
-TransitAPI::APIResult BvgAPI::fetchDepartures(const Config &config)
+TransitAPI::APIResult BvgAPI::fetchDepartures(const Config& config)
 {
     TransitAPI::APIResult result = {};
     result.departureCount = 0;
@@ -43,7 +42,7 @@ TransitAPI::APIResult BvgAPI::fetchDepartures(const Config &config)
     char stopIdsCopy[128];
     strlcpy(stopIdsCopy, config.berlinStopIds, sizeof(stopIdsCopy));
 
-    char *stopId = strtok(stopIdsCopy, ",");
+    char* stopId = strtok(stopIdsCopy, ",");
     bool firstStop = true;
 
     while (stopId != NULL && tempCount < MAX_TEMP_DEPARTURES)
@@ -99,9 +98,12 @@ TransitAPI::APIResult BvgAPI::fetchDepartures(const Config &config)
     return result;
 }
 
-bool BvgAPI::querySingleStop(const char *stopId, const Config &config,
-                             Departure *tempDepartures, int &tempCount,
-                             char *stopName, bool &isFirstStop)
+bool BvgAPI::querySingleStop(const char* stopId,
+                             const Config& config,
+                             Departure* tempDepartures,
+                             int& tempCount,
+                             char* stopName,
+                             bool& isFirstStop)
 {
     // Build URL with 'when' parameter to offset query time by minDepartureTime
     // Format: https://v6.bvg.transport.rest/stops/{stopId}/departures?duration=120&results=12&when={unix_timestamp}
@@ -113,9 +115,11 @@ bool BvgAPI::querySingleStop(const char *stopId, const Config &config,
     time_t now = time(nullptr);
     time_t whenTime = now + (config.minDepartureTime * 60) + 90;
 
-    snprintf(url, sizeof(url),
+    snprintf(url,
+             sizeof(url),
              "https://v6.bvg.transport.rest/stops/%s/departures?duration=120&results=12&when=%ld",
-             stopId, (long)whenTime);
+             stopId,
+             (long)whenTime);
 
     HTTPClient http;
     http.setTimeout(HTTP_TIMEOUT_MS);
@@ -125,8 +129,13 @@ bool BvgAPI::querySingleStop(const char *stopId, const Config &config,
     debugPrintln(stopId);
     logTimestamp();
     char debugMsg[128];
-    snprintf(debugMsg, sizeof(debugMsg), "BVG API: URL: %s (now=%ld, when=%ld, offset=%d min)",
-             url, (long)now, (long)whenTime, config.minDepartureTime);
+    snprintf(debugMsg,
+             sizeof(debugMsg),
+             "BVG API: URL: %s (now=%ld, when=%ld, offset=%d min)",
+             url,
+             (long)now,
+             (long)whenTime,
+             config.minDepartureTime);
     debugPrintln(debugMsg);
 
     bool success = false;
@@ -185,8 +194,7 @@ bool BvgAPI::querySingleStop(const char *stopId, const Config &config,
         return false;
     }
 
-    // Parse JSON response
-    String payload = http.getString();
+    String payload = readHttpResponse(http, JSON_BUFFER_SIZE, config.debugMode);
     http.end();
 
     DynamicJsonDocument doc(JSON_BUFFER_SIZE);
@@ -221,7 +229,7 @@ bool BvgAPI::querySingleStop(const char *stopId, const Config &config,
         JsonObject firstDep = departures[0];
         if (firstDep.containsKey("stop") && firstDep["stop"].containsKey("name"))
         {
-            const char *name = firstDep["stop"]["name"];
+            const char* name = firstDep["stop"]["name"];
             if (name)
             {
                 strlcpy(stopName, name, 64);
@@ -237,7 +245,7 @@ bool BvgAPI::querySingleStop(const char *stopId, const Config &config,
         if (tempCount >= MAX_TEMP_DEPARTURES)
             break;
 
-        parseDepartureObject(depJson, tempDepartures, tempCount);
+        parseDepartureObject(depJson, config, tempDepartures, tempCount);
     }
 
     logTimestamp();
@@ -248,7 +256,7 @@ bool BvgAPI::querySingleStop(const char *stopId, const Config &config,
     return true;
 }
 
-void BvgAPI::parseDepartureObject(JsonObject depJson, Departure *tempDepartures, int &tempCount)
+void BvgAPI::parseDepartureObject(JsonObject depJson, const Config& config, Departure* tempDepartures, int& tempCount)
 {
     // Extract line name (from line.name)
     if (!depJson.containsKey("line") || !depJson["line"].containsKey("name"))
@@ -258,7 +266,7 @@ void BvgAPI::parseDepartureObject(JsonObject depJson, Departure *tempDepartures,
         return; // Skip if no line info
     }
 
-    const char *lineName = depJson["line"]["name"];
+    const char* lineName = depJson["line"]["name"];
     if (!lineName || strlen(lineName) == 0)
     {
         logTimestamp();
@@ -267,9 +275,11 @@ void BvgAPI::parseDepartureObject(JsonObject depJson, Departure *tempDepartures,
     }
 
     strlcpy(tempDepartures[tempCount].line, lineName, sizeof(tempDepartures[tempCount].line));
+    stripSpaces(tempDepartures[tempCount].line);
+    stripBrackets(tempDepartures[tempCount].line);
 
     // Extract direction (destination)
-    const char *direction = depJson["direction"].as<const char*>();
+    const char* direction = depJson["direction"].as<const char*>();
     if (!direction || strlen(direction) == 0)
     {
         logTimestamp();
@@ -277,30 +287,76 @@ void BvgAPI::parseDepartureObject(JsonObject depJson, Departure *tempDepartures,
         return; // Skip if no destination
     }
 
-    // Extract platform and append to destination if present
-    // const char *platform = depJson["platform"].as<const char*>();
-    // if (platform && strlen(platform) > 0)
-    // {
-    //     // Parse platform: if it contains a space (e.g., "Gleis 12"), use only the part after the space
-    //     // Otherwise use the entire string (e.g., "12", "A", "1a")
-    //     const char *platformDisplay = platform;
-    //     const char *spacePos = strchr(platform, ' ');
-    //     if (spacePos != nullptr)
-    //     {
-    //         platformDisplay = spacePos + 1;  // Use part after space
-    //     }
+    // Destination - apply prefix cleanup for RE/S lines
+    strlcpy(tempDepartures[tempCount].destination, direction, sizeof(tempDepartures[tempCount].destination));
 
-    //     // Format: "Destination <Pl>"
-    //     snprintf(tempDepartures[tempCount].destination, sizeof(tempDepartures[tempCount].destination),
-    //              "%s %s", direction, platformDisplay);
-    // }
-    // else
-    // {
-        strlcpy(tempDepartures[tempCount].destination, direction, sizeof(tempDepartures[tempCount].destination));
-    // }
+    // For RE and S lines, clean up destination prefixes
+    if (lineName[0] == 'R' && lineName[1] == 'E' && (lineName[2] == '\0' || lineName[2] == ' '))
+    {
+        // RE line - clean up destination
+        char* dest = tempDepartures[tempCount].destination;
+        if (strncmp(dest, "S+U ", 4) == 0)
+        {
+            // Replace "S+U " with "U "
+            memmove(dest, dest + 2, strlen(dest) - 1); // Shift by 2 positions, keep null terminator
+        }
+        else if (strncmp(dest, "S ", 2) == 0)
+        {
+            // Remove "S " prefix
+            memmove(dest, dest + 2, strlen(dest) - 1); // Shift by 2 positions, keep null terminator
+        }
+    }
+    else if (lineName[0] == 'S' &&
+             (lineName[1] == '\0' || lineName[1] == ' ' || (lineName[1] >= '0' && lineName[1] <= '9')))
+    {
+        // S line (S, S1, S2, etc.) - clean up destination
+        char* dest = tempDepartures[tempCount].destination;
+        if (strncmp(dest, "S+U ", 4) == 0)
+        {
+            // Replace "S+U " with "U "
+            memmove(dest, dest + 2, strlen(dest) - 1); // Shift by 2 positions, keep null terminator
+        }
+        else if (strncmp(dest, "S ", 2) == 0)
+        {
+            // Remove "S " prefix
+            memmove(dest, dest + 2, strlen(dest) - 1); // Shift by 2 positions, keep null terminator
+        }
+    }
+
+    // Shorten common words in destination (while still UTF-8)
+    shortenDestination(tempDepartures[tempCount].destination);
+
+    // Initialize platform field
+    tempDepartures[tempCount].platform[0] = '\0';
+
+    // Extract platform/track information
+    const char* platform = depJson["platform"].as<const char*>();
+    if (platform && strlen(platform) > 0)
+    {
+        // Parse platform: if contains space (e.g., "Gleis 12"), use part after space
+        // Otherwise use entire string (e.g., "12", "A", "1a")
+        const char* platformDisplay = platform;
+        const char* spacePos = strchr(platform, ' ');
+        if (spacePos != nullptr)
+        {
+            platformDisplay = spacePos + 1; // Skip "Gleis " prefix
+        }
+
+        // Copy to platform field, strip brackets, truncate to fit
+        strlcpy(tempDepartures[tempCount].platform, platformDisplay, sizeof(tempDepartures[tempCount].platform));
+        stripBrackets(tempDepartures[tempCount].platform);
+
+        if (config.debugMode && strlen(platformDisplay) > 3)
+        {
+            char warnMsg[64];
+            snprintf(
+                warnMsg, sizeof(warnMsg), "BVG: Platform truncated '%s' -> '%.3s'", platformDisplay, platformDisplay);
+            debugPrintln(warnMsg);
+        }
+    }
 
     // Parse ISO 8601 timestamp from "when" field
-    const char *when = depJson["when"].as<const char*>();
+    const char* when = depJson["when"].as<const char*>();
     if (!when || strlen(when) == 0)
     {
         logTimestamp();
@@ -344,13 +400,19 @@ void BvgAPI::parseDepartureObject(JsonObject depJson, Departure *tempDepartures,
 
     tempDepartures[tempCount].eta = etaSeconds / 60;
 
-    // Debug log for first few departures
-    if (tempCount < 16)
+    // Debug log for first few departures (only if debug mode enabled)
+    if (config.debugMode && tempCount < 3)
     {
         logTimestamp();
         char debugMsg[128];
-        snprintf(debugMsg, sizeof(debugMsg), "BVG API: Line %s to %s - ETA: %d min (when: %s, now: %ld, dep: %ld)",
-                 lineName, direction, tempDepartures[tempCount].eta, when, (long)now, (long)tempDepartures[tempCount].departureTime);
+        snprintf(debugMsg,
+                 sizeof(debugMsg),
+                 "BVG: Line %s to %s - ETA:%d (Plt:%s, when:%s)",
+                 lineName,
+                 direction,
+                 tempDepartures[tempCount].eta,
+                 tempDepartures[tempCount].platform[0] ? tempDepartures[tempCount].platform : "-",
+                 when);
         debugPrintln(debugMsg);
     }
 
@@ -359,7 +421,7 @@ void BvgAPI::parseDepartureObject(JsonObject depJson, Departure *tempDepartures,
     {
         int delaySec = depJson["delay"] | 0;
         tempDepartures[tempCount].delayMinutes = delaySec / 60;
-        tempDepartures[tempCount].isDelayed = (delaySec >= 60);  // Only flag if ≥1 minute
+        tempDepartures[tempCount].isDelayed = (delaySec >= 60); // Only flag if ≥1 minute
     }
     else
     {

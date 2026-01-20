@@ -45,56 +45,67 @@ UTF-8, a transformation format of ISO 10646
 
 bool showUnmapped = false; // no effect in ARDUINO_IMPLEMENTATION
 
-uint8_t  decoderState = 0;   // UTF-8 decoder state
-uint16_t decoderBuffer;      // Unicode code-point buffer
+uint8_t decoderState = 0; // UTF-8 decoder state
+uint16_t decoderBuffer; // Unicode code-point buffer
 
-void resetUTF8decoder(void) {
-  decoderState = 0;  
-}
-
-// Returns Unicode code point in the 0 - 0xFFFE range.  0xFFFF is used to signal 
-// that more bytes are needed to complete decoding a multi-byte UTF-8 encoding
-//   
-// This is just a serial decoder, it does not check to see if the code point is 
-// actually assigned to a character in Unicode.
-uint16_t decodeUTF8(uint8_t c) {  
- 
-  if ((c & 0x80) == 0x00) { // 7 bit Unicode Code Point
+void resetUTF8decoder(void)
+{
     decoderState = 0;
-    return (uint16_t) c;
-  }
-
-  if (decoderState == 0) {
-
-    if ((c & 0xE0) == 0xC0) { // 11 bit Unicode Code Point
-        decoderBuffer = ((c & 0x1F)<<6); // Save first 5 bits
-        decoderState = 1;
-    } else if ((c & 0xF0) == 0xE0) {  // 16 bit Unicode Code Point      {
-        decoderBuffer = ((c & 0x0F)<<12);  // Save first 4 bits
-        decoderState = 2;
-#ifdef SKIP_4_BYTE_ENCODINGS    
-    } else if ((c & 0xF8) == 0xF0) { // 21 bit Unicode  Code Point not supported
-        decoderState = 12;
-#endif    
-    }    
-  
-  } else {
-      decoderState--;
-#ifdef SKIP_4_BYTE_ENCODINGS
-      if (2 < decoderState && decoderState < 10) {
-        decoderState = 0; // skipped over remaining 3 bytes of 21 bit code point
-        if (showUnmapped)
-          return 0x7F;
-      }    
-      else 
-#endif      
-      if (decoderState == 1) 
-        decoderBuffer |= ((c & 0x3F)<<6); // Add next 6 bits of 16 bit code point
-      else if (decoderState == 0) {
-        decoderBuffer |= (c & 0x3F); // Add last 6 bits of code point (UTF8-tail)
-        return decoderBuffer;
-      }
-  }
-  return 0xFFFF; 
 }
 
+// Returns Unicode code point in the 0 - 0xFFFE range.  0xFFFF is used to signal
+// that more bytes are needed to complete decoding a multi-byte UTF-8 encoding
+//
+// This is just a serial decoder, it does not check to see if the code point is
+// actually assigned to a character in Unicode.
+uint16_t decodeUTF8(uint8_t c)
+{
+
+    if ((c & 0x80) == 0x00)
+    { // 7 bit Unicode Code Point
+        decoderState = 0;
+        return (uint16_t)c;
+    }
+
+    if (decoderState == 0)
+    {
+
+        if ((c & 0xE0) == 0xC0)
+        { // 11 bit Unicode Code Point
+            decoderBuffer = ((c & 0x1F) << 6); // Save first 5 bits
+            decoderState = 1;
+        }
+        else if ((c & 0xF0) == 0xE0)
+        { // 16 bit Unicode Code Point      {
+            decoderBuffer = ((c & 0x0F) << 12); // Save first 4 bits
+            decoderState = 2;
+#ifdef SKIP_4_BYTE_ENCODINGS
+        }
+        else if ((c & 0xF8) == 0xF0)
+        { // 21 bit Unicode  Code Point not supported
+            decoderState = 12;
+#endif
+        }
+    }
+    else
+    {
+        decoderState--;
+#ifdef SKIP_4_BYTE_ENCODINGS
+        if (2 < decoderState && decoderState < 10)
+        {
+            decoderState = 0; // skipped over remaining 3 bytes of 21 bit code point
+            if (showUnmapped)
+                return 0x7F;
+        }
+        else
+#endif
+            if (decoderState == 1)
+            decoderBuffer |= ((c & 0x3F) << 6); // Add next 6 bits of 16 bit code point
+        else if (decoderState == 0)
+        {
+            decoderBuffer |= (c & 0x3F); // Add last 6 bits of code point (UTF8-tail)
+            return decoderBuffer;
+        }
+    }
+    return 0xFFFF;
+}

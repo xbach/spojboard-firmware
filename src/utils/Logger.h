@@ -37,4 +37,17 @@ void debugPrint(const char* message);
  */
 void debugPrintln(const char* message);
 
+/**
+ * Print integer to Serial and telnet (if debug enabled)
+ * @param value Integer value to print
+ */
+void debugPrint(int value);
+
+/**
+ * Print unsigned integer to Serial and telnet (if debug enabled)
+ * Also handles size_t on ESP32 (where size_t == unsigned int)
+ * @param value Unsigned integer value to print
+ */
+void debugPrint(unsigned int value);
+
 #endif // LOGGER_H

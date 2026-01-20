@@ -7,8 +7,8 @@
 
 struct StringReplacement
 {
-    const char *search;
-    const char *replace;
+    const char* search;
+    const char* replace;
 };
 
 // Common Czech words to shorten for display space
@@ -18,14 +18,19 @@ static const StringReplacement replacements[] = {
     {"Sídliště", "Sídl."},
     {"Nemocnice", "Nem."},
     {"nádraží", "nádr."},
+    {"S+U Hauptbahnhof", "Hauptbahnhof"},
+    {" Hauptbahnhof", " Hbf"},
+    {"Bahnhof", "Bhf"},
+    {"(Berlin)", "(B)"},
+    {" Richtung ", "->"},
 };
 static const int replacementCount = sizeof(replacements) / sizeof(replacements[0]);
 
-void shortenDestination(char *destination)
+void shortenDestination(char* destination)
 {
     for (int i = 0; i < replacementCount; i++)
     {
-        char *pos = strstr(destination, replacements[i].search);
+        char* pos = strstr(destination, replacements[i].search);
         if (pos != NULL)
         {
             int searchLen = strlen(replacements[i].search);
@@ -44,10 +49,10 @@ void shortenDestination(char *destination)
 // Departure Sorting Helper
 // ============================================================================
 
-int compareDepartures(const void *a, const void *b)
+int compareDepartures(const void* a, const void* b)
 {
-    Departure *depA = (Departure *)a;
-    Departure *depB = (Departure *)b;
+    Departure* depA = (Departure*)a;
+    Departure* depB = (Departure*)b;
     return depA->eta - depB->eta; // Sort by ETA ascending
 }
 
@@ -61,4 +66,43 @@ int calculateETA(time_t departureTime)
     time(&now);
     int diffSec = difftime(departureTime, now);
     return (diffSec > 0) ? (diffSec / 60) : 0;
+}
+
+// ============================================================================
+// String Space Removal
+// ============================================================================
+
+void stripSpaces(char* str)
+{
+    char* src = str;
+    char* dst = str;
+    while (*src)
+    {
+        if (*src != ' ')
+        {
+            *dst++ = *src;
+        }
+        src++;
+    }
+    *dst = '\0';
+}
+
+// ============================================================================
+// String Bracket Removal
+// ============================================================================
+
+void stripBrackets(char* str)
+{
+    char* src = str;
+    char* dst = str;
+    while (*src)
+    {
+        char c = *src;
+        if (c != '<' && c != '>' && c != '[' && c != ']' && c != '{' && c != '}' && c != '(' && c != ')')
+        {
+            *dst++ = c;
+        }
+        src++;
+    }
+    *dst = '\0';
 }

@@ -14,7 +14,7 @@
  */
 class WiFiManager
 {
-public:
+  public:
     WiFiManager();
 
     /**
@@ -40,7 +40,10 @@ public:
     /**
      * Check if currently in AP mode
      */
-    bool isAPMode() const { return apModeActive; }
+    bool isAPMode() const
+    {
+        return apModeActive;
+    }
 
     /**
      * Check if WiFi is connected (STA mode)
@@ -50,12 +53,18 @@ public:
     /**
      * Get AP SSID (only valid if in AP mode)
      */
-    const char* getAPSSID() const { return apSSID; }
+    const char* getAPSSID() const
+    {
+        return apSSID;
+    }
 
     /**
      * Get AP password (only valid if in AP mode)
      */
-    const char* getAPPassword() const { return apPassword; }
+    const char* getAPPassword() const
+    {
+        return apPassword;
+    }
 
     /**
      * Get AP IP address
@@ -72,7 +81,7 @@ public:
      */
     void attemptReconnect();
 
-private:
+  private:
     bool apModeActive;
     char apSSID[32];
     char apPassword[9]; // 8 chars + null terminator

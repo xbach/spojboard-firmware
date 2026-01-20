@@ -1,9 +1,9 @@
 # SpojBoard - Smart Panel for Onward Journeys
 
-An ESP32-based LED matrix display showing real-time transit departures. Supports multiple transit networks: Prague (Golemio API) and Berlin (BVG API).
+An ESP32-based LED matrix display showing real-time transit departures. Supports multiple data sources: direct API integration (Prague Golemio, Berlin BVG) or MQTT for home automation integration.
 
 **SPOJ** = **S**mart **P**anel for **O**nward **J**ourneys (also "spoj" = connection/service in Czech)
-Standalone operation with web-based configuration, no external server required.
+Standalone operation with web-based configuration, no external server required for direct API mode.
 
 ![SpojBoard Device](docs/images/spojboard-device.jpg)
 
@@ -11,6 +11,7 @@ Standalone operation with web-based configuration, no external server required.
 
 ## Documentation
 
+- **[MQTT Integration Guide](docs/MQTT.md)** - Home Assistant integration, custom data sources, and dual filtering setup
 - **[Architecture & Data Flow](docs/ARCHITECTURE.md)** - Technical details, pipeline flow, and design rationale
 - **[Font System](docs/FONTS.md)** - Czech character support and custom font creation guide
 - **[Hardware Guide for Generic ESP32-S3](docs/GENERIC_ESP32S3.md)** - Alternative hardware setup
@@ -18,16 +19,17 @@ Standalone operation with web-based configuration, no external server required.
 
 ## Features
 
-- **Multi-City Support**: Prague (Golemio API) and Berlin (BVG API) with per-city configuration
+- **Multi-Source Support**: Direct API (Prague Golemio, Berlin BVG) or MQTT for home automation integration (Home Assistant, custom sources)
 - **Direct API Access**: Fetches departure data every 10-300 seconds (configurable)
+- **MQTT Integration**: Request/response pattern with configurable JSON field mappings, dual ETA modes (timestamp/pre-calculated), and server-side aggregation - see [MQTT Guide](docs/MQTT.md)
 - **Local ETA Updates**: Recalculates ETAs every 10 seconds from cached timestamps without additional API calls - reduces server load while keeping display fresh
-- **Extended Buffer**: Always fetches and caches 12 departures per stop for better sorting and filtering
 - **Multi-Stop Support**: Query up to 12 stops simultaneously (144 departure buffer), automatically sorted by departure time with 1s rate limiting
 - **WiFi Setup Portal**: Automatic AP mode with captive portal when WiFi fails - no code editing needed
 - **Web Configuration**: Easy setup via built-in web interface with city selector
 - **Persistent Settings**: Configuration stored in ESP32 flash memory, survives reboots
 - **Extended Character Support**: Custom 8-bit ISO-8859-2 fonts with automatic UTF-8 conversion (ž, š, č, ř, ň, ť, ď, ß, etc.)
 - **Adaptive Font Rendering**: Automatically switches to condensed font for long destination names (>16 chars), fitting up to 23 characters on screen
+- **Optional Scrolling**: Enable scrolling for long destination names that exceed display width (disabled by default)
 - **Headsign Shortening**: Automatic shortening of long Czech words (e.g., "Nádraží" → "Nádr.", "nádraží" → "nádr.") to maximize display space
 - **Trip Filtering**: Configurable minimum departure time (default 3 minutes) to hide departures that are too soon to catch
 - **AC Indicator**: Shows asterisk (*) for air-conditioned vehicles (Prague only)
@@ -35,6 +37,8 @@ Standalone operation with web-based configuration, no external server required.
 - **Demo Mode**: Preview custom departure data on the display before API configuration - available in both setup and normal modes
 - **Firmware Updates**: GitHub-based OTA updates with user confirmation - check for new releases directly from the web interface
 - **Optional Telnet Logging**: Remote debugging via telnet (port 23) when debug mode is enabled - mirrors all logs over WiFi
+- **Weather Display**: Optional weather info in status bar showing temperature and condition icon from Open-Meteo API (free, no API key required)
+- **Rest Mode**: Scheduled display power saving - configure time periods when the display turns off automatically
 
 ## Hardware
 
@@ -88,10 +92,11 @@ HUB75 LED matrix panels require external 5V power.
 
 3. **Configure via Web UI**
    - Enter your home WiFi credentials (required)
-   - Select your transit city (Prague or Berlin)
-   - For Prague: Enter Golemio API key (get one at [api.golemio.cz/api-keys](https://api.golemio.cz/api-keys/))
-   - For Berlin: No API key required
-   - Enter your stop ID(s) - comma-separated for multiple stops
+   - Select your data source:
+     - **Prague**: Enter Golemio API key (get one at [api.golemio.cz/api-keys](https://api.golemio.cz/api-keys/))
+     - **Berlin**: No API key required
+     - **MQTT**: Configure broker and topics - see [MQTT Guide](docs/MQTT.md)
+   - Enter your stop ID(s) - comma-separated for multiple stops (not used for MQTT)
    - Try the demo mode to preview the display before API setup
    - Click "Save & Connect to WiFi"
 
@@ -115,15 +120,19 @@ The built-in web server provides:
 - **Status Dashboard**: WiFi status, API status, memory usage
 - **Configuration Form**:
   - WiFi credentials
-  - Transit city selector (Prague or Berlin)
+  - Data source selector (Prague, Berlin, or MQTT)
   - API key (Prague only)
-  - Stop ID(s) - comma-separated for multiple stops (max 12)
+  - MQTT broker, topics, and field mappings (MQTT only) - see [MQTT Guide](docs/MQTT.md)
+  - Stop ID(s) - comma-separated for multiple stops (max 12, not used for MQTT)
   - Refresh interval (10-300 seconds)
   - Number of departures to display (1-3 rows)
-  - Minimum departure time (0-30 minutes) - filter out departures too soon to catch
+  - Minimum departure time (0-30 minutes) - filter during ETA recalculation
   - Display brightness (0-255)
   - Custom line colors with position-based wildcard patterns (e.g., "9*" for 2-digit, "4**" for 3-digit)
   - Debug mode (enables telnet logging on port 23)
+  - Scrolling mode (scroll long destination names)
+  - Weather display (enable/disable, latitude/longitude, refresh interval)
+  - Rest mode (time periods when display turns off, e.g., "23:00-07:00")
 - **Actions**:
   - Force refresh
   - Display demo (preview custom departures)
@@ -157,6 +166,9 @@ The built-in web server provides:
 3. Find the stop ID (numeric, e.g., `900013102`)
 4. You can enter multiple IDs separated by commas
 
+### MQTT (Home Assistant / Custom)
+No stop IDs needed - configure your MQTT broker to aggregate and filter departures server-side. See **[MQTT Integration Guide](docs/MQTT.md)** for complete setup instructions.
+
 ## Display Layout
 
 ### Normal Mode
@@ -165,9 +177,14 @@ The built-in web server provides:
 │ [31] Sídliště Řepy           12' │  Row 1
 │ [7 ] Radlická                 5' │  Row 2
 │ [A ] Depo Hostivař            2' │  Row 3
-│ Mon| Feb 15              14:35    │  Row 4 (Date/Time)
+│ Mon| Feb 15    ☀ 18°    14:35    │  Row 4 (Date/Time + Weather)
 └────────────────────────────────────┘
 ```
+
+**Weather in Status Bar** (when enabled):
+- Weather icon and temperature displayed between date and time
+- Temperature color-coded: blue (cold), white (mild), yellow (warm), red (hot)
+- Icon color indicates condition: yellow (sunny), white (cloudy), cyan (rain), blue (snow)
 
 **Visual Design**:
 - Line numbers displayed in their route color on uniform 18-pixel black background boxes (fits 1-3 characters)
@@ -217,6 +234,60 @@ These colors are used by default and can be customized via the web interface:
 - **Yellow**: 2-5 minutes
 - **Red**: < 2 minutes
 - **Orange**: Delayed
+
+## Weather Display
+
+SpojBoard can optionally display current weather in the status bar using the free [Open-Meteo API](https://open-meteo.com/) (no API key required).
+
+### Enabling Weather
+1. Open the web interface at `http://[device-ip]/`
+2. Enable "Weather Display" in the configuration form
+3. Enter your location's GPS coordinates (latitude and longitude)
+4. Optionally adjust the refresh interval (default: 15 minutes)
+5. Save configuration
+
+### Finding Your Coordinates
+- Use [Google Maps](https://maps.google.com): Right-click any location → coordinates are shown
+- Common cities: Prague (50.0755, 14.4378), Berlin (52.5200, 13.4050)
+
+### Weather Icons
+| Condition | Icon | Color |
+|-----------|------|-------|
+| Clear/Sunny | ☀ | Yellow |
+| Cloudy | ☁ | White |
+| Fog | 🌫 | Purple |
+| Rain/Drizzle | 🌧 | Cyan |
+| Snow | ❄ | Blue |
+| Thunderstorm | ⛈ | Red |
+
+### Temperature Colors
+- **Blue**: Below 8°C (cold)
+- **White**: 8-16°C (mild)
+- **Yellow**: 17-25°C (warm)
+- **Red**: Above 25°C (hot)
+
+## Rest Mode
+
+Rest mode automatically turns off the display during configured time periods to save power and reduce light pollution at night.
+
+### Configuration
+1. Open the web interface at `http://[device-ip]/`
+2. Enter time periods in the "Rest Mode" field
+3. Format: `HH:MM-HH:MM` (24-hour format)
+4. Multiple periods: separate with commas
+
+### Examples
+| Configuration | Behavior |
+|---------------|----------|
+| `23:00-07:00` | Off from 11 PM to 7 AM |
+| `00:00-06:00` | Off from midnight to 6 AM |
+| `22:00-06:00,12:00-13:00` | Off overnight and during lunch |
+| (empty) | Rest mode disabled (default) |
+
+**Notes:**
+- Cross-midnight periods work correctly (e.g., "22:00-06:00")
+- API polling continues during rest mode (data stays fresh)
+- Display resumes automatically when rest period ends
 
 ## Troubleshooting
 

@@ -19,7 +19,7 @@ uint16_t COLOR_CYAN;
 // Color Initialization
 // ============================================================================
 
-void initColors(MatrixPanel_I2S_DMA *display)
+void initColors(MatrixPanel_I2S_DMA* display)
 {
     COLOR_WHITE = display->color565(255, 255, 255);
     COLOR_YELLOW = display->color565(255, 255, 0);
@@ -36,7 +36,7 @@ void initColors(MatrixPanel_I2S_DMA *display)
 // Line Color Helper
 // ============================================================================
 
-uint16_t getLineColor(const char *line)
+uint16_t getLineColor(const char* line)
 {
     // Metro lines
     if (strcmp(line, "A") == 0)
@@ -47,10 +47,12 @@ uint16_t getLineColor(const char *line)
         return COLOR_RED;
 
     // Tram lines
-    if ((line[0] >= '1' && line[0] <= '9' && strlen(line) == 1) || (line[0] == '1' && strlen(line) == 2) || (line[0] == '2' && strlen(line) == 2))
+    if ((line[0] >= '1' && line[0] <= '9' && strlen(line) == 1) || (line[0] == '1' && strlen(line) == 2) ||
+        (line[0] == '2' && strlen(line) == 2))
         return COLOR_WHITE; // Trams 1-29
     // Bus & T-Bus lines
-    if ((line[0] == '5' && strlen(line) == 2) || (line[0] == '1' && strlen(line) == 3) || (line[0] == '2' && strlen(line) == 3))
+    if ((line[0] == '5' && strlen(line) == 2) || (line[0] == '1' && strlen(line) == 3) ||
+        (line[0] == '2' && strlen(line) == 3))
         return COLOR_PURPLE; // Buses 100-299, T-Bus 50-59
 
     // S-trains
@@ -68,7 +70,7 @@ uint16_t getLineColor(const char *line)
 // Color Name Parsing
 // ============================================================================
 
-uint16_t parseColorName(const char *colorName)
+uint16_t parseColorName(const char* colorName)
 {
     if (!colorName)
         return 0;
@@ -98,7 +100,7 @@ uint16_t parseColorName(const char *colorName)
 // Configurable Line Colors with Pattern Matching
 // ============================================================================
 
-uint16_t getLineColorWithConfig(const char *line, const char *configMap)
+uint16_t getLineColorWithConfig(const char* line, const char* configMap)
 {
     if (!line)
         return COLOR_WHITE;
@@ -112,15 +114,15 @@ uint16_t getLineColorWithConfig(const char *line, const char *configMap)
 
         // Two-pass approach: exact matches first, then patterns
         // Pass 1: Check for exact match
-        char *token = strtok(mapCopy, ",");
+        char* token = strtok(mapCopy, ",");
         while (token != nullptr)
         {
-            char *equals = strchr(token, '=');
+            char* equals = strchr(token, '=');
             if (equals)
             {
                 *equals = '\0'; // Split into line and color
-                const char *configLine = token;
-                const char *colorName = equals + 1;
+                const char* configLine = token;
+                const char* colorName = equals + 1;
 
                 // Skip patterns in first pass
                 size_t configLineLen = strlen(configLine);
@@ -147,12 +149,12 @@ uint16_t getLineColorWithConfig(const char *line, const char *configMap)
         token = strtok(mapCopy, ",");
         while (token != nullptr)
         {
-            char *equals = strchr(token, '=');
+            char* equals = strchr(token, '=');
             if (equals)
             {
                 *equals = '\0';
-                const char *configLine = token;
-                const char *colorName = equals + 1;
+                const char* configLine = token;
+                const char* colorName = equals + 1;
 
                 // Only process patterns in second pass
                 size_t configLineLen = strlen(configLine);
@@ -205,8 +207,7 @@ uint16_t getLineColorWithConfig(const char *line, const char *configMap)
                         size_t lineLen = strlen(line);
 
                         // Match if: correct length AND starts with prefix
-                        if (lineLen == expectedLen &&
-                            strncasecmp(line, configLine, prefixLen) == 0)
+                        if (lineLen == expectedLen && strncasecmp(line, configLine, prefixLen) == 0)
                         {
                             uint16_t color = parseColorName(colorName);
                             if (color != 0)

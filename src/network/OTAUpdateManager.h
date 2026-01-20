@@ -13,7 +13,7 @@
  */
 class OTAUpdateManager
 {
-public:
+  public:
     // Progress callback type (progress bytes, total bytes)
     typedef void (*ProgressCallback)(size_t progress, size_t total);
 
@@ -37,15 +37,21 @@ public:
      * Check if update is currently in progress
      * @return true if update is active
      */
-    bool isUpdating() const { return updating; }
+    bool isUpdating() const
+    {
+        return updating;
+    }
 
     /**
      * Get last error message
      * @return Error message string (empty if no error)
      */
-    const char* getError() const { return errorMsg; }
+    const char* getError() const
+    {
+        return errorMsg;
+    }
 
-private:
+  private:
     bool updating;
     char errorMsg[128];
     size_t totalSize;

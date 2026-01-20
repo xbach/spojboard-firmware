@@ -4,11 +4,14 @@
 #include "utils/Logger.h"
 #include "utils/TimeUtils.h"
 #include "utils/gfxlatin2.h"
+#include "utils/RestMode.h"
 #include "utils/TelnetLogger.h"
 #include "config/AppConfig.h"
 #include "api/DepartureData.h"
 #include "api/GolemioAPI.h"
 #include "api/BvgAPI.h"
+#include "api/MqttAPI.h"
+#include "api/WeatherAPI.h"
 #include "display/DisplayManager.h"
 #include "network/WiFiManager.h"
 #include "network/CaptivePortal.h"
@@ -23,9 +26,11 @@ DisplayManager displayManager;
 WiFiManager wifiManager;
 CaptivePortal captivePortal;
 ConfigWebServer webServer;
-GolemioAPI golemioAPI;  // Prague transit API
-BvgAPI bvgAPI;          // Berlin transit API
-TransitAPI* transitAPI = nullptr;  // Pointer to active API (selected at runtime)
+GolemioAPI golemioAPI; // Prague transit API
+BvgAPI bvgAPI; // Berlin transit API
+MqttAPI mqttAPI; // MQTT transit API
+TransitAPI* transitAPI = nullptr; // Pointer to active API (selected at runtime)
+WeatherAPI weatherAPI; // Weather forecast API
 
 // ============================================================================
 // Configuration Storage (structure defined in config/AppConfig.h)
@@ -43,12 +48,16 @@ int departureCount = 0;
 // ============================================================================
 unsigned long lastApiCall = 0;
 unsigned long lastDisplayUpdate = 0;
-unsigned long lastEtaRecalc = 0;  // For 10-second ETA recalculation
+unsigned long lastEtaRecalc = 0; // For 10-second ETA recalculation
+unsigned long lastWeatherCall = 0; // For weather API polling
 bool needsDisplayUpdate = false;
 bool apiError = false;
 char apiErrorMsg[64] = "";
 char stopName[64] = "";
-bool demoModeActive = false;  // Demo mode flag - stops API polling and display updates
+bool demoModeActive = false; // Demo mode flag - stops API polling and display updates
+bool restModeActive = false; // Rest mode flag - pauses API polling and turns off display
+int lastRestCheckMinute = -1; // Last minute when rest check triggered (0-59)
+WeatherData weatherData = {}; // Global weather state
 
 // Network layer is now in network/ modules:
 // - WiFiManager: WiFi connection and AP mode
@@ -74,30 +83,19 @@ void recalculateETAs()
     time(&now);
 
     logTimestamp();
-    char startMsg[64];
-    snprintf(startMsg, sizeof(startMsg), "ETA Recalc: Processing %d departures (now=%ld)", departureCount, (long)now);
-    debugPrintln(startMsg);
+    debugPrint("ETA Recalc: ");
+    debugPrint(departureCount);
+    debugPrint(" deps -> ");
 
     int validCount = 0;
-    int filteredCount = 0;
     for (int i = 0; i < departureCount; i++)
     {
         int diffSec = difftime(departures[i].departureTime, now);
         int eta = (diffSec > 0) ? (diffSec / 60) : 0;
 
-        // Log first 3 departures for debugging
-        if (i < 3)
-        {
-            logTimestamp();
-            char debugMsg[128];
-            snprintf(debugMsg, sizeof(debugMsg), "  [%d] Line %s: depTime=%ld, diffSec=%d, eta=%d min",
-                     i, departures[i].line, (long)departures[i].departureTime, diffSec, eta);
-            debugPrintln(debugMsg);
-        }
-
-        // Only keep departures above minimum departure time
-        int minEta = (config.minDepartureTime > 0) ? config.minDepartureTime : 0;
-        if (eta > minEta)
+        // Filter: Keep only departures that meet minimum departure time threshold
+        // (applies to all APIs including MQTT - filters during recalculation)
+        if (eta > 0 && eta >= config.minDepartureTime)
         {
             // Copy departure if we're filtering out previous entries
             if (validCount != i)
@@ -107,28 +105,17 @@ void recalculateETAs()
             departures[validCount].eta = eta;
             validCount++;
         }
-        else
-        {
-            filteredCount++;
-            if (filteredCount <= 3)  // Log first 3 filtered departures
-            {
-                logTimestamp();
-                char filterMsg[128];
-                snprintf(filterMsg, sizeof(filterMsg), "  Filtered: Line %s (eta=%d min, minEta=%d min, diffSec=%d)",
-                         departures[i].line, eta, minEta, diffSec);
-                debugPrintln(filterMsg);
-            }
-        }
     }
 
-    // Update count if we filtered any departures
+    debugPrint(validCount);
+    debugPrint(" valid");
     if (validCount != departureCount)
     {
-        logTimestamp();
-        char msg[64];
-        snprintf(msg, sizeof(msg), "ETA Recalc: Filtered %d stale departures, %d remain", filteredCount, validCount);
-        debugPrintln(msg);
+        debugPrint(" (filtered ");
+        debugPrint(departureCount - validCount);
+        debugPrint(")");
     }
+    debugPrintln("");
 
     departureCount = validCount;
 
@@ -144,11 +131,18 @@ void recalculateETAs()
         {
             logTimestamp();
             char sortMsg[96];
-            snprintf(sortMsg, sizeof(sortMsg), "  After sort [%d]: Line %s, ETA=%d min",
-                     i, departures[i].line, departures[i].eta);
+            snprintf(sortMsg,
+                     sizeof(sortMsg),
+                     "  After sort [%d]: Line %s, ETA=%d min",
+                     i,
+                     departures[i].line,
+                     departures[i].eta);
             debugPrintln(sortMsg);
         }
     }
+
+    // Reset scroll state since departures may have changed positions
+    displayManager.resetScroll();
 
     logTimestamp();
     debugPrintln("ETA Recalc: Complete, display update triggered");
@@ -171,6 +165,13 @@ bool isCityConfigured()
     {
         // Berlin only needs stop IDs
         return strlen(config.berlinStopIds) > 0;
+    }
+    else if (strcmp(config.city, "MQTT") == 0)
+    {
+        // MQTT needs broker, topics, and field mappings
+        return strlen(config.mqttBroker) > 0 && strlen(config.mqttRequestTopic) > 0 &&
+               strlen(config.mqttResponseTopic) > 0 && strlen(config.mqttFieldLine) > 0 &&
+               strlen(config.mqttFieldDestination) > 0;
     }
     else
     {
@@ -211,10 +212,49 @@ void fetchDepartures()
 }
 
 // ============================================================================
+// Weather API Fetch Wrapper
+// ============================================================================
+
+void fetchWeather()
+{
+    if (!wifiManager.isConnected() || !config.weatherEnabled)
+    {
+        return;
+    }
+
+    // Validate coordinates (non-zero)
+    if (config.weatherLatitude == 0.0 && config.weatherLongitude == 0.0)
+    {
+        return;
+    }
+
+    logTimestamp();
+    debugPrintln("Weather: Fetching forecast...");
+
+    weatherData = weatherAPI.fetchWeather(config.weatherLatitude, config.weatherLongitude);
+
+    if (weatherData.hasError)
+    {
+        logTimestamp();
+        debugPrint("Weather: Error - ");
+        debugPrintln(weatherData.errorMsg);
+    }
+    else
+    {
+        logTimestamp();
+        char msg[64];
+        snprintf(msg, sizeof(msg), "Weather: %d°C, code %d", weatherData.temperature, weatherData.weatherCode);
+        debugPrintln(msg);
+    }
+
+    needsDisplayUpdate = true;
+}
+
+// ============================================================================
 // Callback Functions for ConfigWebServer
 // ============================================================================
 
-void onConfigSave(const Config &newConfig, bool wifiChanged)
+void onConfigSave(const Config& newConfig, bool wifiChanged)
 {
     // Update config
     config = newConfig;
@@ -268,12 +308,54 @@ void onDemoStart(const Departure* demoDepartures, int demoCount)
 
 void onDemoStop()
 {
-    // Exit demo mode: resume normal operation
+    // Exit demo mode: check if we should return to rest mode
     demoModeActive = false;
-    lastApiCall = 0;  // Force immediate API refresh
 
-    logTimestamp();
-    debugPrintln("Demo mode deactivated - resuming normal operation");
+    // Check if we're in a rest period
+    if (isInRestPeriod(config.restModePeriods))
+    {
+        // Return to rest mode
+        restModeActive = true;
+        displayManager.getDisplay()->clearScreen();
+        displayManager.getDisplay()->flipDMABuffer();
+
+        logTimestamp();
+        debugPrintln("Demo stopped - returning to rest mode (display off)");
+    }
+    else
+    {
+        // Resume normal operation
+        lastApiCall = 0;       // Force immediate API refresh
+        lastWeatherCall = 0;   // Force weather refresh
+
+        logTimestamp();
+        debugPrintln("Demo mode deactivated - resuming normal operation");
+    }
+}
+
+void onRestMode(bool enabled)
+{
+    if (enabled && !restModeActive)
+    {
+        // Enter rest mode
+        restModeActive = true;
+        displayManager.getDisplay()->clearScreen();
+        displayManager.getDisplay()->flipDMABuffer();
+
+        logTimestamp();
+        debugPrintln("RestMode: Activated via REST API - display off, API polling paused");
+    }
+    else if (!enabled && restModeActive)
+    {
+        // Exit rest mode
+        restModeActive = false;
+        lastApiCall = 0;       // Force immediate API refresh
+        lastWeatherCall = 0;   // Force weather refresh
+        needsDisplayUpdate = true;
+
+        logTimestamp();
+        debugPrintln("RestMode: Deactivated via REST API - resuming normal operation");
+    }
 }
 
 // ============================================================================
@@ -303,6 +385,11 @@ void setup()
     {
         transitAPI = &bvgAPI;
         Serial.println("Using Berlin BVG API");
+    }
+    else if (strcmp(config.city, "MQTT") == 0)
+    {
+        transitAPI = &mqttAPI;
+        Serial.println("Using MQTT API");
     }
     else
     {
@@ -362,12 +449,15 @@ void setup()
     }
 
     // Initialize web server with callbacks
-    webServer.setCallbacks(onConfigSave, onRefresh, onReboot, onDemoStart, onDemoStop);
+    webServer.setCallbacks(onConfigSave, onRefresh, onReboot, onDemoStart, onDemoStop, onRestMode);
     webServer.setDisplayManager(&displayManager); // For OTA progress updates
     if (!webServer.begin())
     {
         debugPrintln("Web server failed to start!");
     }
+
+    // Pass weather data pointer to display manager
+    displayManager.setWeatherData(&weatherData);
 
     // Setup captive portal detection handlers
     if (wifiManager.isAPMode())
@@ -400,6 +490,13 @@ void setup()
             fetchDepartures();
             lastApiCall = millis(); // Prevent immediate second call in loop()
         }
+
+        // Initial weather call if configured
+        if (config.weatherEnabled && config.weatherLatitude != 0.0 && config.weatherLongitude != 0.0)
+        {
+            fetchWeather();
+            lastWeatherCall = millis();
+        }
     }
 
     needsDisplayUpdate = true;
@@ -429,10 +526,15 @@ void loop()
 
     // Update web server state for status display
     webServer.updateState(&config,
-                          wifiManager.isConnected(), wifiManager.isAPMode(),
-                          wifiManager.getAPSSID(), wifiManager.getAPPassword(), wifiManager.getAPClientCount(),
-                          apiError, apiErrorMsg,
-                          departureCount, stopName);
+                          wifiManager.isConnected(),
+                          wifiManager.isAPMode(),
+                          wifiManager.getAPSSID(),
+                          wifiManager.getAPPassword(),
+                          wifiManager.getAPClientCount(),
+                          apiError,
+                          apiErrorMsg,
+                          departureCount,
+                          stopName);
 
     // Skip WiFi monitoring and API calls in AP mode
     if (wifiManager.isAPMode())
@@ -447,11 +549,17 @@ void loop()
         if (needsDisplayUpdate)
         {
             needsDisplayUpdate = false;
-            displayManager.updateDisplay(departures, departureCount, config.numDepartures,
-                                         wifiManager.isConnected(), wifiManager.isAPMode(),
-                                         wifiManager.getAPSSID(), wifiManager.getAPPassword(),
-                                         apiError, apiErrorMsg,
-                                         stopName, isCityConfigured(),
+            displayManager.updateDisplay(departures,
+                                         departureCount,
+                                         config.numDepartures,
+                                         wifiManager.isConnected(),
+                                         wifiManager.isAPMode(),
+                                         wifiManager.getAPSSID(),
+                                         wifiManager.getAPPassword(),
+                                         apiError,
+                                         apiErrorMsg,
+                                         stopName,
+                                         isCityConfigured(),
                                          demoModeActive);
         }
 
@@ -485,8 +593,45 @@ void loop()
     }
     wasConnected = isConnected;
 
-    // Skip API polling and ETA recalculation in demo mode
-    if (!demoModeActive)
+    // Check rest mode at :00 and :30 minutes (twice per hour, synchronized to clock)
+    if (!wifiManager.isAPMode())
+    {
+        struct tm timeinfo;
+        if (getCurrentTime(&timeinfo))
+        {
+            int currentMinute = timeinfo.tm_min;
+
+            // Trigger check at :00 and :30 minutes (avoid duplicate checks in same minute)
+            if ((currentMinute == 0 || currentMinute == 30) && currentMinute != lastRestCheckMinute)
+            {
+                lastRestCheckMinute = currentMinute;
+                bool shouldBeInRest = isInRestPeriod(config.restModePeriods);
+
+                if (shouldBeInRest && !restModeActive)
+                {
+                    // Enter rest mode
+                    restModeActive = true;
+                    displayManager.getDisplay()->clearScreen();
+                    displayManager.getDisplay()->flipDMABuffer();
+                    logTimestamp();
+                    debugPrintln("RestMode: Activated - display off, API polling paused");
+                }
+                else if (!shouldBeInRest && restModeActive)
+                {
+                    // Exit rest mode
+                    restModeActive = false;
+                    lastApiCall = 0;
+                    lastWeatherCall = 0;
+                    needsDisplayUpdate = true;
+                    logTimestamp();
+                    debugPrintln("RestMode: Deactivated - resuming normal operation");
+                }
+            }
+        }
+    }
+
+    // Skip API polling and ETA recalculation in demo mode or rest mode
+    if (!demoModeActive && !restModeActive)
     {
         // Periodic API calls (only when connected and not in AP mode)
         if (wifiManager.isConnected() && isCityConfigured())
@@ -511,22 +656,51 @@ void loop()
                 recalculateETAs();
             }
         }
+
+        // Periodic weather calls (only when connected and enabled)
+        if (wifiManager.isConnected() && config.weatherEnabled && config.weatherLatitude != 0.0 &&
+            config.weatherLongitude != 0.0)
+        {
+            unsigned long now = millis();
+            unsigned long weatherInterval = (unsigned long)config.weatherRefreshInterval * 60000; // Minutes to ms
+
+            if (now - lastWeatherCall >= weatherInterval || lastWeatherCall == 0)
+            {
+                lastWeatherCall = now;
+                fetchWeather();
+            }
+        }
     }
 
-    // Update display
-    if (needsDisplayUpdate)
+    // Update display (skip if in rest mode)
+    if (needsDisplayUpdate && !restModeActive)
     {
         needsDisplayUpdate = false;
-        displayManager.updateDisplay(departures, departureCount, config.numDepartures,
-                                     wifiManager.isConnected(), wifiManager.isAPMode(),
-                                     wifiManager.getAPSSID(), wifiManager.getAPPassword(),
-                                     apiError, apiErrorMsg,
-                                     stopName, isCityConfigured(),
+        displayManager.updateDisplay(departures,
+                                     departureCount,
+                                     config.numDepartures,
+                                     wifiManager.isConnected(),
+                                     wifiManager.isAPMode(),
+                                     wifiManager.getAPSSID(),
+                                     wifiManager.getAPPassword(),
+                                     apiError,
+                                     apiErrorMsg,
+                                     stopName,
+                                     isCityConfigured(),
                                      demoModeActive);
     }
 
-    // Periodic display update (for time) - now handled by ETA recalc every 10s
-    // Removed to avoid redundant updates
+    // Scroll update for long destinations (runs frequently, ~50ms)
+    // Only run if scrolling is enabled in config
+    if (config.scrollEnabled)
+    {
+        static unsigned long lastScrollCheck = 0;
+        if (millis() - lastScrollCheck >= 50)
+        {
+            lastScrollCheck = millis();
+            displayManager.updateScroll();
+        }
+    }
 
     // Status logging every 60 seconds
     static unsigned long lastStatusLog = 0;
@@ -534,7 +708,9 @@ void loop()
     {
         lastStatusLog = millis();
         char statusMsg[128];
-        snprintf(statusMsg, sizeof(statusMsg), "STATUS: WiFi=%s | AP=%s | Deps=%d | Heap=%u",
+        snprintf(statusMsg,
+                 sizeof(statusMsg),
+                 "STATUS: WiFi=%s | AP=%s | Deps=%d | Heap=%u",
                  wifiManager.isConnected() ? "OK" : "FAIL",
                  wifiManager.isAPMode() ? "ON" : "OFF",
                  departureCount,
