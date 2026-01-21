@@ -145,6 +145,12 @@ public:
     int getCurrentDepartureCount() const { return currentDepartureCount; }
 
     /**
+     * Get number of departures configured to display
+     * @return Number of departures to show (1-3)
+     */
+    int getCurrentNumToDisplay() const { return currentNumToDisplay; }
+
+    /**
      * Get weather data for preview API
      * @return Pointer to current weather data
      */

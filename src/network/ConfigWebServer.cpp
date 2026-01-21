@@ -6,73 +6,12 @@
 #include "web/DashboardPage.h"
 #include "web/DemoPage.h"
 #include "web/UpdatePage.h"
+#include "web/PreviewPage.h"
+#include "web/ApiHandlers.h"
+#include "web/WebUtils.h"
 #include <WiFi.h>
 #include <Update.h>
 #include <string.h>
-
-// Helper function to count stops in comma-separated list
-static int countStops(const char* stopIds) {
-    if (!stopIds || stopIds[0] == '\0') {
-        return 0;
-    }
-
-    int count = 1;  // At least one stop if string is not empty
-    for (const char* p = stopIds; *p; p++) {
-        if (*p == ',') {
-            count++;
-        }
-    }
-    return count;
-}
-
-// Helper function to escape JSON strings
-static String escapeJsonString(const char *str)
-{
-    String result = "";
-    if (!str)
-        return result;
-
-    for (size_t i = 0; str[i] != '\0'; i++)
-    {
-        char c = str[i];
-        switch (c)
-        {
-        case '"':
-            result += "\\\"";
-            break;
-        case '\\':
-            result += "\\\\";
-            break;
-        case '\n':
-            result += "\\n";
-            break;
-        case '\r':
-            result += "\\r";
-            break;
-        case '\t':
-            result += "\\t";
-            break;
-        case '\b':
-            result += "\\b";
-            break;
-        case '\f':
-            result += "\\f";
-            break;
-        default:
-            // Skip other control characters
-            if (c >= 0 && c < 32)
-            {
-                // Skip control characters
-            }
-            else
-            {
-                result += c;
-            }
-            break;
-        }
-    }
-    return result;
-}
 
 // Static instance pointer for OTA callback
 ConfigWebServer *ConfigWebServer::instanceForCallback = nullptr;
@@ -267,57 +206,10 @@ void ConfigWebServer::handleSave()
     bool wifiChanged = false;
     bool cityChanged = false;
 
-    if (server->hasArg("ssid"))
-    {
-        String newSsid = server->arg("ssid");
-        if (newSsid != newConfig.wifiSsid)
-        {
-            wifiChanged = true;
-        }
-        strlcpy(newConfig.wifiSsid, newSsid.c_str(), sizeof(newConfig.wifiSsid));
-    }
-    if (server->hasArg("password") && server->arg("password").length() > 0)
-    {
-        strlcpy(newConfig.wifiPassword, server->arg("password").c_str(), sizeof(newConfig.wifiPassword));
-        wifiChanged = true;
-    }
-    // Parse city field
-    if (server->hasArg("city"))
-    {
-        String newCity = server->arg("city");
-        // Validate city value
-        if (newCity == "Berlin" || newCity == "Prague" || newCity == "MQTT")
-        {
-            if (newCity != newConfig.city)
-            {
-                cityChanged = true;
-            }
-            strlcpy(newConfig.city, newCity.c_str(), sizeof(newConfig.city));
-        }
-        else
-        {
-            // Invalid city value, default to Prague
-            strlcpy(newConfig.city, "Prague", sizeof(newConfig.city));
-        }
-    }
-    // Save API key and stops to appropriate city-specific fields
-    String selectedCity = String(newConfig.city);
-
-    if (server->hasArg("apikey") && server->arg("apikey").length() > 0)
-    {
-        String apiKeyValue = server->arg("apikey");
-        // Only save if it's not the placeholder dots (visual feedback, not actual key)
-        if (apiKeyValue != "****" && selectedCity == "Prague")
-        {
-            strlcpy(newConfig.pragueApiKey, apiKeyValue.c_str(), sizeof(newConfig.pragueApiKey));
-        }
-    }
-
+    // Validate stop count before parsing
     if (server->hasArg("stops"))
     {
         String stops = server->arg("stops");
-
-        // Validate maximum number of stops (with 1s delay per stop, 12 stops = 12s+ query time)
         int numStops = countStops(stops.c_str());
         if (numStops > 12)
         {
@@ -328,192 +220,15 @@ void ConfigWebServer::handleSave()
             debugPrintln("Config save failed: too many stops");
             return;
         }
-
-        // Save to city-specific field
-        if (selectedCity == "Prague")
-        {
-            strlcpy(newConfig.pragueStopIds, stops.c_str(), sizeof(newConfig.pragueStopIds));
-        }
-        else if (selectedCity == "Berlin")
-        {
-            strlcpy(newConfig.berlinStopIds, stops.c_str(), sizeof(newConfig.berlinStopIds));
-        }
-        // MQTT doesn't use stops field
     }
 
-    // Parse MQTT-specific fields (when city is MQTT)
-    if (selectedCity == "MQTT")
-    {
-        if (server->hasArg("mqttBroker"))
-            strlcpy(newConfig.mqttBroker, server->arg("mqttBroker").c_str(), sizeof(newConfig.mqttBroker));
-
-        if (server->hasArg("mqttPort"))
-        {
-            newConfig.mqttPort = server->arg("mqttPort").toInt();
-            if (newConfig.mqttPort < 1) newConfig.mqttPort = 1;
-            if (newConfig.mqttPort > 65535) newConfig.mqttPort = 65535;
-        }
-
-        if (server->hasArg("mqttUser"))
-            strlcpy(newConfig.mqttUsername, server->arg("mqttUser").c_str(), sizeof(newConfig.mqttUsername));
-
-        if (server->hasArg("mqttPass"))
-            strlcpy(newConfig.mqttPassword, server->arg("mqttPass").c_str(), sizeof(newConfig.mqttPassword));
-
-        if (server->hasArg("mqttReqTopic"))
-            strlcpy(newConfig.mqttRequestTopic, server->arg("mqttReqTopic").c_str(), sizeof(newConfig.mqttRequestTopic));
-
-        if (server->hasArg("mqttRespTopic"))
-            strlcpy(newConfig.mqttResponseTopic, server->arg("mqttRespTopic").c_str(), sizeof(newConfig.mqttResponseTopic));
-
-        if (server->hasArg("mqttEtaMode"))
-            newConfig.mqttUseEtaMode = (server->arg("mqttEtaMode") == "1");
-
-        // Parse JSON field mappings
-        if (server->hasArg("mqttFldLine"))
-            strlcpy(newConfig.mqttFieldLine, server->arg("mqttFldLine").c_str(), sizeof(newConfig.mqttFieldLine));
-
-        if (server->hasArg("mqttFldDest"))
-            strlcpy(newConfig.mqttFieldDestination, server->arg("mqttFldDest").c_str(), sizeof(newConfig.mqttFieldDestination));
-
-        if (server->hasArg("mqttFldEta"))
-            strlcpy(newConfig.mqttFieldEta, server->arg("mqttFldEta").c_str(), sizeof(newConfig.mqttFieldEta));
-
-        if (server->hasArg("mqttFldTime"))
-            strlcpy(newConfig.mqttFieldTimestamp, server->arg("mqttFldTime").c_str(), sizeof(newConfig.mqttFieldTimestamp));
-
-        if (server->hasArg("mqttFldPlat"))
-            strlcpy(newConfig.mqttFieldPlatform, server->arg("mqttFldPlat").c_str(), sizeof(newConfig.mqttFieldPlatform));
-
-        if (server->hasArg("mqttFldAC"))
-            strlcpy(newConfig.mqttFieldAC, server->arg("mqttFldAC").c_str(), sizeof(newConfig.mqttFieldAC));
-    }
-
-    if (server->hasArg("refresh"))
-    {
-        newConfig.refreshInterval = server->arg("refresh").toInt();
-        if (newConfig.refreshInterval < 10)
-            newConfig.refreshInterval = 10;
-        if (newConfig.refreshInterval > 300)
-            newConfig.refreshInterval = 300;
-    }
-    if (server->hasArg("numdeps"))
-    {
-        newConfig.numDepartures = server->arg("numdeps").toInt();
-        if (newConfig.numDepartures < 1)
-            newConfig.numDepartures = 1;
-        if (newConfig.numDepartures > 3)
-            newConfig.numDepartures = 3;  // Max 3 rows on display
-    }
-    if (server->hasArg("mindeptime"))
-    {
-        newConfig.minDepartureTime = server->arg("mindeptime").toInt();
-        if (newConfig.minDepartureTime < 0)
-            newConfig.minDepartureTime = 0;
-        if (newConfig.minDepartureTime > 30)
-            newConfig.minDepartureTime = 30;
-    }
-    if (server->hasArg("brightness"))
-    {
-        newConfig.brightness = server->arg("brightness").toInt();
-        if (newConfig.brightness < 0)
-            newConfig.brightness = 0;
-        if (newConfig.brightness > 255)
-            newConfig.brightness = 255;
-    }
-    if (server->hasArg("language"))
-    {
-        String lang = server->arg("language");
-        if (lang == "cs" || lang == "de" || lang == "en")
-        {
-            strlcpy(newConfig.language, lang.c_str(), sizeof(newConfig.language));
-        }
-        else
-        {
-            strlcpy(newConfig.language, "en", sizeof(newConfig.language));
-        }
-    }
-
-    // Debug mode checkbox (unchecked = not present in POST data)
-    newConfig.debugMode = server->hasArg("debugmode");
-
-    // Show platform checkbox (unchecked = not present in POST data)
-    newConfig.showPlatform = server->hasArg("showplatform");
-
-    // Scrolling checkbox (unchecked = not present in POST data)
-    newConfig.scrollEnabled = server->hasArg("scrollenabled");
-
-    // Weather configuration
-    newConfig.weatherEnabled = server->hasArg("weather_enabled");
-
-    if (server->hasArg("weather_lat"))
-    {
-        String latStr = server->arg("weather_lat");
-        // Replace comma with dot for decimal separator (locale compatibility)
-        latStr.replace(",", ".");
-        newConfig.weatherLatitude = latStr.toFloat();
-        // Validate latitude range
-        if (newConfig.weatherLatitude < -90.0f)
-            newConfig.weatherLatitude = -90.0f;
-        if (newConfig.weatherLatitude > 90.0f)
-            newConfig.weatherLatitude = 90.0f;
-    }
-
-    if (server->hasArg("weather_lon"))
-    {
-        String lonStr = server->arg("weather_lon");
-        // Replace comma with dot for decimal separator (locale compatibility)
-        lonStr.replace(",", ".");
-        newConfig.weatherLongitude = lonStr.toFloat();
-        // Validate longitude range
-        if (newConfig.weatherLongitude < -180.0f)
-            newConfig.weatherLongitude = -180.0f;
-        if (newConfig.weatherLongitude > 180.0f)
-            newConfig.weatherLongitude = 180.0f;
-    }
-
-    if (server->hasArg("weather_refresh"))
-    {
-        newConfig.weatherRefreshInterval = server->arg("weather_refresh").toInt();
-        // Clamp to 10-60 minutes
-        if (newConfig.weatherRefreshInterval < 10)
-            newConfig.weatherRefreshInterval = 10;
-        if (newConfig.weatherRefreshInterval > 60)
-            newConfig.weatherRefreshInterval = 60;
-    }
-
-    // Line color map (always update when not in AP mode to handle empty case)
-    if (!apModeActive)
-    {
-        // Get the value, defaulting to empty string if not present
-        String colorMapValue = server->hasArg("linecolormap")
-                               ? server->arg("linecolormap")
-                               : "";
-
-        strlcpy(newConfig.lineColorMap, colorMapValue.c_str(), sizeof(newConfig.lineColorMap));
-
-        // Log configuration
-        logTimestamp();
-        Serial.print("Line color map updated: ");
-        Serial.println(strlen(newConfig.lineColorMap) > 0 ? newConfig.lineColorMap : "(empty - using defaults)");
-    }
-
-    // Parse rest mode periods
-    if (server->hasArg("restperiods"))
-    {
-        String restPeriods = server->arg("restperiods");
-
-        if (restPeriods.length() < sizeof(newConfig.restModePeriods))
-        {
-            strlcpy(newConfig.restModePeriods, restPeriods.c_str(), sizeof(newConfig.restModePeriods));
-        }
-        else
-        {
-            logTimestamp();
-            debugPrintln("RestMode: Config string too long, truncating");
-            strlcpy(newConfig.restModePeriods, restPeriods.c_str(), sizeof(newConfig.restModePeriods));
-        }
-    }
+    // Parse configuration using helper methods
+    parseWifiSettings(&newConfig, &wifiChanged);
+    parseGeneralSettings(&newConfig, &cityChanged);
+    parsePragueSettings(&newConfig);
+    parseBerlinSettings(&newConfig);
+    parseMqttSettings(&newConfig);
+    parseWeatherSettings(&newConfig);
 
     newConfig.configured = true;
 
@@ -558,6 +273,278 @@ void ConfigWebServer::handleSave()
     // Call the callback to notify main.cpp
     // Pass true for restart if either WiFi or city changed
     onSaveCallback(newConfig, wifiChanged || cityChanged);
+}
+
+// ============================================================================
+// Config Parsing Helper Methods
+// ============================================================================
+
+void ConfigWebServer::parseWifiSettings(Config* config, bool* wifiChanged)
+{
+    if (server->hasArg("ssid"))
+    {
+        String newSsid = server->arg("ssid");
+        if (newSsid != config->wifiSsid)
+        {
+            *wifiChanged = true;
+        }
+        strlcpy(config->wifiSsid, newSsid.c_str(), sizeof(config->wifiSsid));
+    }
+
+    if (server->hasArg("password") && server->arg("password").length() > 0)
+    {
+        strlcpy(config->wifiPassword, server->arg("password").c_str(), sizeof(config->wifiPassword));
+        *wifiChanged = true;
+    }
+}
+
+void ConfigWebServer::parseGeneralSettings(Config* config, bool* cityChanged)
+{
+    // Parse city field
+    if (server->hasArg("city"))
+    {
+        String newCity = server->arg("city");
+        // Validate city value
+        if (newCity == "Berlin" || newCity == "Prague" || newCity == "MQTT")
+        {
+            if (newCity != config->city)
+            {
+                *cityChanged = true;
+            }
+            strlcpy(config->city, newCity.c_str(), sizeof(config->city));
+        }
+        else
+        {
+            // Invalid city value, default to Prague
+            strlcpy(config->city, "Prague", sizeof(config->city));
+        }
+    }
+
+    // Refresh interval
+    if (server->hasArg("refresh"))
+    {
+        config->refreshInterval = server->arg("refresh").toInt();
+        if (config->refreshInterval < 10)
+            config->refreshInterval = 10;
+        if (config->refreshInterval > 300)
+            config->refreshInterval = 300;
+    }
+
+    // Number of departures
+    if (server->hasArg("numdeps"))
+    {
+        config->numDepartures = server->arg("numdeps").toInt();
+        if (config->numDepartures < 1)
+            config->numDepartures = 1;
+        if (config->numDepartures > 3)
+            config->numDepartures = 3;  // Max 3 rows on display
+    }
+
+    // Minimum departure time
+    if (server->hasArg("mindeptime"))
+    {
+        config->minDepartureTime = server->arg("mindeptime").toInt();
+        if (config->minDepartureTime < 0)
+            config->minDepartureTime = 0;
+        if (config->minDepartureTime > 30)
+            config->minDepartureTime = 30;
+    }
+
+    // Brightness
+    if (server->hasArg("brightness"))
+    {
+        config->brightness = server->arg("brightness").toInt();
+        if (config->brightness < 0)
+            config->brightness = 0;
+        if (config->brightness > 255)
+            config->brightness = 255;
+    }
+
+    // Language
+    if (server->hasArg("language"))
+    {
+        String lang = server->arg("language");
+        if (lang == "cs" || lang == "de" || lang == "en")
+        {
+            strlcpy(config->language, lang.c_str(), sizeof(config->language));
+        }
+        else
+        {
+            strlcpy(config->language, "en", sizeof(config->language));
+        }
+    }
+
+    // Debug mode checkbox (unchecked = not present in POST data)
+    config->debugMode = server->hasArg("debugmode");
+
+    // Show platform checkbox (unchecked = not present in POST data)
+    config->showPlatform = server->hasArg("showplatform");
+
+    // Scrolling checkbox (unchecked = not present in POST data)
+    config->scrollEnabled = server->hasArg("scrollenabled");
+
+    // Line color map (always update when not in AP mode to handle empty case)
+    if (!apModeActive)
+    {
+        // Get the value, defaulting to empty string if not present
+        String colorMapValue = server->hasArg("linecolormap")
+                               ? server->arg("linecolormap")
+                               : "";
+
+        strlcpy(config->lineColorMap, colorMapValue.c_str(), sizeof(config->lineColorMap));
+
+        // Log configuration
+        logTimestamp();
+        Serial.print("Line color map updated: ");
+        Serial.println(strlen(config->lineColorMap) > 0 ? config->lineColorMap : "(empty - using defaults)");
+    }
+
+    // Rest mode periods
+    if (server->hasArg("restperiods"))
+    {
+        String restPeriods = server->arg("restperiods");
+
+        if (restPeriods.length() < sizeof(config->restModePeriods))
+        {
+            strlcpy(config->restModePeriods, restPeriods.c_str(), sizeof(config->restModePeriods));
+        }
+        else
+        {
+            logTimestamp();
+            debugPrintln("RestMode: Config string too long, truncating");
+            strlcpy(config->restModePeriods, restPeriods.c_str(), sizeof(config->restModePeriods));
+        }
+    }
+}
+
+void ConfigWebServer::parsePragueSettings(Config* config)
+{
+    String selectedCity = String(config->city);
+
+    if (server->hasArg("apikey") && server->arg("apikey").length() > 0)
+    {
+        String apiKeyValue = server->arg("apikey");
+        // Only save if it's not the placeholder dots (visual feedback, not actual key)
+        if (apiKeyValue != "****" && selectedCity == "Prague")
+        {
+            strlcpy(config->pragueApiKey, apiKeyValue.c_str(), sizeof(config->pragueApiKey));
+        }
+    }
+
+    if (server->hasArg("stops") && selectedCity == "Prague")
+    {
+        String stops = server->arg("stops");
+        strlcpy(config->pragueStopIds, stops.c_str(), sizeof(config->pragueStopIds));
+    }
+}
+
+void ConfigWebServer::parseBerlinSettings(Config* config)
+{
+    String selectedCity = String(config->city);
+
+    if (server->hasArg("stops") && selectedCity == "Berlin")
+    {
+        String stops = server->arg("stops");
+        strlcpy(config->berlinStopIds, stops.c_str(), sizeof(config->berlinStopIds));
+    }
+}
+
+void ConfigWebServer::parseMqttSettings(Config* config)
+{
+    String selectedCity = String(config->city);
+
+    // Only parse MQTT settings if city is MQTT
+    if (selectedCity != "MQTT")
+        return;
+
+    if (server->hasArg("mqttBroker"))
+        strlcpy(config->mqttBroker, server->arg("mqttBroker").c_str(), sizeof(config->mqttBroker));
+
+    if (server->hasArg("mqttPort"))
+    {
+        config->mqttPort = server->arg("mqttPort").toInt();
+        if (config->mqttPort < 1) config->mqttPort = 1;
+        if (config->mqttPort > 65535) config->mqttPort = 65535;
+    }
+
+    if (server->hasArg("mqttUser"))
+        strlcpy(config->mqttUsername, server->arg("mqttUser").c_str(), sizeof(config->mqttUsername));
+
+    if (server->hasArg("mqttPass"))
+        strlcpy(config->mqttPassword, server->arg("mqttPass").c_str(), sizeof(config->mqttPassword));
+
+    if (server->hasArg("mqttReqTopic"))
+        strlcpy(config->mqttRequestTopic, server->arg("mqttReqTopic").c_str(), sizeof(config->mqttRequestTopic));
+
+    if (server->hasArg("mqttRespTopic"))
+        strlcpy(config->mqttResponseTopic, server->arg("mqttRespTopic").c_str(), sizeof(config->mqttResponseTopic));
+
+    if (server->hasArg("mqttEtaMode"))
+        config->mqttUseEtaMode = (server->arg("mqttEtaMode") == "1");
+
+    // Parse JSON field mappings
+    if (server->hasArg("mqttFldLine"))
+        strlcpy(config->mqttFieldLine, server->arg("mqttFldLine").c_str(), sizeof(config->mqttFieldLine));
+
+    if (server->hasArg("mqttFldDest"))
+        strlcpy(config->mqttFieldDestination, server->arg("mqttFldDest").c_str(), sizeof(config->mqttFieldDestination));
+
+    if (server->hasArg("mqttFldEta"))
+        strlcpy(config->mqttFieldEta, server->arg("mqttFldEta").c_str(), sizeof(config->mqttFieldEta));
+
+    if (server->hasArg("mqttFldTime"))
+        strlcpy(config->mqttFieldTimestamp, server->arg("mqttFldTime").c_str(), sizeof(config->mqttFieldTimestamp));
+
+    if (server->hasArg("mqttFldPlat"))
+        strlcpy(config->mqttFieldPlatform, server->arg("mqttFldPlat").c_str(), sizeof(config->mqttFieldPlatform));
+
+    if (server->hasArg("mqttFldAC"))
+        strlcpy(config->mqttFieldAC, server->arg("mqttFldAC").c_str(), sizeof(config->mqttFieldAC));
+}
+
+void ConfigWebServer::parseWeatherSettings(Config* config)
+{
+    // Weather enabled checkbox
+    config->weatherEnabled = server->hasArg("weather_enabled");
+
+    // Latitude
+    if (server->hasArg("weather_lat"))
+    {
+        String latStr = server->arg("weather_lat");
+        // Replace comma with dot for decimal separator (locale compatibility)
+        latStr.replace(",", ".");
+        config->weatherLatitude = latStr.toFloat();
+        // Validate latitude range
+        if (config->weatherLatitude < -90.0f)
+            config->weatherLatitude = -90.0f;
+        if (config->weatherLatitude > 90.0f)
+            config->weatherLatitude = 90.0f;
+    }
+
+    // Longitude
+    if (server->hasArg("weather_lon"))
+    {
+        String lonStr = server->arg("weather_lon");
+        // Replace comma with dot for decimal separator (locale compatibility)
+        lonStr.replace(",", ".");
+        config->weatherLongitude = lonStr.toFloat();
+        // Validate longitude range
+        if (config->weatherLongitude < -180.0f)
+            config->weatherLongitude = -180.0f;
+        if (config->weatherLongitude > 180.0f)
+            config->weatherLongitude = 180.0f;
+    }
+
+    // Refresh interval
+    if (server->hasArg("weather_refresh"))
+    {
+        config->weatherRefreshInterval = server->arg("weather_refresh").toInt();
+        // Clamp to 10-60 minutes
+        if (config->weatherRefreshInterval < 10)
+            config->weatherRefreshInterval = 10;
+        if (config->weatherRefreshInterval > 60)
+            config->weatherRefreshInterval = 60;
+    }
 }
 
 void ConfigWebServer::handleRefresh()
@@ -730,30 +717,8 @@ void ConfigWebServer::handleCheckUpdate()
     // Check for updates
     GitHubOTA::ReleaseInfo info = githubOTA->checkForUpdate(FIRMWARE_RELEASE);
 
-    // Build JSON response with properly escaped strings
-    String json = "{";
-
-    if (info.hasError)
-    {
-        json += "\"available\":false,";
-        json += "\"error\":\"" + escapeJsonString(info.errorMsg) + "\"";
-    }
-    else if (info.available)
-    {
-        json += "\"available\":true,";
-        json += "\"releaseNumber\":" + String(info.releaseNumber) + ",";
-        json += "\"releaseName\":\"" + escapeJsonString(info.releaseName) + "\",";
-        json += "\"releaseNotes\":\"" + escapeJsonString(info.releaseNotes) + "\",";
-        json += "\"fileName\":\"" + escapeJsonString(info.assetName) + "\",";
-        json += "\"fileSize\":" + String(info.assetSize) + ",";
-        json += "\"assetUrl\":\"" + escapeJsonString(info.assetUrl) + "\"";
-    }
-    else
-    {
-        json += "\"available\":false";
-    }
-
-    json += "}";
+    // Build JSON response using ApiHandlers
+    String json = buildCheckUpdateJson(info);
 
     server->send(200, "application/json", json);
 }
@@ -993,270 +958,47 @@ void ConfigWebServer::handleDisplayStateAPI()
 
     // Get current display data
     const Departure* departures = displayManager->getCurrentDepartures();
+    int numToDisplay = displayManager->getCurrentNumToDisplay();
     int departureCount = displayManager->getCurrentDepartureCount();
     const WeatherData* weather = displayManager->getWeatherData();
 
-    // Build JSON response
-    String json = "{";
-    json += "\"success\":true,";
-    json += "\"timestamp\":" + String(millis()) + ",";
+    // Limit to actual display capacity (max 3 rows, or numToDisplay if less)
+    int rowsToShow = (departureCount < numToDisplay) ? departureCount : numToDisplay;
+    if (rowsToShow > 3)
+        rowsToShow = 3;
 
-    // Current time
-    time_t now = time(nullptr);
-    struct tm* timeinfo = localtime(&now);
-    char timeStr[32];
-    strftime(timeStr, sizeof(timeStr), "%a %d.%b %H:%M", timeinfo);
-    json += "\"time\":\"" + String(timeStr) + "\",";
-
-    // Weather (if enabled and available)
-    if (weather && weather->temperature != 0)
+    // Check if API key is configured based on city
+    bool apiKeyConfigured = false;
+    if (currentConfig)
     {
-        json += "\"weather\":{";
-        json += "\"temp\":" + String(weather->temperature) + ",";
-        json += "\"code\":" + String(weather->weatherCode);
-        json += "},";
+        if (strcmp(currentConfig->city, "Prague") == 0)
+        {
+            apiKeyConfigured = (currentConfig->pragueApiKey[0] != '\0' && currentConfig->pragueStopIds[0] != '\0');
+        }
+        else if (strcmp(currentConfig->city, "Berlin") == 0)
+        {
+            apiKeyConfigured = (currentConfig->berlinStopIds[0] != '\0');
+        }
+        else if (strcmp(currentConfig->city, "MQTT") == 0)
+        {
+            apiKeyConfigured = (currentConfig->mqttBroker[0] != '\0');
+        }
     }
 
-    // Departures array
-    json += "\"departures\":[";
-    for (int i = 0; i < departureCount; i++)
-    {
-        if (i > 0)
-            json += ",";
-        json += "{";
-        json += "\"line\":\"" + String(departures[i].line) + "\",";
-        json += "\"destination\":\"" + String(departures[i].destination) + "\",";
-        json += "\"eta\":" + String(departures[i].eta) + ",";
-        json += "\"hasAC\":" + String(departures[i].hasAC ? "true" : "false") + ",";
-        json += "\"isDelayed\":" + String(departures[i].isDelayed ? "true" : "false");
-        json += "}";
-    }
-    json += "]";
-
-    json += "}";
+    // Build JSON response using ApiHandlers
+    String json = buildDisplayStateJson(
+        departures, rowsToShow, weather,
+        apModeActive, wifiConnected, apiKeyConfigured,
+        apiError, apiErrorMsg, demoModeActive,
+        restModeActive, restModeManual, departureCount,
+        stopName, apSSID, apPassword
+    );
 
     server->send(200, "application/json", json);
 }
 
 void ConfigWebServer::handlePreviewPage()
 {
-    String html = FPSTR(HTML_HEADER);
-    html += "<h1>Display Preview</h1>";
-    html += "<p style='text-align:center; color:#888; margin-top:-10px; margin-bottom:20px;'>Live view of LED matrix display</p>";
-
-    // CSS Styles for LED Matrix Replica
-    html += "<style>";
-    html += ".led-display { ";
-    html += "  background: #000; ";
-    html += "  border: 3px solid #333; ";
-    html += "  padding: 10px; ";
-    html += "  margin: 20px auto; ";
-    html += "  max-width: 800px; ";
-    html += "  font-family: 'Courier New', monospace; ";
-    html += "  box-shadow: 0 0 20px rgba(0,0,0,0.5); ";
-    html += "}";
-    html += ".led-row { ";
-    html += "  display: flex; ";
-    html += "  align-items: center; ";
-    html += "  height: 40px; ";
-    html += "  margin: 2px 0; ";
-    html += "  padding: 4px 8px; ";
-    html += "}";
-    html += ".led-line-box { ";
-    html += "  min-width: 45px; ";
-    html += "  height: 28px; ";
-    html += "  background: #000; ";
-    html += "  border: 1px solid #333; ";
-    html += "  display: flex; ";
-    html += "  align-items: center; ";
-    html += "  justify-content: center; ";
-    html += "  font-size: 14px; ";
-    html += "  font-weight: bold; ";
-    html += "  margin-right: 8px; ";
-    html += "  text-shadow: 0 0 3px currentColor; ";
-    html += "}";
-    html += ".led-destination { ";
-    html += "  flex: 1; ";
-    html += "  color: #fff; ";
-    html += "  font-size: 14px; ";
-    html += "  white-space: nowrap; ";
-    html += "  overflow: hidden; ";
-    html += "  text-overflow: ellipsis; ";
-    html += "  text-shadow: 0 0 2px #fff; ";
-    html += "}";
-    html += ".led-eta { ";
-    html += "  color: #fff; ";
-    html += "  font-size: 14px; ";
-    html += "  font-weight: bold; ";
-    html += "  margin-left: auto; ";
-    html += "  padding-left: 10px; ";
-    html += "  text-shadow: 0 0 2px #fff; ";
-    html += "}";
-    html += ".led-status { ";
-    html += "  display: flex; ";
-    html += "  justify-content: space-between; ";
-    html += "  color: #fff; ";
-    html += "  font-size: 12px; ";
-    html += "  padding: 8px; ";
-    html += "  border-top: 1px solid #333; ";
-    html += "  text-shadow: 0 0 2px #fff; ";
-    html += "}";
-
-    // Color classes for line boxes
-    html += ".color-red { color: #ff0000; }";
-    html += ".color-green { color: #00ff00; }";
-    html += ".color-blue { color: #0000ff; }";
-    html += ".color-yellow { color: #ffff00; }";
-    html += ".color-orange { color: #ff8800; }";
-    html += ".color-purple { color: #aa00ff; }";
-    html += ".color-cyan { color: #00ffff; }";
-    html += ".color-white { color: #ffffff; }";
-
-    // ETA color classes
-    html += ".eta-normal { color: #ffffff; }";
-    html += ".eta-soon { color: #ffff00; }";
-    html += ".eta-urgent { color: #ff0000; }";
-    html += ".eta-delayed { color: #ff8800; }";
-
-    // Weather colors
-    html += ".weather-cold { color: #0088ff; }";
-    html += ".weather-mild { color: #ffffff; }";
-    html += ".weather-warm { color: #ffff00; }";
-    html += ".weather-hot { color: #ff0000; }";
-
-    html += ".controls { text-align: center; margin: 20px; }";
-    html += ".controls button { ";
-    html += "  padding: 10px 20px; ";
-    html += "  margin: 5px; ";
-    html += "  font-size: 14px; ";
-    html += "  cursor: pointer; ";
-    html += "  background: #2ed573; ";
-    html += "  color: #000; ";
-    html += "  border: none; ";
-    html += "  border-radius: 8px; ";
-    html += "}";
-    html += ".controls button:hover { background: #26de81; }";
-    html += "#status { text-align: center; color: #888; margin: 10px; }";
-    html += "</style>";
-
-    // LED Display Container
-    html += "<div class='led-display' id='ledDisplay'>";
-    html += "<div id='departureRows'></div>";
-    html += "<div class='led-status' id='statusBar'></div>";
-    html += "</div>";
-
-    // Controls
-    html += "<div class='controls'>";
-    html += "<button onclick='toggleAutoRefresh()' id='toggleBtn'>Pause</button>";
-    html += "<button onclick='location.href=\"/\"'>Back to Dashboard</button>";
-    html += "</div>";
-    html += "<p id='status'>Loading...</p>";
-
-    // JavaScript
-    html += "<script>";
-
-    // Color mapping function (matches DisplayColors.cpp logic)
-    html += "function getLineColor(line) {";
-    html += "  if (line === 'A') return 'green';";
-    html += "  if (line === 'B') return 'yellow';";
-    html += "  if (line === 'C') return 'red';";
-    html += "  if (/^S\\d+$/.test(line)) return 'blue';";  // S-trains
-    html += "  if (/^9[1-9]$/.test(line)) return 'cyan';";  // Night trams
-    html += "  if (/^[1-2]\\d$/.test(line)) return 'white';";  // Trams
-    html += "  if (/^(5[0-9]|[1-2]\\d\\d)$/.test(line)) return 'purple';";  // Buses
-    html += "  if (/^9\\d\\d$/.test(line)) return 'cyan';";  // Night buses
-    html += "  return 'yellow';";  // Default
-    html += "}";
-
-    // ETA color function
-    html += "function getEtaColor(eta, isDelayed) {";
-    html += "  if (isDelayed) return 'eta-delayed';";
-    html += "  if (eta < 2) return 'eta-urgent';";
-    html += "  if (eta <= 5) return 'eta-soon';";
-    html += "  return 'eta-normal';";
-    html += "}";
-
-    // Weather color function
-    html += "function getWeatherTempColor(temp) {";
-    html += "  if (temp < 8) return 'weather-cold';";
-    html += "  if (temp <= 16) return 'weather-mild';";
-    html += "  if (temp <= 25) return 'weather-warm';";
-    html += "  return 'weather-hot';";
-    html += "}";
-
-    // Weather icon mapping (using emoji approximations)
-    html += "function getWeatherIcon(code) {";
-    html += "  if (code === 0) return '\\u2600';";  // Clear sky - sun
-    html += "  if (code <= 3) return '\\u2601';";  // Cloudy
-    html += "  if (code <= 48) return '\\u2248';";  // Fog - approximately equal
-    html += "  if (code <= 57) return '\\u2022';";  // Drizzle - bullet
-    html += "  if (code <= 67) return '\\u2248';";  // Rain - approximately equal
-    html += "  if (code <= 86) return '\\u2744';";  // Snow
-    html += "  if (code >= 95) return '\\u26C8';";  // Thunderstorm
-    html += "  return '\\u2601';";  // Default cloudy
-    html += "}";
-
-    // Update display function
-    html += "async function updateDisplay() {";
-    html += "  try {";
-    html += "    const response = await fetch('/api/display-state');";
-    html += "    const data = await response.json();";
-    html += "    if (!data.success) throw new Error('API call failed');";
-
-    // Render departures
-    html += "    const rowsHtml = data.departures.map(dep => {";
-    html += "      const color = getLineColor(dep.line);";
-    html += "      const etaColor = getEtaColor(dep.eta, dep.isDelayed);";
-    html += "      const etaText = dep.eta < 1 ? '<1' : dep.eta;";
-    html += "      const acIndicator = dep.hasAC ? '*' : '';";
-    html += "      return `<div class='led-row'>` +";
-    html += "        `<div class='led-line-box color-${color}'>${dep.line}</div>` +";
-    html += "        `<div class='led-destination'>${dep.destination}${acIndicator}</div>` +";
-    html += "        `<div class='led-eta ${etaColor}'>${etaText}\\'</div>` +";
-    html += "      `</div>`;";
-    html += "    }).join('');";
-    html += "    document.getElementById('departureRows').innerHTML = rowsHtml;";
-
-    // Render status bar
-    html += "    let statusHtml = `<span>${data.time}</span>`;";
-    html += "    if (data.weather) {";
-    html += "      const icon = getWeatherIcon(data.weather.code);";
-    html += "      const tempColor = getWeatherTempColor(data.weather.temp);";
-    html += "      statusHtml += `<span>${icon} <span class='${tempColor}'>${data.weather.temp}\u00B0</span></span>`;";
-    html += "    }";
-    html += "    document.getElementById('statusBar').innerHTML = statusHtml;";
-
-    html += "    document.getElementById('status').textContent = 'Updated: ' + new Date().toLocaleTimeString();";
-    html += "    document.getElementById('status').style.color = '#2ed573';";
-    html += "  } catch (err) {";
-    html += "    document.getElementById('status').textContent = 'Error: ' + err.message;";
-    html += "    document.getElementById('status').style.color = '#ff6b6b';";
-    html += "  }";
-    html += "}";
-
-    // Auto-refresh logic
-    html += "let autoRefresh = true;";
-    html += "let refreshInterval = null;";
-    html += "function toggleAutoRefresh() {";
-    html += "  autoRefresh = !autoRefresh;";
-    html += "  const btn = document.getElementById('toggleBtn');";
-    html += "  btn.textContent = autoRefresh ? 'Pause' : 'Resume';";
-    html += "  if (autoRefresh) startAutoRefresh(); else stopAutoRefresh();";
-    html += "}";
-    html += "function startAutoRefresh() {";
-    html += "  if (refreshInterval) clearInterval(refreshInterval);";
-    html += "  refreshInterval = setInterval(updateDisplay, 3000);";
-    html += "}";
-    html += "function stopAutoRefresh() {";
-    html += "  if (refreshInterval) clearInterval(refreshInterval);";
-    html += "}";
-
-    // Initialize
-    html += "updateDisplay();";
-    html += "startAutoRefresh();";
-    html += "</script>";
-
-    html += FPSTR(HTML_FOOTER);
-
+    String html = buildPreviewPage();
     server->send(200, "text/html", html);
 }

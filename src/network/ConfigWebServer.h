@@ -150,6 +150,14 @@ class ConfigWebServer
     void handlePreviewPage(); // GET: live preview HTML page
     void handleNotFound();
 
+    // Config parsing helpers (for handleSave refactoring)
+    void parseWifiSettings(Config* config, bool* wifiChanged);
+    void parseGeneralSettings(Config* config, bool* cityChanged);
+    void parsePragueSettings(Config* config);
+    void parseBerlinSettings(Config* config);
+    void parseMqttSettings(Config* config);
+    void parseWeatherSettings(Config* config);
+
     // OTA progress callbacks (static for use as function pointers)
     static void otaProgressCallback(size_t progress, size_t total);
     static void githubOtaProgressCallback(size_t progress, size_t total);
