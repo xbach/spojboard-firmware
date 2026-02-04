@@ -26,19 +26,20 @@ jobs:
         python -m pip install --upgrade pip
         pip install platformio
 
-    - name: Build firmware
-      run: pio run
+    - name: Build firmware (all variants)
+      run: |
+        echo "Building all hardware variants..."
+        pio run -e matrixportal_s3
+        pio run -e esp32_s3_n8r2
 
     - name: Get release number from tag
       id: get_version
       run: echo "RELEASE_NUM=${GITHUB_REF#refs/tags/r}" >> $GITHUB_OUTPUT
 
-    - name: Find firmware binary
-      id: find_binary
+    - name: List firmware binaries
       run: |
-        FIRMWARE_FILE=$(ls dist/spojboard-r*.bin | head -n 1)
-        echo "FIRMWARE_PATH=$FIRMWARE_FILE" >> $GITHUB_OUTPUT
-        echo "FIRMWARE_NAME=$(basename $FIRMWARE_FILE)" >> $GITHUB_OUTPUT
+        echo "Built firmware files:"
+        ls -lh dist/*.bin
 
     - name: Extract changelog for this release
       id: changelog
@@ -57,7 +58,7 @@ jobs:
     - name: Create Release
       uses: softprops/action-gh-release@v1
       with:
-        files: ${{ steps.find_binary.outputs.FIRMWARE_PATH }}
+        files: dist/*.bin
         name: Release ${{ steps.get_version.outputs.RELEASE_NUM }}
         body_path: ${{ steps.changelog.outputs.NOTES_FILE }}
         draft: false

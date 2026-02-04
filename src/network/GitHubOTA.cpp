@@ -1,4 +1,5 @@
 #include "GitHubOTA.h"
+#include "../config/AppConfig.h"
 #include "../utils/Logger.h"
 #include <Update.h>
 #include <WiFi.h>
@@ -31,10 +32,48 @@ int GitHubOTA::parseReleaseNumber(const char* tagName)
     return releaseNum;
 }
 
+bool GitHubOTA::extractVariantFromFilename(const char* filename, char* variant, size_t variantSize)
+{
+    // Expected format: spojboard-{variant}-r{number}-{8hex}.bin
+    // Example: spojboard-matrixportal_s3-r4-a1b2c3d4.bin
+
+    if (!filename || !variant)
+    {
+        return false;
+    }
+
+    // Find "spojboard-" prefix
+    const char* start = strstr(filename, "spojboard-");
+    if (!start)
+    {
+        return false;
+    }
+
+    start += 10; // Skip "spojboard-"
+
+    // Find next "-r" which marks end of variant
+    const char* end = strstr(start, "-r");
+    if (!end)
+    {
+        return false;
+    }
+
+    // Extract variant name
+    int len = end - start;
+    if (len <= 0 || (size_t)len >= variantSize)
+    {
+        return false;
+    }
+
+    strncpy(variant, start, len);
+    variant[len] = '\0';
+    return true;
+}
+
 bool GitHubOTA::validateFirmwareFilename(const char* filename)
 {
-    // Expected format: spojboard-r{number}-{8hex}.bin
-    // Example: spojboard-r1-a1b2c3d4.bin
+    // Expected format: spojboard-{variant}-r{number}-{8hex}.bin
+    // Example: spojboard-matrixportal_s3-r4-a1b2c3d4.bin
 
     if (!filename)
     {
@@ -42,19 +81,38 @@ bool GitHubOTA::validateFirmwareFilename(const char* filename)
     }
 
     // Check prefix
-    if (strncmp(filename, "spojboard-r", 11) != 0)
+    if (strncmp(filename, "spojboard-", 10) != 0)
     {
+        return false;
+    }
+
+    // Extract and validate variant
+    char fileVariant[32] = {0};
+    if (!extractVariantFromFilename(filename, fileVariant, sizeof(fileVariant)))
+    {
+        return false;
+    }
+
+    // Verify variant matches current hardware
+    if (strcmp(fileVariant, VARIANT_NAME) != 0)
+    {
+        logTimestamp();
+        Serial.print("Firmware variant mismatch: file is for '");
+        Serial.print(fileVariant);
+        Serial.print("', you have '");
+        Serial.print(VARIANT_NAME);
+        Serial.println("'");
         return false;
     }
 
     // Check .bin extension
     size_t len = strlen(filename);
-    if (len < 17 || strcmp(filename + len - 4, ".bin") != 0)
+    if (len < 20 || strcmp(filename + len - 4, ".bin") != 0)
     {
         return false;
     }
 
-    // Basic validation passed
+    // Validation passed
     return true;
 }
 
@@ -252,7 +310,39 @@ bool GitHubOTA::downloadAndInstall(const char* assetUrl, size_t expectedSize, Pr
         return false;
     }
 
+    // Extract filename from URL for variant validation
+    const char* lastSlash = strrchr(assetUrl, '/');
+    const char* filename = lastSlash ? lastSlash + 1 : assetUrl;
+
+    // Validate hardware variant matches firmware
+    char fileVariant[32] = {0};
+    if (!extractVariantFromFilename(filename, fileVariant, sizeof(fileVariant)))
+    {
+        logTimestamp();
+        Serial.println("Download Error: Invalid firmware filename format");
+        return false;
+    }
+
+    if (strcmp(fileVariant, VARIANT_NAME) != 0)
+    {
+        logTimestamp();
+        Serial.println("===========================================");
+        Serial.println("DOWNLOAD BLOCKED: HARDWARE MISMATCH!");
+        Serial.println("===========================================");
+        Serial.print("Firmware file is for: ");
+        Serial.println(fileVariant);
+        Serial.print("Your hardware is: ");
+        Serial.println(VARIANT_DISPLAY_NAME);
+        Serial.println("");
+        Serial.println("Flashing wrong firmware could damage hardware.");
+        Serial.println("Download cancelled for safety.");
+        Serial.println("===========================================");
+        return false;
+    }
+
     logTimestamp();
+    Serial.print("Hardware variant verified: ");
+    Serial.println(VARIANT_DISPLAY_NAME);
     Serial.print("Downloading firmware from: ");
     Serial.println(assetUrl);
 

@@ -79,10 +79,19 @@ class GitHubOTA
 
     /**
      * Validate firmware filename format
-     * @param filename Filename to check (e.g., "spojboard-r2-a1b2c3d4.bin")
+     * @param filename Filename to check (e.g., "spojboard-matrixportal_s3-r2-a1b2c3d4.bin")
      * @return true if format is valid
      */
     bool validateFirmwareFilename(const char* filename);
+
+    /**
+     * Extract hardware variant from filename
+     * @param filename Firmware filename (e.g., "spojboard-matrixportal_s3-r4-hash.bin")
+     * @param variant Output buffer for variant name
+     * @param variantSize Size of variant buffer
+     * @return true if variant extracted successfully
+     */
+    bool extractVariantFromFilename(const char* filename, char* variant, size_t variantSize);
 
     /**
      * Set error message

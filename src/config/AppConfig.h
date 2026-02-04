@@ -16,6 +16,21 @@
 #endif
 
 // ============================================================================
+// Hardware Variant Identification
+// ============================================================================
+// These are set by platformio.ini build_flags per environment
+#ifndef HARDWARE_VARIANT
+#define HARDWARE_VARIANT 1                         // Default to MatrixPortal S3
+#define HARDWARE_NAME "matrixportal_s3"            // Filesystem-safe name
+#define HARDWARE_DISPLAY_NAME "MatrixPortal-S3"    // Human-readable name
+#endif
+
+// Export variant info
+#define FIRMWARE_VARIANT HARDWARE_VARIANT
+#define VARIANT_NAME HARDWARE_NAME
+#define VARIANT_DISPLAY_NAME HARDWARE_DISPLAY_NAME
+
+// ============================================================================
 // GitHub OTA Configuration
 // ============================================================================
 #define GITHUB_REPO_OWNER "xbach"
@@ -28,14 +43,51 @@
 #define PANEL_HEIGHT 32
 #define PANELS_NUMBER 2 // 128x32 total
 
-// Pin Mapping for Adafruit MatrixPortal ESP32-S3
+// ============================================================================
+// Pin Mapping - Hardware Variant Specific
+// ============================================================================
+// MatrixPortal S3 has non-standard HUB75 connector (green/blue reversed)
+// Generic ESP32-S3 boards use standard HUB75 pinout
+//
+// This allows users to use standard HUB75 cables without rewiring
+
+#if HARDWARE_VARIANT == 1
+// ────────────────────────────────────────────────────────────────────────────
+// Adafruit MatrixPortal ESP32-S3 (Non-standard HUB75 connector)
+// ────────────────────────────────────────────────────────────────────────────
+#define R1_PIN 42
+#define G1_PIN 40  // MatrixPortal: Green on pin position 2
+#define B1_PIN 41  // MatrixPortal: Blue on pin position 3
+#define R2_PIN 38
+#define G2_PIN 37  // MatrixPortal: Green on pin position 6
+#define B2_PIN 39  // MatrixPortal: Blue on pin position 7
+
+#elif HARDWARE_VARIANT == 2
+// ────────────────────────────────────────────────────────────────────────────
+// Generic ESP32-S3 N8R2 DevKit (Standard HUB75 pinout)
+// ────────────────────────────────────────────────────────────────────────────
+#define R1_PIN 42
+#define G1_PIN 41  // Standard: Green expects GPIO for blue position
+#define B1_PIN 40  // Standard: Blue expects GPIO for green position
+#define R2_PIN 38
+#define G2_PIN 39  // Standard: Green expects GPIO for blue position
+#define B2_PIN 37  // Standard: Blue expects GPIO for green position
+
+#else
+// ────────────────────────────────────────────────────────────────────────────
+// Fallback: Use MatrixPortal S3 pins
+// ────────────────────────────────────────────────────────────────────────────
 #define R1_PIN 42
 #define G1_PIN 40
 #define B1_PIN 41
 #define R2_PIN 38
 #define G2_PIN 37
 #define B2_PIN 39
+#endif
 
+// ============================================================================
+// Address and Control Pins (Same for all variants)
+// ============================================================================
 #define A_PIN 45
 #define B_PIN 36
 #define C_PIN 48
@@ -124,5 +176,19 @@ void saveConfig(const Config &config);
  * Resets device to factory defaults - will boot into AP mode on next restart
  */
 void clearConfig();
+
+/**
+ * Verify that firmware matches hardware variant
+ * On first boot, stores hardware variant to NVS
+ * On subsequent boots, checks if stored variant matches compiled variant
+ * @return true if hardware matches, false if mismatch detected
+ */
+bool verifyHardware();
+
+/**
+ * Get stored hardware variant from NVS
+ * @return Hardware variant ID (1=MatrixPortal-S3, 2=ESP32-S3-N8R2), or -1 if not set
+ */
+int getStoredHardwareVariant();
 
 #endif // APPCONFIG_H

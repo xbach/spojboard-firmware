@@ -375,6 +375,17 @@ void setup()
     Serial.println("║   Smart Panel for Onward Journeys     ║");
     Serial.println("╚═══════════════════════════════════════╝\n");
 
+    // CRITICAL: Verify firmware matches hardware variant
+    if (!verifyHardware())
+    {
+        Serial.println("\nHalting to prevent potential hardware damage.");
+        Serial.println("Please flash the correct firmware for your board.\n");
+        while (1)
+        {
+            delay(1000); // Halt forever
+        }
+    }
+
     logMemory("boot");
 
     // Load configuration FIRST (needed for display brightness)

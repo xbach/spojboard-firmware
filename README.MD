@@ -11,10 +11,10 @@ Standalone operation with web-based configuration, no external server required f
 
 ## Documentation
 
+- **[Wiring Guide](docs/WIRING.md)** - HUB75 pin mapping for all supported hardware variants
 - **[MQTT Integration Guide](docs/MQTT.md)** - Home Assistant integration, custom data sources, and dual filtering setup
 - **[Architecture & Data Flow](docs/ARCHITECTURE.md)** - Technical details, pipeline flow, and design rationale
 - **[Font System](docs/FONTS.md)** - Czech character support and custom font creation guide
-- **[Hardware Guide for Generic ESP32-S3](docs/GENERIC_ESP32S3.md)** - Alternative hardware setup
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
 
 ## Features
@@ -42,22 +42,32 @@ Standalone operation with web-based configuration, no external server required f
 
 ## Hardware
 
-### Recommended Setup
+SpojBoard supports two hardware variants. The firmware automatically detects and configures the correct pin mapping - just flash the right firmware for your board.
 
-- **Controller**: Adafruit MatrixPortal ESP32-S3
-- **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total resolution)
-- **Power Supply**: Minimum 5V 3A switching power supply
-  - Can also be powered by a 5V 3A USB-C charger: wire the power cables from the displays to MatrixPortal's 5V/GND terminals and power through its USB-C port.
+### Supported Hardware
 
-### Alternative: Generic ESP32-S3
+| Variant | Board | Firmware File | Wiring |
+|---------|-------|---------------|--------|
+| **MatrixPortal S3** | Adafruit MatrixPortal ESP32-S3 | `spojboard-matrixportal_s3-r*.bin` | Plug & play |
+| **ESP32-S3 N8R2** | Generic ESP32-S3 DevKitC (8MB Flash, 2MB PSRAM) | `spojboard-esp32_s3_n8r2-r*.bin` | Manual wiring |
 
-SpojBoard firmware can also run on generic ESP32-S3 development boards with custom wiring. See [Generic ESP32-S3 Guide](docs/GENERIC_ESP32S3.md) for details.
+### Option 1: MatrixPortal S3 (Recommended)
 
-**Caveats:**
-- Requires manual GPIO pin mapping configuration
-- Needs custom wiring (no plug-and-play connector)
-- May require level shifters for some displays
-- Cost savings: ~$10-20 per unit
+- **Board**: [Adafruit MatrixPortal ESP32-S3](https://www.adafruit.com/product/5778)
+- **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total)
+- **Power**: 5V 3A via USB-C or screw terminals
+- **Wiring**: Built-in HUB75 connector - just plug in your panels
+
+### Option 2: Generic ESP32-S3 N8R2
+
+- **Board**: ESP32-S3-DevKitC-1 or similar (8MB flash minimum)
+- **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total)
+- **Power**: External 5V 4A+ supply (panels powered separately)
+- **Wiring**: Standard HUB75 rainbow cable to GPIO pins
+
+**→ See [Wiring Guide](docs/WIRING.md) for complete pinout and connection instructions.**
+
+✅ **No code changes required** - the firmware automatically handles pin mapping differences between boards. Just use standard HUB75 cables.
 
 ### Power Supply Requirements
 
@@ -343,7 +353,9 @@ Check for and install new releases directly from GitHub:
 
 Upload a firmware .bin file manually:
 
-1. **Get the firmware file** (e.g., `spojboard-r2-abc12345.bin`)
+1. **Get the firmware file** for your hardware variant:
+   - MatrixPortal S3: `spojboard-matrixportal_s3-r2-abc12345.bin`
+   - ESP32-S3 N8R2: `spojboard-esp32_s3_n8r2-r2-abc12345.bin`
 2. **Open web interface** and click "Update Firmware"
 3. **Select .bin file** and click "Upload Firmware"
 4. **Wait for upload** - progress shown on screen

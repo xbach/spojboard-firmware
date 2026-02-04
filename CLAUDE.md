@@ -13,9 +13,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **SpojBoard** - Smart Panel for Onward Journeys
 
-ESP32-based transit departure display that fetches real-time data from multiple transit APIs. Modular Arduino/PlatformIO project for Adafruit MatrixPortal ESP32-S3 with HUB75 LED matrix panels (128x32 display).
+ESP32-based transit departure display that fetches real-time data from multiple transit APIs. Modular Arduino/PlatformIO project supporting multiple hardware variants with HUB75 LED matrix panels (128x32 display).
 
 **SPOJ** = **S**mart **P**anel for **O**nward **J**ourneys (also "spoj" = connection/service in Czech)
+
+**Supported Hardware:**
+- **MatrixPortal S3** (`matrixportal_s3`) - Adafruit MatrixPortal ESP32-S3 with built-in HUB75 connector
+- **ESP32-S3 N8R2** (`esp32_s3_n8r2`) - Generic ESP32-S3-DevKitC with 8MB flash, manual wiring
 
 **Key Features:**
 - Multi-source support: Prague (Golemio API), Berlin (BVG API), and MQTT (Home Assistant integration)
@@ -40,30 +44,41 @@ ESP32-based transit departure display that fetches real-time data from multiple 
 source ~/code/esp32/venv/bin/activate
 ```
 
-### Building and Uploading
+### Building Firmware
 ```bash
-# Build the project
-pio run
+# Build all hardware variants (output: dist/)
+./build.sh
 
-# Upload to device
-pio run -t upload
+# Build specific variant only
+./build.sh -e matrixportal_s3
+./build.sh -e esp32_s3_n8r2
 
-# Build and upload in one command
-pio run -t upload
+# Clean dist/ before building
+./build.sh -c
 
-# Clean build files
-pio run -t clean
+# Show help
+./build.sh -h
+```
 
-# Monitor serial output (115200 baud)
-pio device monitor
+**Output files:**
+```
+dist/spojboard-matrixportal_s3-r{release}-{buildid}.bin
+dist/spojboard-esp32_s3_n8r2-r{release}-{buildid}.bin
+```
+
+### Uploading to Device
+```bash
+# Upload to connected device (auto-detects environment from board)
+pio run -e matrixportal_s3 -t upload
+pio run -e esp32_s3_n8r2 -t upload
 
 # Upload and monitor
-pio run -t upload && pio device monitor
+pio run -e matrixportal_s3 -t upload && pio device monitor
 ```
 
 ### Debugging
 ```bash
-# Monitor with exception decoder (configured in platformio.ini)
+# Monitor serial output (115200 baud) with exception decoder
 pio device monitor
 
 # Check project configuration
@@ -383,12 +398,44 @@ struct Departure {
 
 Abbreviations are applied in `DepartureData.cpp` before UTF-8 conversion to preserve diacritics.
 
+## Hardware Variants
+
+The firmware supports multiple hardware variants with automatic pin mapping. Each variant is built as a separate firmware binary.
+
+### Variant Configuration (platformio.ini)
+
+```ini
+[env:matrixportal_s3]     # HARDWARE_VARIANT=1
+board = adafruit_matrixportal_esp32s3
+custom_hardware_variant = matrixportal_s3
+
+[env:esp32_s3_n8r2]       # HARDWARE_VARIANT=2
+board = esp32-s3-devkitc-1
+custom_hardware_variant = esp32_s3_n8r2
+```
+
+### Pin Mapping
+
+Pin definitions are in `src/config/AppConfig.h` using compile-time `#if HARDWARE_VARIANT` conditionals:
+
+**MatrixPortal S3** (HARDWARE_VARIANT=1):
+- Built-in HUB75 connector with fixed pin mapping
+- R1=42, G1=40, B1=41, R2=38, G2=37, B2=39
+- A=45, B=36, C=48, D=35, E=21, CLK=2, LAT=47, OE=14
+
+**ESP32-S3 N8R2** (HARDWARE_VARIANT=2):
+- Standard HUB75 wiring to GPIO pins
+- Uses same physical GPIO numbers but swaps G1/B1 and G2/B2 in software
+- Allows standard HUB75 rainbow cables without wire swapping
+
+See `docs/WIRING.md` for complete wiring guide.
+
 ## Hardware Constraints
 
-- **Target board**: `adafruit_matrixportal_esp32s3` (PlatformIO board definition)
 - **WiFi**: 2.4GHz only (ESP32-S3 limitation)
 - **Display**: 2× HUB75 64×32 panels chained (128×32 total resolution)
-- **Memory**: Default partition scheme, ~200KB typical free heap
+- **Memory**: Custom OTA partitions (2MB app0 + 2MB app1), ~200KB typical free heap
+- **Flash**: Minimum 8MB required for OTA updates
 - **Clock speed**: 10MHz I2S for HUB75 communication
 - **USB CDC**: Enabled on boot for serial debugging
 

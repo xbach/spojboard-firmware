@@ -4,7 +4,7 @@ import os
 import re
 
 def post_program_action(source, target, env):
-    """Copy firmware.bin to dist/ with version naming"""
+    """Copy firmware.bin to dist/ with version naming including hardware variant"""
 
     # Extract FIRMWARE_RELEASE from AppConfig.h
     config_path = os.path.join(env.get("PROJECT_DIR"), "src/config/AppConfig.h")
@@ -19,20 +19,24 @@ def post_program_action(source, target, env):
     # Get build ID from environment (set by build_timestamp.py)
     build_id = env.get("FIRMWARE_BUILD_ID", "unknown")
 
+    # Get hardware variant from project environment
+    variant = env.GetProjectOption("custom_hardware_variant", "unknown")
+
     # Source firmware path
     firmware_source = str(target[0])
 
-    # Destination: dist/spojboard-r[release]-[build].bin
+    # Destination: dist/spojboard-{variant}-r{release}-{build}.bin
     dist_dir = os.path.join(env.get("PROJECT_DIR"), "dist")
     os.makedirs(dist_dir, exist_ok=True)
 
-    firmware_name = f"spojboard-r{release_num}-{build_id}.bin"
+    firmware_name = f"spojboard-{variant}-r{release_num}-{build_id}.bin"
     firmware_dest = os.path.join(dist_dir, firmware_name)
 
     # Copy firmware
     shutil.copy2(firmware_source, firmware_dest)
 
     print(f"\n✓ Firmware copied to: dist/{firmware_name}")
+    print(f"  Variant: {variant}")
     print(f"  Release: {release_num}")
     print(f"  Build ID: {build_id}\n")
 

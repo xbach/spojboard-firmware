@@ -118,6 +118,9 @@ String buildDashboardPage(
 
     html += "<p><strong>Free Memory:</strong> " + String(ESP.getFreeHeap()) + " bytes</p>";
 
+    // Hardware and firmware info
+    html += "<p><strong>Hardware:</strong> " + String(VARIANT_DISPLAY_NAME) + "</p>";
+
     // Format firmware version with build ID
     char buildIdStr[10];
     snprintf(buildIdStr, sizeof(buildIdStr), "%08x", BUILD_ID);

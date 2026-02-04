@@ -24,8 +24,10 @@ String buildUpdatePage()
     html += "<h2>Current Firmware</h2>";
     char currentBuildId[10];
     snprintf(currentBuildId, sizeof(currentBuildId), "%08x", BUILD_ID);
+    html += "<p><strong>Hardware:</strong> " + String(VARIANT_DISPLAY_NAME) + "</p>";
     html += "<p><strong>Release:</strong> " + String(FIRMWARE_RELEASE) + "</p>";
     html += "<p><strong>Build ID:</strong> " + String(currentBuildId) + "</p>";
+    html += "<p style='color:#ff9800; font-size:0.9em;'><strong>⚠️ Important:</strong> Only flash firmware for your hardware variant!</p>";
     html += "</div>";
 
     // Upload form

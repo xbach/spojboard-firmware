@@ -180,3 +180,55 @@ void clearConfig()
     logTimestamp();
     debugPrintln("All configuration cleared - device will boot into AP mode on restart");
 }
+
+bool verifyHardware()
+{
+    Preferences preferences;
+    preferences.begin("transport", true); // Read-only first
+    int storedVariant = preferences.getInt("hw_variant", -1);
+    preferences.end();
+
+    if (storedVariant == -1)
+    {
+        // First boot - store the hardware variant
+        preferences.begin("transport", false); // Read-write
+        preferences.putInt("hw_variant", FIRMWARE_VARIANT);
+        preferences.end();
+
+        Serial.println("===========================================");
+        Serial.printf("First boot: Hardware variant stored: %s (%d)\n",
+                      VARIANT_DISPLAY_NAME, FIRMWARE_VARIANT);
+        Serial.println("===========================================");
+        return true;
+    }
+
+    // Check if stored variant matches compiled variant
+    if (storedVariant != FIRMWARE_VARIANT)
+    {
+        Serial.println("===========================================");
+        Serial.println("FATAL ERROR: FIRMWARE-HARDWARE MISMATCH!");
+        Serial.println("===========================================");
+        Serial.printf("This firmware is for: %s (variant %d)\n",
+                      VARIANT_DISPLAY_NAME, FIRMWARE_VARIANT);
+        Serial.printf("This device was initialized with variant %d\n", storedVariant);
+        Serial.println("");
+        Serial.println("DO NOT proceed - this prevents potential damage.");
+        Serial.println("Flash the correct firmware for your hardware.");
+        Serial.println("===========================================");
+        return false;
+    }
+
+    // Variant matches
+    Serial.printf("Hardware verification passed: %s (variant %d)\n",
+                  VARIANT_DISPLAY_NAME, FIRMWARE_VARIANT);
+    return true;
+}
+
+int getStoredHardwareVariant()
+{
+    Preferences preferences;
+    preferences.begin("transport", true); // Read-only
+    int variant = preferences.getInt("hw_variant", -1);
+    preferences.end();
+    return variant;
+}
