@@ -1,0 +1,84 @@
+#include "DisplayController.h"
+#include "DisplayColors.h"
+
+DisplayController::DisplayController(DisplayManager& dm)
+    : displayManager(dm)
+{
+}
+
+void DisplayController::render(const Departure* departures, int departureCount, int numToDisplay,
+                               bool wifiConnected, bool apModeActive,
+                               const char* apSSID, const char* apPassword,
+                               bool apiError, const char* apiErrorMsg,
+                               const char* stopName, bool apiKeyConfigured,
+                               bool demoModeActive, bool restModeActive)
+{
+    // ========================================================================
+    // State Machine: Determine what to display based on priority
+    // ========================================================================
+
+    // Priority 1: Demo mode (overrides everything)
+    if (demoModeActive)
+    {
+        // Demo mode shows custom departures, handled by caller
+        // Controller just passes through to normal departure rendering
+        displayManager.drawDepartures(departures, departureCount, numToDisplay);
+        return;
+    }
+
+    // Priority 2: Rest mode (display off)
+    if (restModeActive)
+    {
+        // Display is turned off, but we still need to clear it
+        displayManager.clearDisplay();
+        return;
+    }
+
+    // Priority 3: AP mode (show setup credentials)
+    if (apModeActive)
+    {
+        displayManager.drawAPMode(apSSID, apPassword);
+        return;
+    }
+
+    // Priority 4: WiFi connecting
+    if (!wifiConnected)
+    {
+        displayManager.drawStatus("WiFi Connecting...", "", COLOR_YELLOW);
+        return;
+    }
+
+    // Priority 5: Setup required (no API key)
+    if (!apiKeyConfigured)
+    {
+        char ipStr[32];
+        sprintf(ipStr, "http://%s", WiFi.localIP().toString().c_str());
+        displayManager.drawStatus("Setup Required", ipStr, COLOR_CYAN);
+        return;
+    }
+
+    // Priority 6: API error
+    if (apiError)
+    {
+        // Show IP address so user can access web UI to fix config
+        char ipStr[32];
+        sprintf(ipStr, "Fix at: %s", WiFi.localIP().toString().c_str());
+        displayManager.drawStatus("API Error", ipStr, COLOR_RED);
+        displayManager.drawDateTime(); // Still show time bar
+        return;
+    }
+
+    // Priority 7: No departures
+    if (departureCount == 0)
+    {
+        // Show IP address to remind user where SpojBoard web UI is
+        char ipStr[32];
+        sprintf(ipStr, "Check: %s", WiFi.localIP().toString().c_str());
+        displayManager.drawStatus("No Departures", ipStr, COLOR_YELLOW);
+        displayManager.drawDateTime(); // Still show time bar
+        return;
+    }
+
+    // Priority 8: Normal operation - show departures
+    displayManager.drawDepartures(departures, departureCount, numToDisplay);
+}

@@ -508,6 +508,68 @@ void DisplayManager::drawAPMode(const char *ssid, const char *password)
     display->print("Go to: 192.168.4.1");
 }
 
+// ============================================================================
+// Pure Rendering Methods (called by DisplayController)
+// ============================================================================
+
+void DisplayManager::drawDepartures(const Departure *departures, int departureCount, int numToDisplay)
+{
+    if (isDrawing)
+        return;
+
+    // Check if departure data has changed - reset scroll if so
+    bool dataChanged = (departures != currentDepartures) ||
+                       (departureCount != currentDepartureCount) ||
+                       (numToDisplay != currentNumToDisplay);
+
+    // Store current departures reference for scroll updates
+    currentDepartures = departures;
+    currentDepartureCount = departureCount;
+    currentNumToDisplay = numToDisplay;
+
+    // Reset scroll state when data changes
+    if (dataChanged)
+    {
+        resetScroll();
+    }
+
+    isDrawing = true;
+    display->clearScreen();
+    delay(1);
+
+    // Draw departures (top 3 rows, or fewer if numToDisplay is less)
+    int rowsToDraw = (departureCount < numToDisplay) ? departureCount : numToDisplay;
+    if (rowsToDraw > 3)
+        rowsToDraw = 3; // Maximum 3 rows on display
+
+    for (int i = 0; i < rowsToDraw; i++)
+    {
+        drawDeparture(i, departures[i]);
+        delay(1);
+    }
+
+    drawDateTime();
+    delay(1);
+
+    isDrawing = false;
+}
+
+void DisplayManager::clearDisplay()
+{
+    if (isDrawing)
+        return;
+
+    isDrawing = true;
+    display->clearScreen();
+    display->setBrightness8(0); // Turn off display
+    delay(1);
+    isDrawing = false;
+}
+
+// ============================================================================
+// Legacy Method (deprecated - use DisplayController instead)
+// ============================================================================
+
 void DisplayManager::updateDisplay(const Departure *departures, int departureCount, int numToDisplay,
                                    bool wifiConnected, bool apModeActive,
                                    const char *apSSID, const char *apPassword,
@@ -515,6 +577,11 @@ void DisplayManager::updateDisplay(const Departure *departures, int departureCou
                                    const char *stopName, bool apiKeyConfigured,
                                    bool demoModeActive)
 {
+    // DEPRECATED: This method kept for backward compatibility during refactoring
+    // New code should use DisplayController::render() instead
+    //
+    // This method now just calls drawDepartures() - state logic moved to DisplayController
+
     if (isDrawing)
         return;
 

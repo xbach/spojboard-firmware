@@ -13,6 +13,7 @@
 #include "api/MqttAPI.h"
 #include "api/WeatherAPI.h"
 #include "display/DisplayManager.h"
+#include "display/DisplayController.h"
 #include "network/WiFiManager.h"
 #include "network/CaptivePortal.h"
 #include "network/ConfigWebServer.h"
@@ -23,6 +24,7 @@
 // Global Objects
 // ============================================================================
 DisplayManager displayManager;
+DisplayController displayController(displayManager);
 WiFiManager wifiManager;
 CaptivePortal captivePortal;
 ConfigWebServer webServer;
@@ -309,25 +311,27 @@ void onDemoStart(const Departure* demoDepartures, int demoCount)
 
 void onDemoStop()
 {
-    // Exit demo mode: check if we should return to rest mode
+    // Exit demo mode: restore previous state (rest mode or normal operation)
     demoModeActive = false;
 
-    // Check if we're in a rest period
-    if (isInRestPeriod(config.restModePeriods))
+    // Check if rest mode was active before demo started (manual or scheduled)
+    if (restModeActive)
     {
-        // Return to rest mode
-        restModeActive = true;
+        // Return to rest mode (was active before demo, stays active)
         displayManager.getDisplay()->clearScreen();
         displayManager.getDisplay()->flipDMABuffer();
+        needsDisplayUpdate = true; // Trigger display update to render rest mode state
 
         logTimestamp();
         debugPrintln("Demo stopped - returning to rest mode (display off)");
     }
     else
     {
-        // Resume normal operation
+        // Resume normal operation (rest mode was not active before demo)
+        displayManager.setBrightness(config.brightness); // Restore brightness from config
         lastApiCall = 0;       // Force immediate API refresh
         lastWeatherCall = 0;   // Force weather refresh
+        needsDisplayUpdate = true; // Trigger display update to show current departures
 
         logTimestamp();
         debugPrintln("Demo mode deactivated - resuming normal operation");
@@ -352,6 +356,7 @@ void onRestMode(bool enabled)
         // Exit rest mode
         restModeActive = false;
         restModeManual = false; // Clear manual flag
+        displayManager.setBrightness(config.brightness); // Restore brightness from config
         lastApiCall = 0;       // Force immediate API refresh
         lastWeatherCall = 0;   // Force weather refresh
         needsDisplayUpdate = true;
@@ -566,18 +571,19 @@ void loop()
         if (needsDisplayUpdate)
         {
             needsDisplayUpdate = false;
-            displayManager.updateDisplay(departures,
-                                         departureCount,
-                                         config.numDepartures,
-                                         wifiManager.isConnected(),
-                                         wifiManager.isAPMode(),
-                                         wifiManager.getAPSSID(),
-                                         wifiManager.getAPPassword(),
-                                         apiError,
-                                         apiErrorMsg,
-                                         stopName,
-                                         isCityConfigured(),
-                                         demoModeActive);
+            displayController.render(departures,
+                                    departureCount,
+                                    config.numDepartures,
+                                    wifiManager.isConnected(),
+                                    wifiManager.isAPMode(),
+                                    wifiManager.getAPSSID(),
+                                    wifiManager.getAPPassword(),
+                                    apiError,
+                                    apiErrorMsg,
+                                    stopName,
+                                    isCityConfigured(),
+                                    demoModeActive,
+                                    restModeActive);
         }
 
         delay(10);
@@ -638,6 +644,7 @@ void loop()
                 {
                     // Exit rest mode (scheduled period ended)
                     restModeActive = false;
+                    displayManager.setBrightness(config.brightness); // Restore brightness from config
                     lastApiCall = 0;
                     lastWeatherCall = 0;
                     needsDisplayUpdate = true;
@@ -690,22 +697,23 @@ void loop()
         }
     }
 
-    // Update display (skip if in rest mode)
-    if (needsDisplayUpdate && !restModeActive)
+    // Update display (rest mode handled by DisplayController)
+    if (needsDisplayUpdate)
     {
         needsDisplayUpdate = false;
-        displayManager.updateDisplay(departures,
-                                     departureCount,
-                                     config.numDepartures,
-                                     wifiManager.isConnected(),
-                                     wifiManager.isAPMode(),
-                                     wifiManager.getAPSSID(),
-                                     wifiManager.getAPPassword(),
-                                     apiError,
-                                     apiErrorMsg,
-                                     stopName,
-                                     isCityConfigured(),
-                                     demoModeActive);
+        displayController.render(departures,
+                                departureCount,
+                                config.numDepartures,
+                                wifiManager.isConnected(),
+                                wifiManager.isAPMode(),
+                                wifiManager.getAPSSID(),
+                                wifiManager.getAPPassword(),
+                                apiError,
+                                apiErrorMsg,
+                                stopName,
+                                isCityConfigured(),
+                                demoModeActive,
+                                restModeActive);
     }
 
     // Scroll update for long destinations (runs frequently, ~50ms)

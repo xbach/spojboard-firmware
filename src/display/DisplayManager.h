@@ -156,6 +156,35 @@ public:
      */
     const struct WeatherData* getWeatherData() const { return weatherData; }
 
+    // ========================================================================
+    // Pure Rendering Methods (for DisplayController)
+    // ========================================================================
+
+    /**
+     * Draw departures on display (pure rendering, no state logic)
+     * @param departures Array of departures to display
+     * @param departureCount Number of valid departures
+     * @param numToDisplay Number of departures to show (1-3)
+     */
+    void drawDepartures(const Departure* departures, int departureCount, int numToDisplay);
+
+    /**
+     * Clear display and turn off (for rest mode)
+     */
+    void clearDisplay();
+
+    /**
+     * Draw date/time status bar (bottom row)
+     */
+    void drawDateTime();
+
+    /**
+     * Draw AP mode screen with WiFi credentials
+     * @param ssid AP network name
+     * @param password AP password
+     */
+    void drawAPMode(const char* ssid, const char* password);
+
 private:
     MatrixPanel_I2S_DMA* display;
     bool isDrawing;
@@ -178,10 +207,8 @@ private:
     int currentDepartureCount;
     int currentNumToDisplay;
 
-    // Drawing functions
+    // Internal drawing functions
     void drawDeparture(int row, const Departure& dep);
-    void drawDateTime();
-    void drawAPMode(const char* ssid, const char* password);
     void redrawDestination(int row, const Departure& dep);
 
     // Weather helper functions
