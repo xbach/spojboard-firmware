@@ -335,7 +335,7 @@ Weather icons are rendered using the `DepartureWeather4pt8b` font with the follo
 ### Weather Display Colors
 - **Weather icon**: Colored by condition (yellow=sunny, white=cloudy, purple=fog, cyan=rain, blue=snow, red=storm)
 - **Temperature**: Color-coded by value:
-  - Blue: < 8°C (cold)
+  - Cyan: < 8°C (cold)
   - White: 8-16°C (mild)
   - Yellow: 17-25°C (warm)
   - Red: > 25°C (hot)

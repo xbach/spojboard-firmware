@@ -900,6 +900,6 @@ uint16_t DisplayManager::getTemperatureColor(int temperature)
     if (temperature > 16)
         return COLOR_YELLOW; // Warm
     if (temperature < 8)
-        return COLOR_BLUE; // Cold
+        return COLOR_CYAN; // Cold
     return COLOR_WHITE;    // Mild
 }
