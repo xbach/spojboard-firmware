@@ -4,6 +4,7 @@
 .claude
 .DS_Store
 dist/
+docs/plans
 
 # Local Claude Code instruction files
 commit-msg.md

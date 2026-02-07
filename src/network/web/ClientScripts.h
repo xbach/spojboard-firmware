@@ -129,115 +129,41 @@ function escapeHtml(text) {
 // City switching and ETA mode JavaScript
 const char SCRIPT_CITY_SWITCH[] PROGMEM = R"rawliteral(
 <script>
-// Track the currently displayed city (starts with server-provided value)
-let currentDisplayedCity = document.getElementById('citySelect').value;
-
-// Update ETA mode help text based on selection
-function updateEtaModeHelp() {
-    const etaModeSelect = document.getElementById('mqttEtaModeInput');
-    const helpText = document.getElementById('etaModeHelp');
-
-    if (!etaModeSelect || !helpText) return;
-
-    const isEtaMode = (etaModeSelect.value === '1');
-
-    if (isEtaMode) {
-        helpText.innerHTML = '<strong>Refresh Interval Recommendation:</strong> Set to <strong>10-60 seconds</strong> for frequent updates from server. Device displays pre-calculated ETAs without recalculation.';
-    } else {
-        helpText.innerHTML = '<strong>Refresh Interval Recommendation:</strong> Set to <strong>>60 seconds</strong> based on how many departures your server sends. Device recalculates ETAs every 10 seconds automatically.';
-    }
-}
-
-// City switching logic - dynamically show/hide and update fields
-function switchCity() {
-    const newCity = document.getElementById('citySelect').value;
-    const apiKeySection = document.getElementById('apiKeySection');
-    const mqttSection = document.getElementById('mqttSection');
-    const apiKeyInput = document.getElementById('apiKeyInput');
-    const stopsInput = document.getElementById('stopsInput');
-    const stopHelp = document.getElementById('stopHelp');
-    const minDepTimeInput = document.getElementById('minDepTimeInput');
-    const minDepTimeHelp = document.getElementById('minDepTimeHelp');
-
-    // Save current visible stopIds to hidden field BEFORE switching
-    // (currentDisplayedCity contains the city we're switching FROM)
-    if (currentDisplayedCity === 'Prague') {
-        document.getElementById('pragueStopsData').value = stopsInput.value;
-    } else if (currentDisplayedCity === 'Berlin') {
-        document.getElementById('berlinStopsData').value = stopsInput.value;
-    }
-    // MQTT doesn't use stops field
-
-    // Now load the new city's data
-    if (newCity === 'MQTT') {
-        // Hide API key and stops for MQTT
-        apiKeySection.style.display = 'none';
-        mqttSection.style.display = 'block';
-        stopsInput.style.display = 'none';
-        stopHelp.style.display = 'none';
-
-        // Remove required attribute for MQTT (doesn't use stops)
-        stopsInput.removeAttribute('required');
-        stopsInput.value = '';
-
-        // Show minDepartureTime help text for MQTT
-        if (minDepTimeHelp) minDepTimeHelp.style.display = 'block';
-
-        // Update ETA mode help text
-        updateEtaModeHelp();
-    } else if (newCity === 'Prague') {
-        // Show API key for Prague, hide MQTT
-        apiKeySection.style.display = 'block';
-        mqttSection.style.display = 'none';
-        stopsInput.style.display = 'block';
-        stopHelp.style.display = 'block';
-
-        // Add required attribute back
-        stopsInput.setAttribute('required', '');
-
-        // Hide minDepartureTime help text (MQTT only)
-        if (minDepTimeHelp) minDepTimeHelp.style.display = 'none';
-
-        // Load Prague stops from hidden field
-        stopsInput.value = document.getElementById('pragueStopsData').value;
-        stopsInput.placeholder = 'e.g., U693Z2P';
-
-        // Reset API key input field
-        const pragueApiKey = document.getElementById('pragueApiKeyData').value;
-        apiKeyInput.value = '';
-        apiKeyInput.placeholder = pragueApiKey.length > 0 ? '****' : 'Enter API key';
-
-        // Update help text
-        stopHelp.innerHTML = 'Comma-separated PID stop IDs (e.g., U693Z2P). Find IDs at <a href="https://data.pid.cz/stops/json/stops.json" target="_blank">PID data</a>';
-    } else {
-        // Berlin: Hide API key and MQTT
-        apiKeySection.style.display = 'none';
-        mqttSection.style.display = 'none';
-        stopsInput.style.display = 'block';
-        stopHelp.style.display = 'block';
-
-        // Add required attribute back
-        stopsInput.setAttribute('required', '');
-
-        // Hide minDepartureTime help text (MQTT only)
-        if (minDepTimeHelp) minDepTimeHelp.style.display = 'none';
-
-        // Load Berlin stops from hidden field
-        stopsInput.value = document.getElementById('berlinStopsData').value;
-        stopsInput.placeholder = 'e.g., 900013102';
-
-        // Update help text
-        stopHelp.innerHTML = 'Comma-separated numeric BVG stop IDs (e.g., 900013102). Find IDs at <a href="https://v6.bvg.transport.rest/" target="_blank">BVG API</a>';
-    }
-
-    // Update the tracked city to the new one
-    currentDisplayedCity = newCity;
-}
-
-// Initialize city-specific display on page load
+// City switching logic for new tab structure
 document.addEventListener('DOMContentLoaded', function() {
-    switchCity();
-    updateEtaModeHelp();
+    const citySelect = document.getElementById('city');
+    if (!citySelect) return;
+
+    // Add change listener to city selector
+    citySelect.addEventListener('change', function() {
+        const selectedCity = this.value;
+
+        // Get section elements from Transit Data tab
+        const pragueSection = document.getElementById('pragueSection');
+        const berlinSection = document.getElementById('berlinSection');
+        const mqttSection = document.getElementById('mqttSection');
+
+        // Hide all sections first
+        if (pragueSection) pragueSection.style.display = 'none';
+        if (berlinSection) berlinSection.style.display = 'none';
+        if (mqttSection) mqttSection.style.display = 'none';
+
+        // Show selected section
+        if (selectedCity === 'Prague' && pragueSection) {
+            pragueSection.style.display = 'block';
+        } else if (selectedCity === 'Berlin' && berlinSection) {
+            berlinSection.style.display = 'block';
+        } else if (selectedCity === 'MQTT' && mqttSection) {
+            mqttSection.style.display = 'block';
+        }
+
+        // Show/hide refresh interval based on city
+        const refreshDiv = document.getElementById('refreshInterval');
+        if (refreshDiv && refreshDiv.parentElement) {
+            // Refresh interval should be hidden for MQTT
+            refreshDiv.parentElement.style.display = (selectedCity === 'MQTT') ? 'none' : 'block';
+        }
+    });
 });
 </script>
 )rawliteral";
@@ -491,6 +417,227 @@ document.getElementById('uploadForm').onsubmit = function() {
     document.getElementById('progress').style.display = 'block';
     document.getElementById('progressText').innerText = 'Uploading firmware...';
 };
+</script>
+)rawliteral";
+
+// Tab navigation and switching
+const char SCRIPT_TAB_NAVIGATION[] PROGMEM = R"rawliteral(
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const tabs = document.querySelectorAll('.tab');
+    const tabContents = document.querySelectorAll('.tab-content');
+    const formActions = document.querySelector('.form-actions');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const targetTab = this.getAttribute('data-tab');
+
+            tabs.forEach(t => t.classList.remove('active'));
+            tabContents.forEach(content => content.classList.remove('active'));
+
+            this.classList.add('active');
+            document.getElementById('tab-' + targetTab).classList.add('active');
+
+            // Hide Save button when System tab is active (no form fields to save)
+            if (formActions) {
+                formActions.style.display = (targetTab === 'system') ? 'none' : 'block';
+            }
+        });
+    });
+});
+</script>
+)rawliteral";
+
+// Display tab handlers
+const char SCRIPT_DISPLAY_TAB[] PROGMEM = R"rawliteral(
+<script>
+function addLineColorRow() {
+    const tbody = document.getElementById('lineColorsTableBody');
+    const emptyState = document.getElementById('emptyState');
+    if (emptyState) { emptyState.remove(); }
+
+    const row = tbody.insertRow();
+    row.innerHTML = '<td><input type=\"text\" class=\"line-input\" placeholder=\"Line number\"></td><td><select class=\"color-select\"><option value=\"RED\">RED</option><option value=\"GREEN\">GREEN</option><option value=\"BLUE\">BLUE</option><option value=\"YELLOW\">YELLOW</option><option value=\"ORANGE\">ORANGE</option><option value=\"PURPLE\">PURPLE</option><option value=\"CYAN\">CYAN</option><option value=\"WHITE\">WHITE</option></select></td><td class=\"center\"><button type=\"button\" class=\"delete-btn\" onclick=\"deleteLineColorRow(this)\">Delete</button></td>';
+}
+
+function deleteLineColorRow(btn) {
+    const row = btn.closest('tr');
+    const tbody = document.getElementById('lineColorsTableBody');
+    row.remove();
+
+    if (tbody.rows.length === 0) {
+        const emptyRow = tbody.insertRow();
+        emptyRow.id = 'emptyState';
+        const cell = emptyRow.insertCell(0);
+        cell.colSpan = 3;
+        cell.style.textAlign = 'center';
+        cell.style.color = '#666';
+        cell.style.padding = '20px';
+        cell.textContent = 'No line colors configured. Click "+ Add Line Color" to add one.';
+    }
+}
+
+function serializeLineColors() {
+    const tbody = document.getElementById('lineColorsTableBody');
+    if (!tbody) return '';
+
+    const rows = tbody.querySelectorAll('tr:not(#emptyState)');
+    const pairs = [];
+
+    rows.forEach(row => {
+        const lineInput = row.querySelector('.line-input');
+        const colorSelect = row.querySelector('.color-select');
+
+        if (lineInput && colorSelect && lineInput.value.trim()) {
+            pairs.push(lineInput.value.trim() + '=' + colorSelect.value);
+        }
+    });
+
+    return pairs.join(',');
+}
+</script>
+)rawliteral";
+
+// Optional tab handlers
+const char SCRIPT_OPTIONAL_TAB[] PROGMEM = R"rawliteral(
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const weatherCheckbox = document.getElementById('weatherEnabled');
+    const weatherSettings = document.getElementById('weatherSettings');
+    const weatherRefresh = document.getElementById('weatherRefresh');
+
+    if (weatherCheckbox && weatherSettings && weatherRefresh) {
+        weatherCheckbox.addEventListener('change', function() {
+            const isEnabled = this.checked;
+            weatherSettings.style.display = isEnabled ? 'grid' : 'none';
+            weatherRefresh.style.display = isEnabled ? 'block' : 'none';
+        });
+    }
+});
+</script>
+)rawliteral";
+
+// System actions
+const char SCRIPT_SYSTEM_ACTIONS[] PROGMEM = R"rawliteral(
+<script>
+function refreshDepartures() {
+    fetch('/refresh', { method: 'POST' })
+        .then(() => { alert('Refresh triggered. Departure data will update momentarily.'); })
+        .catch(error => { alert('Error: ' + error.message); });
+}
+
+function openPreview() {
+    window.open('/preview', '_blank', 'width=800,height=600');
+}
+
+function rebootDevice() {
+    if (confirm('Reboot the device? This will take about 10 seconds.')) {
+        fetch('/reboot', { method: 'POST' })
+            .then(() => {
+                alert('Rebooting... This page will reload in 15 seconds.');
+                setTimeout(() => window.location.reload(), 15000);
+            })
+            .catch(error => { alert('Error: ' + error.message); });
+    }
+}
+
+function factoryReset() {
+    if (confirm('⚠ WARNING: This will erase ALL settings and reboot into setup mode. Continue?')) {
+        if (confirm('Are you absolutely sure? This cannot be undone!')) {
+            fetch('/clear-config', { method: 'POST' })
+                .then(() => {
+                    alert('Settings erased. Device is rebooting into setup mode...');
+                    setTimeout(() => window.location.href = '/', 20000);
+                })
+                .catch(error => { alert('Error: ' + error.message); });
+        }
+    }
+}
+</script>
+)rawliteral";
+
+// Configuration form save with inline feedback
+const char SCRIPT_CONFIG_SAVE[] PROGMEM = R"rawliteral(
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('configForm');
+    if (!form) return;
+
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const submitBtn = form.querySelector('button[type="submit"]');
+        const originalText = submitBtn.innerText;
+        const originalBackground = submitBtn.style.background;
+
+        // Disable button and show saving state
+        submitBtn.disabled = true;
+        submitBtn.innerText = '💾 Saving...';
+
+        try {
+            const formData = new FormData(form);
+            const response = await fetch('/save', {
+                method: 'POST',
+                body: formData
+            });
+
+            // Handle error responses with details
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(errorText || 'HTTP ' + response.status);
+            }
+
+            const contentType = response.headers.get('content-type');
+
+            // Check if response is JSON (normal save) or HTML (restart required)
+            if (contentType && contentType.includes('application/json')) {
+                // Normal save - show success feedback
+                const data = await response.json();
+
+                if (data.success) {
+                    submitBtn.style.background = '#2ed573';
+                    submitBtn.innerText = '✓ Saved!';
+
+                    // Reset button after 2 seconds
+                    setTimeout(() => {
+                        submitBtn.style.background = originalBackground;
+                        submitBtn.innerText = originalText;
+                        submitBtn.disabled = false;
+                    }, 2000);
+                } else {
+                    throw new Error(data.message || 'Save failed');
+                }
+            } else {
+                // Restart required - submit form normally to navigate to restart page
+                form.removeEventListener('submit', arguments.callee);
+                form.submit();
+            }
+        } catch (error) {
+            // Show error feedback with details
+            submitBtn.style.background = '#ff6b6b';
+            submitBtn.innerText = '✗ Save Failed';
+
+            // Show error message below button
+            let errorDiv = document.getElementById('save-error-msg');
+            if (!errorDiv) {
+                errorDiv = document.createElement('div');
+                errorDiv.id = 'save-error-msg';
+                errorDiv.style.cssText = 'margin-top:10px; padding:12px; background:#ff6b6b; color:#fff; border-radius:8px; font-size:14px;';
+                submitBtn.parentElement.appendChild(errorDiv);
+            }
+            errorDiv.textContent = error.message;
+            errorDiv.style.display = 'block';
+
+            // Reset button after 5 seconds (longer for errors so user can read)
+            setTimeout(() => {
+                submitBtn.style.background = originalBackground;
+                submitBtn.innerText = originalText;
+                submitBtn.disabled = false;
+                if (errorDiv) errorDiv.style.display = 'none';
+            }, 5000);
+        }
+    });
+});
 </script>
 )rawliteral";
 

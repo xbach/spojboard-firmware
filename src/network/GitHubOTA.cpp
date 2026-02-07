@@ -72,8 +72,9 @@ bool GitHubOTA::extractVariantFromFilename(const char* filename, char* variant, 
 
 bool GitHubOTA::validateFirmwareFilename(const char* filename)
 {
-    // Expected format: spojboard-{variant}-r{number}-{8hex}.bin
-    // Example: spojboard-matrixportal_s3-r4-a1b2c3d4.bin
+    // Expected formats:
+    // New: spojboard-{variant}-r{number}-{8hex}.bin (e.g., spojboard-matrixportal_s3-r4-a1b2c3d4.bin)
+    // Old: spojboard-r{number}-{8hex}.bin (e.g., spojboard-r4-1bc62fce.bin) - backward compatibility
 
     if (!filename)
     {
@@ -86,25 +87,6 @@ bool GitHubOTA::validateFirmwareFilename(const char* filename)
         return false;
     }
 
-    // Extract and validate variant
-    char fileVariant[32] = {0};
-    if (!extractVariantFromFilename(filename, fileVariant, sizeof(fileVariant)))
-    {
-        return false;
-    }
-
-    // Verify variant matches current hardware
-    if (strcmp(fileVariant, VARIANT_NAME) != 0)
-    {
-        logTimestamp();
-        Serial.print("Firmware variant mismatch: file is for '");
-        Serial.print(fileVariant);
-        Serial.print("', you have '");
-        Serial.print(VARIANT_NAME);
-        Serial.println("'");
-        return false;
-    }
-
     // Check .bin extension
     size_t len = strlen(filename);
     if (len < 20 || strcmp(filename + len - 4, ".bin") != 0)
@@ -112,19 +94,61 @@ bool GitHubOTA::validateFirmwareFilename(const char* filename)
         return false;
     }
 
-    // Validation passed
-    return true;
+    // Try to extract variant (new format)
+    char fileVariant[32] = {0};
+    if (extractVariantFromFilename(filename, fileVariant, sizeof(fileVariant)))
+    {
+        // New format with variant - verify it matches current hardware
+        if (strcmp(fileVariant, VARIANT_NAME) != 0)
+        {
+            logTimestamp();
+            Serial.print("Firmware variant mismatch: file is for '");
+            Serial.print(fileVariant);
+            Serial.print("', you have '");
+            Serial.print(VARIANT_NAME);
+            Serial.println("'");
+            return false;
+        }
+
+        // Variant matches
+        return true;
+    }
+
+    // Couldn't extract variant - check if it's old format (spojboard-r{num}-{hash}.bin)
+    // Old releases didn't have variant names, assume they're for matrixportal_s3 (original hardware)
+    const char* afterPrefix = filename + 10; // Skip "spojboard-"
+    if (afterPrefix[0] == 'r' && afterPrefix[1] >= '0' && afterPrefix[1] <= '9')
+    {
+        // Old format detected (starts with "r" immediately after "spojboard-")
+        // Only accept for matrixportal_s3 (backward compatibility)
+        if (strcmp(VARIANT_NAME, "matrixportal_s3") == 0)
+        {
+            logTimestamp();
+            Serial.println("Old firmware format detected (no variant name). Assuming matrixportal_s3.");
+            return true;
+        }
+        else
+        {
+            logTimestamp();
+            Serial.println("Old firmware format (no variant) not compatible with this hardware.");
+            return false;
+        }
+    }
+
+    // Invalid format
+    return false;
 }
 
 bool GitHubOTA::findBinaryAsset(JsonDocument& doc, char* outUrl, char* outName, size_t& outSize)
 {
-    // Find first .bin asset in the release
+    // Find .bin asset matching current hardware variant
     JsonArray assets = doc["assets"];
     if (assets.isNull())
     {
         return false;
     }
 
+    // Iterate through all assets to find matching variant
     for (JsonObject asset : assets)
     {
         const char* name = asset["name"];
@@ -137,18 +161,25 @@ bool GitHubOTA::findBinaryAsset(JsonDocument& doc, char* outUrl, char* outName, 
             size_t nameLen = strlen(name);
             if (nameLen > 4 && strcmp(name + nameLen - 4, ".bin") == 0)
             {
-                // Validate filename format
+                // Validate filename format and variant match
                 if (validateFirmwareFilename(name))
                 {
+                    // Found matching firmware for this hardware
                     strlcpy(outName, name, 64);
                     strlcpy(outUrl, url, 256);
                     outSize = size;
                     return true;
                 }
+                // If validation fails, continue checking other .bin files
+                // (they might be for different hardware variants)
             }
         }
     }
 
+    // No matching firmware found for current hardware variant
+    logTimestamp();
+    Serial.print("No firmware found for hardware variant: ");
+    Serial.println(VARIANT_NAME);
     return false;
 }
 

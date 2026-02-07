@@ -206,10 +206,10 @@ void ConfigWebServer::handleSave()
     bool wifiChanged = false;
     bool cityChanged = false;
 
-    // Validate stop count before parsing
-    if (server->hasArg("stops"))
+    // Validate stop count before parsing (check both Prague and Berlin)
+    if (server->hasArg("prague_stops"))
     {
-        String stops = server->arg("stops");
+        String stops = server->arg("prague_stops");
         int numStops = countStops(stops.c_str());
         if (numStops > 12)
         {
@@ -217,7 +217,21 @@ void ConfigWebServer::handleSave()
                 "Error: Too many stops configured (max 12). Please reduce the number of stops.\n"
                 "With 1-second delay between API calls, 12 stops takes 12+ seconds to query.");
             logTimestamp();
-            debugPrintln("Config save failed: too many stops");
+            debugPrintln("Config save failed: too many Prague stops");
+            return;
+        }
+    }
+    if (server->hasArg("berlin_stops"))
+    {
+        String stops = server->arg("berlin_stops");
+        int numStops = countStops(stops.c_str());
+        if (numStops > 12)
+        {
+            server->send(400, "text/plain",
+                "Error: Too many stops configured (max 12). Please reduce the number of stops.\n"
+                "With 1-second delay between API calls, 12 stops takes 12+ seconds to query.");
+            logTimestamp();
+            debugPrintln("Config save failed: too many Berlin stops");
             return;
         }
     }
@@ -236,38 +250,85 @@ void ConfigWebServer::handleSave()
     if (apModeActive || wifiChanged || cityChanged)
     {
         String html = FPSTR(HTML_HEADER);
-        html += "<h1>Restarting...</h1>";
+
+        // Header
+        html += "<div class='header'><div class='header-top'>";
+        html += "<div class='header-title'><h1>SpojBoard</h1>";
+        html += "<div class='header-subtitle'>Configuration Saved</div></div></div></div>";
+
+        html += "<div class='content'>";
+
+        // Main restart banner with loading animation
+        html += "<div class='banner banner-info' style='margin-bottom:24px;'>";
+        html += "<div class='status-dot' style='animation: pulse 1.5s ease-in-out infinite;'></div>";
+        html += "<div style='flex:1;'><strong>Device is restarting...</strong></div>";
+        html += "</div>";
+
+        // Configuration change card
+        html += "<div class='card'>";
         if (cityChanged)
         {
-            html += "<p>Transit city changed to: <strong>" + String(newConfig.city) + "</strong></p>";
-            html += "<p>The device will restart to apply the new transit API configuration.</p>";
-            html += "<p>Please wait 10-15 seconds for it to come back online.</p>";
+            html += "<h2 style='margin-top:0; color:#67e8f9; font-size:18px;'>🌍 Transit Provider Changed</h2>";
+            html += "<p style='margin:12px 0; font-size:14px;'>New provider: <strong style='color:#2ed573;'>" + String(newConfig.city) + "</strong></p>";
+            html += "<p style='color:#999; font-size:13px;'>The device needs to restart to initialize the new transit API configuration.</p>";
         }
         else
         {
-            html += "<p>Attempting to connect to WiFi network: <strong>" + String(newConfig.wifiSsid) + "</strong></p>";
-            html += "<p>Please wait... The device will restart and connect to the new network.</p>";
-            html += "<p>If connection fails, the device will return to AP mode.</p>";
+            html += "<h2 style='margin-top:0; color:#67e8f9; font-size:18px;'>📡 WiFi Network Changed</h2>";
+            html += "<p style='margin:12px 0; font-size:14px;'>Connecting to: <strong style='color:#2ed573;'>" + String(newConfig.wifiSsid) + "</strong></p>";
+            html += "<p style='color:#999; font-size:13px;'>The device will restart and attempt to connect to the new network.</p>";
         }
-        html += "<div class='card'>";
-        html += "<p>After successful restart, access the device at its IP address.</p>";
         html += "</div>";
-        html += "<div id='reconnect-msg' style='display:none; margin-top:20px;'>";
-        html += "<p><button onclick='window.location=\"/\"' style='padding:12px 24px; font-size:16px; cursor:pointer; background:#2ed573; color:#000; border:none; border-radius:8px;'>Reconnect to Device</button></p>";
+
+        // What to expect section
+        html += "<div class='card' style='background:#0a0a0a; border:1px solid #333;'>";
+        html += "<h3 style='margin-top:0; font-size:14px; color:#999; text-transform:uppercase; letter-spacing:0.5px;'>What to Expect</h3>";
+        html += "<ul style='margin:8px 0; padding-left:20px; color:#999; font-size:13px; line-height:1.8;'>";
+        html += "<li>Device restarts in <strong style='color:#f5f5f5;'>~3 seconds</strong></li>";
+        html += "<li>Boot and connection takes <strong style='color:#f5f5f5;'>10-15 seconds</strong></li>";
+        if (!cityChanged && !apModeActive) {
+            html += "<li>If WiFi fails, device returns to <strong style='color:#fcd34d;'>AP mode</strong></li>";
+        }
+        html += "<li>Access dashboard at device's new IP address</li>";
+        html += "</ul>";
         html += "</div>";
-        html += "<script>setTimeout(function(){ document.getElementById('reconnect-msg').style.display='block'; }, 10000);</script>";
+
+        // Progress bar
+        html += "<div style='margin:24px 0;'>";
+        html += "<div style='background:#1a1a1a; height:6px; border-radius:3px; overflow:hidden;'>";
+        html += "<div id='progress-bar' style='background:linear-gradient(90deg, #67e8f9, #2ed573); height:100%; width:0%; transition:width 15s linear;'></div>";
+        html += "</div>";
+        html += "<div id='status-text' style='text-align:center; margin-top:8px; color:#999; font-size:12px;'>Restarting device...</div>";
+        html += "</div>";
+
+        // Reconnect button (hidden initially)
+        html += "<div id='reconnect-section' style='display:none; margin-top:24px;'>";
+        html += "<button onclick='window.location=\"/\"' class='btn-primary' style='background:#2ed573;'>✓ Reconnect to Device</button>";
+        html += "<p style='text-align:center; margin-top:12px; color:#666; font-size:12px;'>Click to return to the dashboard</p>";
+        html += "</div>";
+
+        html += "</div>"; // End content
+
+        // Animation and auto-reconnect script
+        html += "<style>";
+        html += "@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }";
+        html += "</style>";
+        html += "<script>";
+        html += "setTimeout(function(){ document.getElementById('progress-bar').style.width='100%'; }, 100);";
+        html += "setTimeout(function(){ document.getElementById('status-text').textContent='Waiting for device...'; }, 5000);";
+        html += "setTimeout(function(){ ";
+        html += "  document.getElementById('reconnect-section').style.display='block';";
+        html += "  document.getElementById('status-text').textContent='Device should be ready';";
+        html += "}, 15000);";
+        html += "</script>";
+
         html += FPSTR(HTML_FOOTER);
         server->send(200, "text/html", html);
     }
     else
     {
-        // Normal save without WiFi change
-        String html = FPSTR(HTML_HEADER);
-        html += "<h1>Configuration Saved</h1>";
-        html += "<p>Settings have been saved. The device will apply them immediately.</p>";
-        html += "<p><a href='/'>Back to Dashboard</a></p>";
-        html += FPSTR(HTML_FOOTER);
-        server->send(200, "text/html", html);
+        // Normal save without WiFi change - send JSON response for AJAX handling
+        server->send(200, "application/json", "{\"success\":true,\"message\":\"Configuration saved\"}");
     }
 
     // Call the callback to notify main.cpp
@@ -331,9 +392,9 @@ void ConfigWebServer::parseGeneralSettings(Config* config, bool* cityChanged)
     }
 
     // Number of departures
-    if (server->hasArg("numdeps"))
+    if (server->hasArg("num_deps"))
     {
-        config->numDepartures = server->arg("numdeps").toInt();
+        config->numDepartures = server->arg("num_deps").toInt();
         if (config->numDepartures < 1)
             config->numDepartures = 1;
         if (config->numDepartures > 3)
@@ -341,9 +402,9 @@ void ConfigWebServer::parseGeneralSettings(Config* config, bool* cityChanged)
     }
 
     // Minimum departure time
-    if (server->hasArg("mindeptime"))
+    if (server->hasArg("min_dep_time"))
     {
-        config->minDepartureTime = server->arg("mindeptime").toInt();
+        config->minDepartureTime = server->arg("min_dep_time").toInt();
         if (config->minDepartureTime < 0)
             config->minDepartureTime = 0;
         if (config->minDepartureTime > 30)
@@ -375,20 +436,20 @@ void ConfigWebServer::parseGeneralSettings(Config* config, bool* cityChanged)
     }
 
     // Debug mode checkbox (unchecked = not present in POST data)
-    config->debugMode = server->hasArg("debugmode");
+    config->debugMode = server->hasArg("debug_mode");
 
     // Show platform checkbox (unchecked = not present in POST data)
-    config->showPlatform = server->hasArg("showplatform");
+    config->showPlatform = server->hasArg("show_platform");
 
     // Scrolling checkbox (unchecked = not present in POST data)
-    config->scrollEnabled = server->hasArg("scrollenabled");
+    config->scrollEnabled = server->hasArg("scroll_enabled");
 
     // Line color map (always update when not in AP mode to handle empty case)
     if (!apModeActive)
     {
         // Get the value, defaulting to empty string if not present
-        String colorMapValue = server->hasArg("linecolormap")
-                               ? server->arg("linecolormap")
+        String colorMapValue = server->hasArg("line_color_map")
+                               ? server->arg("line_color_map")
                                : "";
 
         strlcpy(config->lineColorMap, colorMapValue.c_str(), sizeof(config->lineColorMap));
@@ -400,9 +461,9 @@ void ConfigWebServer::parseGeneralSettings(Config* config, bool* cityChanged)
     }
 
     // Rest mode periods
-    if (server->hasArg("restperiods"))
+    if (server->hasArg("rest_periods"))
     {
-        String restPeriods = server->arg("restperiods");
+        String restPeriods = server->arg("rest_periods");
 
         if (restPeriods.length() < sizeof(config->restModePeriods))
         {
@@ -421,9 +482,9 @@ void ConfigWebServer::parsePragueSettings(Config* config)
 {
     String selectedCity = String(config->city);
 
-    if (server->hasArg("apikey") && server->arg("apikey").length() > 0)
+    if (server->hasArg("api_key") && server->arg("api_key").length() > 0)
     {
-        String apiKeyValue = server->arg("apikey");
+        String apiKeyValue = server->arg("api_key");
         // Only save if it's not the placeholder dots (visual feedback, not actual key)
         if (apiKeyValue != "****" && selectedCity == "Prague")
         {
@@ -431,9 +492,9 @@ void ConfigWebServer::parsePragueSettings(Config* config)
         }
     }
 
-    if (server->hasArg("stops") && selectedCity == "Prague")
+    if (server->hasArg("prague_stops") && selectedCity == "Prague")
     {
-        String stops = server->arg("stops");
+        String stops = server->arg("prague_stops");
         strlcpy(config->pragueStopIds, stops.c_str(), sizeof(config->pragueStopIds));
     }
 }
@@ -442,9 +503,9 @@ void ConfigWebServer::parseBerlinSettings(Config* config)
 {
     String selectedCity = String(config->city);
 
-    if (server->hasArg("stops") && selectedCity == "Berlin")
+    if (server->hasArg("berlin_stops") && selectedCity == "Berlin")
     {
-        String stops = server->arg("stops");
+        String stops = server->arg("berlin_stops");
         strlcpy(config->berlinStopIds, stops.c_str(), sizeof(config->berlinStopIds));
     }
 }
@@ -457,49 +518,49 @@ void ConfigWebServer::parseMqttSettings(Config* config)
     if (selectedCity != "MQTT")
         return;
 
-    if (server->hasArg("mqttBroker"))
-        strlcpy(config->mqttBroker, server->arg("mqttBroker").c_str(), sizeof(config->mqttBroker));
+    if (server->hasArg("mqtt_broker"))
+        strlcpy(config->mqttBroker, server->arg("mqtt_broker").c_str(), sizeof(config->mqttBroker));
 
-    if (server->hasArg("mqttPort"))
+    if (server->hasArg("mqtt_port"))
     {
-        config->mqttPort = server->arg("mqttPort").toInt();
+        config->mqttPort = server->arg("mqtt_port").toInt();
         if (config->mqttPort < 1) config->mqttPort = 1;
         if (config->mqttPort > 65535) config->mqttPort = 65535;
     }
 
-    if (server->hasArg("mqttUser"))
-        strlcpy(config->mqttUsername, server->arg("mqttUser").c_str(), sizeof(config->mqttUsername));
+    if (server->hasArg("mqtt_user"))
+        strlcpy(config->mqttUsername, server->arg("mqtt_user").c_str(), sizeof(config->mqttUsername));
 
-    if (server->hasArg("mqttPass"))
-        strlcpy(config->mqttPassword, server->arg("mqttPass").c_str(), sizeof(config->mqttPassword));
+    if (server->hasArg("mqtt_pass") && server->arg("mqtt_pass").length() > 0)
+        strlcpy(config->mqttPassword, server->arg("mqtt_pass").c_str(), sizeof(config->mqttPassword));
 
-    if (server->hasArg("mqttReqTopic"))
-        strlcpy(config->mqttRequestTopic, server->arg("mqttReqTopic").c_str(), sizeof(config->mqttRequestTopic));
+    if (server->hasArg("mqtt_req_topic"))
+        strlcpy(config->mqttRequestTopic, server->arg("mqtt_req_topic").c_str(), sizeof(config->mqttRequestTopic));
 
-    if (server->hasArg("mqttRespTopic"))
-        strlcpy(config->mqttResponseTopic, server->arg("mqttRespTopic").c_str(), sizeof(config->mqttResponseTopic));
+    if (server->hasArg("mqtt_resp_topic"))
+        strlcpy(config->mqttResponseTopic, server->arg("mqtt_resp_topic").c_str(), sizeof(config->mqttResponseTopic));
 
-    if (server->hasArg("mqttEtaMode"))
-        config->mqttUseEtaMode = (server->arg("mqttEtaMode") == "1");
+    if (server->hasArg("mqtt_eta_mode"))
+        config->mqttUseEtaMode = (server->arg("mqtt_eta_mode") == "1");
 
     // Parse JSON field mappings
-    if (server->hasArg("mqttFldLine"))
-        strlcpy(config->mqttFieldLine, server->arg("mqttFldLine").c_str(), sizeof(config->mqttFieldLine));
+    if (server->hasArg("mqtt_fld_line"))
+        strlcpy(config->mqttFieldLine, server->arg("mqtt_fld_line").c_str(), sizeof(config->mqttFieldLine));
 
-    if (server->hasArg("mqttFldDest"))
-        strlcpy(config->mqttFieldDestination, server->arg("mqttFldDest").c_str(), sizeof(config->mqttFieldDestination));
+    if (server->hasArg("mqtt_fld_dest"))
+        strlcpy(config->mqttFieldDestination, server->arg("mqtt_fld_dest").c_str(), sizeof(config->mqttFieldDestination));
 
-    if (server->hasArg("mqttFldEta"))
-        strlcpy(config->mqttFieldEta, server->arg("mqttFldEta").c_str(), sizeof(config->mqttFieldEta));
+    if (server->hasArg("mqtt_fld_eta"))
+        strlcpy(config->mqttFieldEta, server->arg("mqtt_fld_eta").c_str(), sizeof(config->mqttFieldEta));
 
-    if (server->hasArg("mqttFldTime"))
-        strlcpy(config->mqttFieldTimestamp, server->arg("mqttFldTime").c_str(), sizeof(config->mqttFieldTimestamp));
+    if (server->hasArg("mqtt_fld_time"))
+        strlcpy(config->mqttFieldTimestamp, server->arg("mqtt_fld_time").c_str(), sizeof(config->mqttFieldTimestamp));
 
-    if (server->hasArg("mqttFldPlat"))
-        strlcpy(config->mqttFieldPlatform, server->arg("mqttFldPlat").c_str(), sizeof(config->mqttFieldPlatform));
+    if (server->hasArg("mqtt_fld_plat"))
+        strlcpy(config->mqttFieldPlatform, server->arg("mqtt_fld_plat").c_str(), sizeof(config->mqttFieldPlatform));
 
-    if (server->hasArg("mqttFldAC"))
-        strlcpy(config->mqttFieldAC, server->arg("mqttFldAC").c_str(), sizeof(config->mqttFieldAC));
+    if (server->hasArg("mqtt_fld_ac"))
+        strlcpy(config->mqttFieldAC, server->arg("mqtt_fld_ac").c_str(), sizeof(config->mqttFieldAC));
 }
 
 void ConfigWebServer::parseWeatherSettings(Config* config)
@@ -561,12 +622,66 @@ void ConfigWebServer::handleRefresh()
 void ConfigWebServer::handleReboot()
 {
     String html = FPSTR(HTML_HEADER);
-    html += "<h1>Rebooting...</h1>";
-    html += "<p>The device is rebooting. Please wait 10-15 seconds for it to come back online.</p>";
-    html += "<div id='reconnect-msg' style='display:none; margin-top:20px;'>";
-    html += "<p><button onclick='window.location=\"/\"' style='padding:12px 24px; font-size:16px; cursor:pointer; background:#2ed573; color:#000; border:none; border-radius:8px;'>Reconnect to Device</button></p>";
+
+    // Header
+    html += "<div class='header'><div class='header-top'>";
+    html += "<div class='header-title'><h1>SpojBoard</h1>";
+    html += "<div class='header-subtitle'>Manual Reboot</div></div></div></div>";
+
+    html += "<div class='content'>";
+
+    // Main reboot banner with loading animation
+    html += "<div class='banner banner-info' style='margin-bottom:24px;'>";
+    html += "<div class='status-dot' style='animation: pulse 1.5s ease-in-out infinite;'></div>";
+    html += "<div style='flex:1;'><strong>Device is rebooting...</strong></div>";
     html += "</div>";
-    html += "<script>setTimeout(function(){ document.getElementById('reconnect-msg').style.display='block'; }, 10000);</script>";
+
+    // Reboot reason card
+    html += "<div class='card'>";
+    html += "<h2 style='margin-top:0; color:#67e8f9; font-size:18px;'>🔄 System Reboot</h2>";
+    html += "<p style='color:#999; font-size:13px;'>A manual reboot has been initiated. The device will restart and reload all configurations.</p>";
+    html += "</div>";
+
+    // What to expect section
+    html += "<div class='card' style='background:#0a0a0a; border:1px solid #333;'>";
+    html += "<h3 style='margin-top:0; font-size:14px; color:#999; text-transform:uppercase; letter-spacing:0.5px;'>What to Expect</h3>";
+    html += "<ul style='margin:8px 0; padding-left:20px; color:#999; font-size:13px; line-height:1.8;'>";
+    html += "<li>Device reboots in <strong style='color:#f5f5f5;'>~3 seconds</strong></li>";
+    html += "<li>Boot process takes <strong style='color:#f5f5f5;'>10-15 seconds</strong></li>";
+    html += "<li>Configuration and settings are preserved</li>";
+    html += "<li>Device reconnects to WiFi automatically</li>";
+    html += "</ul>";
+    html += "</div>";
+
+    // Progress bar
+    html += "<div style='margin:24px 0;'>";
+    html += "<div style='background:#1a1a1a; height:6px; border-radius:3px; overflow:hidden;'>";
+    html += "<div id='progress-bar' style='background:linear-gradient(90deg, #67e8f9, #2ed573); height:100%; width:0%; transition:width 15s linear;'></div>";
+    html += "</div>";
+    html += "<div id='status-text' style='text-align:center; margin-top:8px; color:#999; font-size:12px;'>Rebooting device...</div>";
+    html += "</div>";
+
+    // Reconnect button (hidden initially)
+    html += "<div id='reconnect-section' style='display:none; margin-top:24px;'>";
+    html += "<button onclick='window.location=\"/\"' class='btn-primary' style='background:#2ed573;'>✓ Reconnect to Device</button>";
+    html += "<p style='text-align:center; margin-top:12px; color:#666; font-size:12px;'>Click to return to the dashboard</p>";
+    html += "</div>";
+
+    html += "</div>"; // End content
+
+    // Animation and auto-reconnect script
+    html += "<style>";
+    html += "@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }";
+    html += "</style>";
+    html += "<script>";
+    html += "setTimeout(function(){ document.getElementById('progress-bar').style.width='100%'; }, 100);";
+    html += "setTimeout(function(){ document.getElementById('status-text').textContent='Waiting for device...'; }, 5000);";
+    html += "setTimeout(function(){ ";
+    html += "  document.getElementById('reconnect-section').style.display='block';";
+    html += "  document.getElementById('status-text').textContent='Device should be ready';";
+    html += "}, 15000);";
+    html += "</script>";
+
     html += FPSTR(HTML_FOOTER);
     server->send(200, "text/html", html);
 
@@ -579,17 +694,82 @@ void ConfigWebServer::handleReboot()
 void ConfigWebServer::handleClearConfig()
 {
     String html = FPSTR(HTML_HEADER);
-    html += "<h1>Clearing All Settings...</h1>";
-    html += "<div class='card' style='background: #ff6b6b; color: #fff;'>";
-    html += "<p>All configuration has been erased from flash memory.</p>";
-    html += "<p>The device will reboot into AP (setup) mode in 10 seconds.</p>";
-    html += "<p>You will need to reconfigure WiFi and API settings.</p>";
+
+    // Header
+    html += "<div class='header'><div class='header-top'>";
+    html += "<div class='header-title'><h1>SpojBoard</h1>";
+    html += "<div class='header-subtitle'>Factory Reset</div></div></div></div>";
+
+    html += "<div class='content'>";
+
+    // Warning banner
+    html += "<div class='banner banner-error' style='margin-bottom:24px;'>";
+    html += "<div class='status-dot' style='animation: pulse 1.5s ease-in-out infinite;'></div>";
+    html += "<div style='flex:1;'><strong>Erasing all settings...</strong></div>";
     html += "</div>";
-    html += "<div id='reconnect-msg' style='display:none; margin-top:20px;'>";
-    html += "<p><strong>Device should now be in AP mode.</strong></p>";
-    html += "<p>Look for a WiFi network starting with: <strong>SpojBoard-XXXX</strong></p>";
+
+    // Reset details card
+    html += "<div class='card' style='border:2px solid #fb7185;'>";
+    html += "<h2 style='margin-top:0; color:#fb7185; font-size:18px;'>⚠️ Factory Reset in Progress</h2>";
+    html += "<p style='margin:12px 0; font-size:14px; color:#f5f5f5;'>All configuration data has been <strong style='color:#fb7185;'>permanently erased</strong> from flash memory.</p>";
+    html += "<p style='color:#999; font-size:13px;'>The device will reboot into AP (setup) mode. You'll need to reconfigure everything from scratch.</p>";
     html += "</div>";
-    html += "<script>setTimeout(function(){ document.getElementById('reconnect-msg').style.display='block'; }, 15000);</script>";
+
+    // What was cleared
+    html += "<div class='card' style='background:#0a0a0a; border:1px solid #333;'>";
+    html += "<h3 style='margin-top:0; font-size:14px; color:#999; text-transform:uppercase; letter-spacing:0.5px;'>Settings Cleared</h3>";
+    html += "<ul style='margin:8px 0; padding-left:20px; color:#999; font-size:13px; line-height:1.8;'>";
+    html += "<li><strong style='color:#fb7185;'>WiFi credentials</strong> (network name and password)</li>";
+    html += "<li><strong style='color:#fb7185;'>Transit provider settings</strong> (API keys, stop IDs)</li>";
+    html += "<li><strong style='color:#fb7185;'>Display preferences</strong> (brightness, colors, language)</li>";
+    html += "<li><strong style='color:#fb7185;'>All custom configurations</strong></li>";
+    html += "</ul>";
+    html += "</div>";
+
+    // What to expect
+    html += "<div class='card' style='background:#0a0a0a; border:1px solid #333;'>";
+    html += "<h3 style='margin-top:0; font-size:14px; color:#999; text-transform:uppercase; letter-spacing:0.5px;'>What to Expect</h3>";
+    html += "<ul style='margin:8px 0; padding-left:20px; color:#999; font-size:13px; line-height:1.8;'>";
+    html += "<li>Device reboots in <strong style='color:#f5f5f5;'>~10 seconds</strong></li>";
+    html += "<li>Boots into <strong style='color:#fcd34d;'>AP (setup) mode</strong></li>";
+    html += "<li>Creates WiFi hotspot: <strong style='color:#67e8f9;'>SpojBoard-XXXX</strong></li>";
+    html += "<li>Connect to hotspot and configure from scratch</li>";
+    html += "</ul>";
+    html += "</div>";
+
+    // Progress bar
+    html += "<div style='margin:24px 0;'>";
+    html += "<div style='background:#1a1a1a; height:6px; border-radius:3px; overflow:hidden;'>";
+    html += "<div id='progress-bar' style='background:linear-gradient(90deg, #fb7185, #fcd34d); height:100%; width:0%; transition:width 15s linear;'></div>";
+    html += "</div>";
+    html += "<div id='status-text' style='text-align:center; margin-top:8px; color:#999; font-size:12px;'>Erasing configuration...</div>";
+    html += "</div>";
+
+    // AP mode instructions (shown after delay)
+    html += "<div id='ap-instructions' style='display:none; margin-top:24px;'>";
+    html += "<div class='banner banner-warning'>";
+    html += "<div style='flex:1;'>";
+    html += "<strong>Device is now in AP mode</strong><br>";
+    html += "<span style='font-size:12px; opacity:0.8;'>Look for WiFi network: <strong>SpojBoard-XXXX</strong></span>";
+    html += "</div></div>";
+    html += "<p style='text-align:center; margin-top:12px; color:#666; font-size:12px;'>Connect to the hotspot to begin setup</p>";
+    html += "</div>";
+
+    html += "</div>"; // End content
+
+    // Animation script
+    html += "<style>";
+    html += "@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }";
+    html += "</style>";
+    html += "<script>";
+    html += "setTimeout(function(){ document.getElementById('progress-bar').style.width='100%'; }, 100);";
+    html += "setTimeout(function(){ document.getElementById('status-text').textContent='Rebooting into AP mode...'; }, 8000);";
+    html += "setTimeout(function(){ ";
+    html += "  document.getElementById('ap-instructions').style.display='block';";
+    html += "  document.getElementById('status-text').textContent='Setup mode active';";
+    html += "}, 15000);";
+    html += "</script>";
+
     html += FPSTR(HTML_FOOTER);
     server->send(200, "text/html", html);
 

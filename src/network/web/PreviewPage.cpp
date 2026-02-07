@@ -4,65 +4,87 @@
 String buildPreviewPage()
 {
     String html = FPSTR(HTML_HEADER);
-    html += "<h1>Display Preview</h1>";
-    html += "<p style='text-align:center; color:#888; margin-top:-10px; margin-bottom:20px;'>Live view of LED matrix display</p>";
+
+    // Header
+    html += "<div class='header'><div class='header-top'>";
+    html += "<div class='header-title'><h1>SpojBoard</h1>";
+    html += "<div class='header-subtitle'>Live Display Preview</div></div>";
+
+    // Action bar with controls
+    html += "<div class='action-bar'>";
+    html += "<button class='action-btn' onclick='toggleAutoRefresh()' id='toggleBtn' title='Pause/Resume'>⏸</button>";
+    html += "<button class='action-btn' onclick='location.href=\"/\"' title='Back to Dashboard'>←</button>";
+    html += "</div>";
+
+    html += "</div></div>";
+
+    html += "<div class='content'>";
+
+    // Info banner
+    html += "<div class='banner banner-info' style='margin-bottom:24px;'>";
+    html += "<span class='status-dot'></span>";
+    html += "<div>Real-time preview of what's currently displayed on the LED matrix. Updates every 3 seconds.</div>";
+    html += "</div>";
 
     // CSS Styles for LED Matrix Replica
     html += "<style>";
     html += ".led-display { ";
     html += "  background: #000; ";
     html += "  border: 3px solid #333; ";
-    html += "  padding: 10px; ";
-    html += "  margin: 20px auto; ";
-    html += "  max-width: 800px; ";
+    html += "  padding: 15px; ";
+    html += "  margin: 0 auto 24px; ";
+    html += "  max-width: 900px; ";
     html += "  font-family: 'Courier New', monospace; ";
-    html += "  box-shadow: 0 0 20px rgba(0,0,0,0.5); ";
+    html += "  box-shadow: 0 0 30px rgba(0,212,255,0.3), inset 0 0 20px rgba(0,0,0,0.8); ";
+    html += "  border-radius: 8px; ";
     html += "}";
     html += ".led-row { ";
     html += "  display: flex; ";
     html += "  align-items: center; ";
-    html += "  height: 40px; ";
-    html += "  margin: 2px 0; ";
-    html += "  padding: 4px 8px; ";
+    html += "  height: 45px; ";
+    html += "  margin: 3px 0; ";
+    html += "  padding: 6px 10px; ";
     html += "}";
     html += ".led-line-box { ";
-    html += "  min-width: 45px; ";
-    html += "  height: 28px; ";
-    html += "  background: #000; ";
-    html += "  border: 1px solid #333; ";
+    html += "  min-width: 50px; ";
+    html += "  height: 32px; ";
+    html += "  background: #0a0a0a; ";
+    html += "  border: 2px solid #1a1a1a; ";
     html += "  display: flex; ";
     html += "  align-items: center; ";
     html += "  justify-content: center; ";
-    html += "  font-size: 14px; ";
+    html += "  font-size: 15px; ";
     html += "  font-weight: bold; ";
-    html += "  margin-right: 8px; ";
-    html += "  text-shadow: 0 0 3px currentColor; ";
+    html += "  margin-right: 12px; ";
+    html += "  text-shadow: 0 0 5px currentColor; ";
+    html += "  border-radius: 3px; ";
     html += "}";
     html += ".led-destination { ";
     html += "  flex: 1; ";
     html += "  color: #fff; ";
-    html += "  font-size: 14px; ";
+    html += "  font-size: 15px; ";
     html += "  white-space: nowrap; ";
     html += "  overflow: hidden; ";
     html += "  text-overflow: ellipsis; ";
-    html += "  text-shadow: 0 0 2px #fff; ";
+    html += "  text-shadow: 0 0 3px #fff; ";
     html += "}";
     html += ".led-eta { ";
     html += "  color: #fff; ";
-    html += "  font-size: 14px; ";
+    html += "  font-size: 15px; ";
     html += "  font-weight: bold; ";
     html += "  margin-left: auto; ";
-    html += "  padding-left: 10px; ";
-    html += "  text-shadow: 0 0 2px #fff; ";
+    html += "  padding-left: 12px; ";
+    html += "  text-shadow: 0 0 3px #fff; ";
     html += "}";
     html += ".led-status { ";
     html += "  display: flex; ";
     html += "  justify-content: space-between; ";
     html += "  color: #fff; ";
-    html += "  font-size: 12px; ";
-    html += "  padding: 8px; ";
-    html += "  border-top: 1px solid #333; ";
-    html += "  text-shadow: 0 0 2px #fff; ";
+    html += "  font-size: 13px; ";
+    html += "  padding: 10px; ";
+    html += "  margin-top: 5px; ";
+    html += "  border-top: 2px solid #1a1a1a; ";
+    html += "  text-shadow: 0 0 3px #fff; ";
     html += "}";
 
     // Color classes for line boxes
@@ -93,32 +115,18 @@ String buildPreviewPage()
     html += "  flex-direction: column; ";
     html += "  justify-content: center; ";
     html += "  align-items: center; ";
-    html += "  min-height: 140px; ";
-    html += "  padding: 20px; ";
-    html += "  text-shadow: 0 0 3px currentColor; ";
+    html += "  min-height: 160px; ";
+    html += "  padding: 24px; ";
+    html += "  text-shadow: 0 0 5px currentColor; ";
     html += "}";
     html += ".led-status-line1 { ";
-    html += "  font-size: 16px; ";
+    html += "  font-size: 18px; ";
     html += "  font-weight: bold; ";
-    html += "  margin-bottom: 10px; ";
+    html += "  margin-bottom: 12px; ";
     html += "}";
     html += ".led-status-line2 { ";
-    html += "  font-size: 14px; ";
+    html += "  font-size: 15px; ";
     html += "}";
-
-    html += ".controls { text-align: center; margin: 20px; }";
-    html += ".controls button { ";
-    html += "  padding: 10px 20px; ";
-    html += "  margin: 5px; ";
-    html += "  font-size: 14px; ";
-    html += "  cursor: pointer; ";
-    html += "  background: #2ed573; ";
-    html += "  color: #000; ";
-    html += "  border: none; ";
-    html += "  border-radius: 8px; ";
-    html += "}";
-    html += ".controls button:hover { background: #26de81; }";
-    html += "#status { text-align: center; color: #888; margin: 10px; }";
     html += "</style>";
 
     // LED Display Container
@@ -127,12 +135,21 @@ String buildPreviewPage()
     html += "<div class='led-status' id='statusBar'></div>";
     html += "</div>";
 
-    // Controls
-    html += "<div class='controls'>";
-    html += "<button onclick='toggleAutoRefresh()' id='toggleBtn'>Pause</button>";
-    html += "<button onclick='location.href=\"/\"'>Back to Dashboard</button>";
+    // Status card
+    html += "<div class='card' style='background:#0a0a0a; border:1px solid #333;'>";
+    html += "<div style='display:flex; align-items:center; justify-content:space-between;'>";
+    html += "<div>";
+    html += "<div style='font-size:12px; color:#999; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;'>Connection Status</div>";
+    html += "<div id='status' style='font-size:14px; color:#2ed573;'>Loading...</div>";
     html += "</div>";
-    html += "<p id='status'>Loading...</p>";
+    html += "<div style='text-align:right;'>";
+    html += "<div style='font-size:12px; color:#999; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:4px;'>Auto Refresh</div>";
+    html += "<div id='refreshStatus' style='font-size:14px; color:#67e8f9;'>Active (3s)</div>";
+    html += "</div>";
+    html += "</div>";
+    html += "</div>";
+
+    html += "</div>"; // End content
 
     // JavaScript
     html += "<script>";
@@ -142,12 +159,12 @@ String buildPreviewPage()
     html += "  if (line === 'A') return 'green';";
     html += "  if (line === 'B') return 'yellow';";
     html += "  if (line === 'C') return 'red';";
-    html += "  if (/^S\\d+$/.test(line)) return 'blue';";  // S-trains
-    html += "  if (/^9[1-9]$/.test(line)) return 'cyan';";  // Night trams
-    html += "  if (/^[1-2]\\d$/.test(line)) return 'white';";  // Trams
-    html += "  if (/^(5[0-9]|[1-2]\\d\\d)$/.test(line)) return 'purple';";  // Buses
-    html += "  if (/^9\\d\\d$/.test(line)) return 'cyan';";  // Night buses
-    html += "  return 'yellow';";  // Default
+    html += "  if (/^S\\d+$/.test(line)) return 'blue';";
+    html += "  if (/^9[1-9]$/.test(line)) return 'cyan';";
+    html += "  if (/^[1-2]\\d$/.test(line)) return 'white';";
+    html += "  if (/^(5[0-9]|[1-2]\\d\\d)$/.test(line)) return 'purple';";
+    html += "  if (/^9\\d\\d$/.test(line)) return 'cyan';";
+    html += "  return 'yellow';";
     html += "}";
 
     // ETA color function
@@ -166,16 +183,16 @@ String buildPreviewPage()
     html += "  return 'weather-hot';";
     html += "}";
 
-    // Weather icon mapping (using emoji approximations)
+    // Weather icon mapping
     html += "function getWeatherIcon(code) {";
-    html += "  if (code === 0) return '\\u2600';";  // Clear sky - sun
-    html += "  if (code <= 3) return '\\u2601';";  // Cloudy
-    html += "  if (code <= 48) return '\\u2248';";  // Fog - approximately equal
-    html += "  if (code <= 57) return '\\u2022';";  // Drizzle - bullet
-    html += "  if (code <= 67) return '\\u2248';";  // Rain - approximately equal
-    html += "  if (code <= 86) return '\\u2744';";  // Snow
-    html += "  if (code >= 95) return '\\u26C8';";  // Thunderstorm
-    html += "  return '\\u2601';";  // Default cloudy
+    html += "  if (code === 0) return '\\u2600';";
+    html += "  if (code <= 3) return '\\u2601';";
+    html += "  if (code <= 48) return '\\u2248';";
+    html += "  if (code <= 57) return '\\u2022';";
+    html += "  if (code <= 67) return '\\u2248';";
+    html += "  if (code <= 86) return '\\u2744';";
+    html += "  if (code >= 95) return '\\u26C8';";
+    html += "  return '\\u2601';";
     html += "}";
 
     // Update display function
@@ -185,49 +202,40 @@ String buildPreviewPage()
     html += "    const data = await response.json();";
     html += "    if (!data.success) throw new Error('API call failed');";
     html += "    const state = data.state;";
-
-    // Decision tree matching DisplayManager::updateDisplay logic
     html += "    let contentHtml = '';";
     html += "    let statusHtml = '';";
 
-    // Demo mode has highest priority
+    // Display logic (matching DisplayManager)
     html += "    if (state.demoModeActive) {";
     html += "      contentHtml = renderDepartures(data.departures);";
     html += "      statusHtml = renderStatusBar(data);";
     html += "    }";
-    // AP Mode - Show credentials
     html += "    else if (state.apModeActive) {";
     html += "      contentHtml = renderStatusScreen('SpojBoard Setup', `WiFi: ${state.apSSID}<br>Password: ${state.apPassword}<br><br>Go to: 192.168.4.1`, '#00ffff');";
     html += "      statusHtml = '';";
     html += "    }";
-    // WiFi connecting
     html += "    else if (!state.wifiConnected) {";
     html += "      contentHtml = renderStatusScreen('WiFi Connecting...', '', '#ffff00');";
     html += "      statusHtml = '';";
     html += "    }";
-    // Setup required
     html += "    else if (!state.apiKeyConfigured) {";
     html += "      contentHtml = renderStatusScreen('Setup Required', 'http://' + window.location.hostname, '#00ffff');";
     html += "      statusHtml = '';";
     html += "    }";
-    // API Error
     html += "    else if (state.apiError) {";
     html += "      contentHtml = renderStatusScreen('API Error', state.apiErrorMsg, '#ff0000');";
     html += "      statusHtml = renderStatusBar(data);";
     html += "    }";
-    // No departures
     html += "    else if (state.departureCount === 0) {";
     html += "      const msg = state.stopName !== '' ? state.stopName : 'Waiting...';";
     html += "      contentHtml = renderStatusScreen('No Departures', msg, '#ffff00');";
     html += "      statusHtml = renderStatusBar(data);";
     html += "    }";
-    // Rest mode
     html += "    else if (state.restModeActive) {";
     html += "      const msg = state.restModeManual ? 'Manual' : 'Scheduled';";
     html += "      contentHtml = renderStatusScreen('Rest Mode', msg, '#888888');";
     html += "      statusHtml = '';";
     html += "    }";
-    // Normal departures
     html += "    else {";
     html += "      contentHtml = renderDepartures(data.departures);";
     html += "      statusHtml = renderStatusBar(data);";
@@ -235,16 +243,15 @@ String buildPreviewPage()
 
     html += "    document.getElementById('departureRows').innerHTML = contentHtml;";
     html += "    document.getElementById('statusBar').innerHTML = statusHtml;";
-
     html += "    document.getElementById('status').textContent = 'Updated: ' + new Date().toLocaleTimeString();";
     html += "    document.getElementById('status').style.color = '#2ed573';";
     html += "  } catch (err) {";
     html += "    document.getElementById('status').textContent = 'Error: ' + err.message;";
-    html += "    document.getElementById('status').style.color = '#ff6b6b';";
+    html += "    document.getElementById('status').style.color = '#fb7185';";
     html += "  }";
     html += "}";
 
-    // Helper: Render departures
+    // Helper functions
     html += "function renderDepartures(departures) {";
     html += "  return departures.map(dep => {";
     html += "    const color = getLineColor(dep.line);";
@@ -260,7 +267,6 @@ String buildPreviewPage()
     html += "  }).join('');";
     html += "}";
 
-    // Helper: Render status/error screen
     html += "function renderStatusScreen(line1, line2, color) {";
     html += "  return `<div class='led-status-screen' style='color:${color}'>` +";
     html += "    `<div class='led-status-line1'>${line1}</div>` +";
@@ -268,7 +274,6 @@ String buildPreviewPage()
     html += "  `</div>`;";
     html += "}";
 
-    // Helper: Render status bar
     html += "function renderStatusBar(data) {";
     html += "  let html = '<span>' + data.day + ' | ' + data.date + '</span>';";
     html += "  if (data.weather) {";
@@ -281,14 +286,26 @@ String buildPreviewPage()
     html += "  return html;";
     html += "}";
 
-    // Auto-refresh logic
+    // Auto-refresh controls
     html += "let autoRefresh = true;";
     html += "let refreshInterval = null;";
     html += "function toggleAutoRefresh() {";
     html += "  autoRefresh = !autoRefresh;";
     html += "  const btn = document.getElementById('toggleBtn');";
-    html += "  btn.textContent = autoRefresh ? 'Pause' : 'Resume';";
-    html += "  if (autoRefresh) startAutoRefresh(); else stopAutoRefresh();";
+    html += "  const status = document.getElementById('refreshStatus');";
+    html += "  if (autoRefresh) {";
+    html += "    btn.innerHTML = '⏸';";
+    html += "    btn.title = 'Pause';";
+    html += "    status.textContent = 'Active (3s)';";
+    html += "    status.style.color = '#67e8f9';";
+    html += "    startAutoRefresh();";
+    html += "  } else {";
+    html += "    btn.innerHTML = '▶';";
+    html += "    btn.title = 'Resume';";
+    html += "    status.textContent = 'Paused';";
+    html += "    status.style.color = '#999';";
+    html += "    stopAutoRefresh();";
+    html += "  }";
     html += "}";
     html += "function startAutoRefresh() {";
     html += "  if (refreshInterval) clearInterval(refreshInterval);";
