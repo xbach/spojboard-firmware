@@ -338,21 +338,19 @@ void DisplayManager::drawDateTime()
     // Get language setting (default to "en" if config not set)
     const char *lang = (config && config->language[0]) ? config->language : "en";
 
-    // Day of week (localized)
-    char dayStr[8];
-    const char *localDay = getLocalizedDay(timeinfo.tm_wday, lang);
+    // Date first (numeric format: DD.MM.) - fixed width
+    char dateStr[8];
+    snprintf(dateStr, sizeof(dateStr), "%02d.%02d.", timeinfo.tm_mday, timeinfo.tm_mon + 1);
+    display->setCursor(2, y + 7);
+    display->print(dateStr);
+
+    // Day of week (full name, localized) - variable width
+    char dayStr[16]; // Buffer for "Donnerstag" (10 chars + accents)
+    const char *localDay = getLocalizedDayFull(timeinfo.tm_wday, lang);
     snprintf(dayStr, sizeof(dayStr), "%s", localDay);
     utf8tocp(dayStr);
-    display->setCursor(2, y + 7);
+    display->setCursor(29, y + 7); // After date (6 chars × 4px = 24px + 2px margin)
     display->print(dayStr);
-
-    // Date (localized month)
-    char dateStr[10];
-    const char *localMonth = getLocalizedMonth(timeinfo.tm_mon, lang);
-    snprintf(dateStr, sizeof(dateStr), "%s %02d", localMonth, timeinfo.tm_mday);
-    utf8tocp(dateStr);
-    display->setCursor(26, y + 7);
-    display->print(dateStr);
 
     // Weather (only if enabled and valid data)
     if (config && config->weatherEnabled && weatherData && !weatherData->hasError)
@@ -370,22 +368,22 @@ void DisplayManager::drawDateTime()
             char iconCode = mapWeatherCodeToIcon(weatherData->weatherCode);
             uint16_t iconColor = getWeatherColor(weatherData->weatherCode);
 
-            // Draw icon at fixed left position (X=65, panel 2 start)
+            // Draw icon at X=75 (shifted +10px from original X=65)
             display->setTextColor(iconColor);
-            display->setCursor(65, y + 7);
+            display->setCursor(75, y + 7);
             display->print(iconCode); // Letter 'a'-'t' renders as weather icon
 
-            // Draw temperature right-aligned to degree symbol at X=93
+            // Draw temperature right-aligned to degree symbol at X=103 (shifted +8px from X=93)
             // with its own color
             display->setTextColor(getTemperatureColor(weatherData->temperature));
             char tempStr[8];
             snprintf(tempStr, sizeof(tempStr), "%d\xB0", weatherData->temperature);
 
-            // Calculate text width and right-align to degree anchor (X=93)
+            // Calculate text width and right-align to degree anchor (X=103)
             int16_t x1, y1;
             uint16_t w, h;
             display->getTextBounds(tempStr, 0, 0, &x1, &y1, &w, &h);
-            int tempX = 88 - w + x1; // Right-align to X=93, compensate for x1 offset
+            int tempX = 98 - w + x1; // Right-align to X=103, compensate for x1 offset
 
             display->setCursor(tempX, y + 7);
             display->print(tempStr); // Temperature with degree symbol
@@ -397,6 +395,8 @@ void DisplayManager::drawDateTime()
     }
 
     // Time
+    display->setFont(fontSmall);
+    display->setTextColor(COLOR_WHITE);
     char timeStr[6];
     strftime(timeStr, 6, "%H:%M", &timeinfo);
     display->setCursor(102, y + 7);

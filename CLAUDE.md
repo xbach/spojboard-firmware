@@ -594,7 +594,13 @@ Transitions:
 
 - **Row-based layout**: 4 rows × 8 pixels each on 128×32 matrix
   - Rows 0-2: Departure entries (line number, destination, ETA) - shared by normal and demo modes
-  - Row 3: Date/time status bar with pipe separator (e.g., "Mon| Feb 15 14:35")
+  - Row 3: Date/time status bar (e.g., "08.02. Donnerstag ☀ 15° 14:23")
+    - **Recent Update (Feb 2026)**: Enhanced status bar layout with full day names and numeric dates
+    - Date: Fixed-width numeric format "DD.MM." (6 chars) for predictable positioning
+    - Day: Full localized day names (Sunday/Sonntag/Neděle) using condensed font
+    - Weather: Icon + temperature (shifted +6px right from X=65 to X=71 to accommodate longer day names)
+    - Time: Original font and position (X=102) - unchanged
+    - Font: Condensed font (DepartureMonoCondensed5pt8b) for date/day to fit German "Donnerstag" (10 chars)
 - **Uniform route boxes**: All line numbers displayed in 18-pixel wide black background boxes (fits 1-3 characters)
   - Line numbers are preformatted (zero-padded to consistent width) before rendering
   - Route numbers horizontally centered within boxes using `getTextBounds()` with proper x1 offset compensation
@@ -969,7 +975,11 @@ NVS namespace: "transport"
 - NTP sync: `pool.ntp.org`
 - Timezone: CET/CEST (UTC+1/+2)
 - ETA calculation: Compares ISO timestamp from API with local time (mktime/difftime)
-- Display format: "Wed 08.Jan 14:35" on bottom row
+- **Status bar format** (Feb 2026 update): "08.02. Donnerstag ☀ 15° 14:23"
+  - Numeric date (DD.MM.) + full localized day name + weather + time
+  - Localization: `getLocalizedDayFull()` returns full day names in English, Czech, or German
+  - Replaces old format: "Wed 08.Jan 14:35" (3-char day abbreviations + month abbreviations)
+  - Memory optimization: Removed unused day/month abbreviations (~600 bytes flash savings)
 
 ### Critical: Timezone Initialization Timing
 

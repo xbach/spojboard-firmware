@@ -69,19 +69,11 @@ time_t parseTimestamp(const char* timestamp, const char* format = "%Y-%m-%dT%H:%
 // ============================================================================
 
 /**
- * Get localized day of week abbreviation (3 characters)
+ * Get localized day of week full name
  * @param tm_wday Day of week (0=Sunday, 6=Saturday)
  * @param lang Language code: "en", "cs", or "de"
- * @return Pointer to day abbreviation string (PROGMEM)
+ * @return Pointer to full day name string (PROGMEM)
  */
-const char* getLocalizedDay(int tm_wday, const char* lang);
-
-/**
- * Get localized month abbreviation (3 characters)
- * @param tm_mon Month (0=January, 11=December)
- * @param lang Language code: "en", "cs", or "de"
- * @return Pointer to month abbreviation string (PROGMEM)
- */
-const char* getLocalizedMonth(int tm_mon, const char* lang);
+const char* getLocalizedDayFull(int tm_wday, const char* lang);
 
 #endif // TIMEUTILS_H
