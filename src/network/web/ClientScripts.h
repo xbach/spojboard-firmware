@@ -608,9 +608,13 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw new Error(data.message || 'Save failed');
                 }
             } else {
-                // Restart required - submit form normally to navigate to restart page
-                form.removeEventListener('submit', arguments.callee);
-                form.submit();
+                // Restart required - display the restart confirmation page (HTML response)
+                const html = await response.text();
+                // Replace entire page with the restart page from server
+                // This is safe: HTML comes from our own trusted server, not user input
+                document.open();
+                document.write(html);
+                document.close();
             }
         } catch (error) {
             // Show error feedback with details

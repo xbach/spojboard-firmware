@@ -48,6 +48,22 @@ bool getFormattedTime(char* buffer, size_t size, const char* format = "%Y-%m-%d 
  */
 bool getCurrentTime(struct tm* timeinfo);
 
+/**
+ * Check if device time is reasonable (after year 2020)
+ * Used to verify NTP sync actually worked
+ * @return true if time appears to be synced, false if still at epoch/default
+ */
+bool isTimeSynced();
+
+/**
+ * Parse ISO 8601 timestamp to Unix time
+ * Properly initializes tm struct and lets mktime() auto-determine DST
+ * @param timestamp ISO 8601 timestamp string (e.g., "2026-02-07T21:43:48+01:00")
+ * @param format strptime format string (default: ISO 8601 basic format)
+ * @return Unix timestamp (time_t), or -1 on parse error
+ */
+time_t parseTimestamp(const char* timestamp, const char* format = "%Y-%m-%dT%H:%M:%S");
+
 // ============================================================================
 // Localized Date/Time Functions
 // ============================================================================

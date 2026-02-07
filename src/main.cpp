@@ -80,7 +80,8 @@ struct APIFetchRequest {
     bool fetchWeatherNow;
     unsigned long lastDeparturesFetch;
     unsigned long lastWeatherFetch;
-} apiFetchRequest = {.fetchDeparturesNow = false, .fetchWeatherNow = false, .lastDeparturesFetch = 0, .lastWeatherFetch = 0};
+    bool timezoneInitialized; // Set to true after initTimeSync() - prevents fetches with wrong timezone
+} apiFetchRequest = {.fetchDeparturesNow = false, .fetchWeatherNow = false, .lastDeparturesFetch = 0, .lastWeatherFetch = 0, .timezoneInitialized = false};
 
 // ============================================================================
 // Departure Data (structure defined in api/DepartureData.h)
@@ -390,7 +391,8 @@ void apiFetchTask(void* parameter)
         }
 
         // Check periodic fetch intervals (only if not in demo/rest mode and WiFi connected)
-        if (!demoModeActive && !restModeActive && wifiManager.isConnected())
+        // CRITICAL: Also require timezone to be initialized to prevent timestamp parsing with wrong timezone
+        if (!demoModeActive && !restModeActive && wifiManager.isConnected() && apiFetchRequest.timezoneInitialized)
         {
             // Departures fetch interval
             if (isCityConfigured())
@@ -422,6 +424,31 @@ void apiFetchTask(void* parameter)
 
             logTimestamp();
             debugPrintln("APIFetchTask: Fetching departures (blocking)...");
+            logTimestamp();
+            debugPrint("APIFetchTask: config.minDepartureTime = ");
+            debugPrint(config.minDepartureTime);
+            debugPrintln("");
+
+            // Log current device time for debugging time sync issues
+            time_t currentTime;
+            time(&currentTime);
+            struct tm timeinfo;
+            if (getLocalTime(&timeinfo))
+            {
+                char deviceTimeStr[32];
+                strftime(deviceTimeStr, sizeof(deviceTimeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+                logTimestamp();
+                debugPrint("APIFetchTask: Device time = ");
+                debugPrint(deviceTimeStr);
+                debugPrint(" (unix=");
+                debugPrint((int)currentTime);
+                debugPrintln(")");
+            }
+            else
+            {
+                logTimestamp();
+                debugPrintln("⚠️ APIFetchTask: Device time not synced!");
+            }
 
             // Call API client (blocking operation)
             TransitAPI::APIResult result = transitAPI->fetchDepartures(config);
@@ -830,6 +857,13 @@ void setup()
         displayManager.drawStatus("WiFi Connected!", ipStr, COLOR_GREEN);
         delay(1500);
 
+        // CRITICAL: Initialize timezone IMMEDIATELY after WiFi connects
+        // This must happen before any API fetches to ensure mktime() uses correct timezone
+        logTimestamp();
+        debugPrintln("Initializing timezone configuration...");
+        initTimeSync();
+        apiFetchRequest.timezoneInitialized = true; // Allow API fetches now
+
         // Start telnet logger if debug mode enabled
         if (config.debugMode)
         {
@@ -859,20 +893,26 @@ void setup()
     // Setup NTP time if connected to WiFi
     if (wifiManager.isConnected() && !wifiManager.isAPMode())
     {
-        logTimestamp();
-        debugPrintln("Syncing time...");
-        initTimeSync();
+        // Note: initTimeSync() was already called immediately after WiFi connected
+        // to ensure timezone is set before any API fetches occur
 
-        if (syncTime(10, 500))
+        bool ntpSuccess = syncTime(10, 500);
+
+        // Verify time is actually synced (not at epoch)
+        if (ntpSuccess)
         {
-            char timeStr[32];
-            if (getFormattedTime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S"))
+            if (!isTimeSynced())
             {
-                char msg[64];
-                snprintf(msg, sizeof(msg), "Time synced: %s", timeStr);
                 logTimestamp();
-                debugPrintln(msg);
+                debugPrintln("⚠️ WARNING: NTP reported success but time still invalid!");
+                ntpSuccess = false;
             }
+        }
+
+        if (!ntpSuccess)
+        {
+            logTimestamp();
+            debugPrintln("⚠️ WARNING: Proceeding without time sync - ETA calculations will be incorrect!");
         }
 
         // Signal API task for initial fetch if configured

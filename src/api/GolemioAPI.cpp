@@ -1,6 +1,7 @@
 #include "GolemioAPI.h"
 #include "../utils/Logger.h"
 #include "../utils/HttpUtils.h"
+#include "../utils/TimeUtils.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
@@ -119,13 +120,28 @@ bool GolemioAPI::querySingleStop(const char* stopId,
     char url[512];
 
     // Query each stop with MAX_DEPARTURES to ensure good caching and sorting
+    // minutesBefore semantics (per official Golemio docs):
+    //   Positive: start from PAST (e.g., 5 = "5 minutes ago")
+    //   Negative: start from FUTURE (e.g., -3 = "3 minutes from now", excludes 0-3 min)
+    //   Zero: start from NOW (includes all future departures)
+    // Use negative value to implement minDepartureTime filtering server-side
+    // Device side filtering will happen after API call also, we request with filter to make response space effective
+    int minutesBeforeParam = config.minDepartureTime > 0 ? (config.minDepartureTime * -1) : 0;
+
     snprintf(url,
              sizeof(url),
              "https://api.golemio.cz/v2/pid/departureboards?ids=%s&total=%d&preferredTimezone=Europe/"
              "Prague&minutesBefore=%d&minutesAfter=120",
              stopId,
              MAX_DEPARTURES,
-             config.minDepartureTime > 0 ? config.minDepartureTime * -1 : 0);
+             minutesBeforeParam);
+
+    logTimestamp();
+    debugPrint("Golemio API: minDepartureTime=");
+    debugPrint(config.minDepartureTime);
+    debugPrint(" → minutesBefore=");
+    debugPrint(minutesBeforeParam);
+    debugPrintln("");
 
     http.begin(url);
     http.addHeader("x-access-token", config.pragueApiKey);
@@ -299,15 +315,25 @@ void GolemioAPI::parseDepartureObject(JsonObject depJson,
 
     if (timestamp)
     {
-        struct tm tm;
-        strptime(timestamp, "%Y-%m-%dT%H:%M:%S", &tm);
-        time_t depTime = mktime(&tm);
+        time_t depTime = parseTimestamp(timestamp);
+
+        if (depTime == -1)
+        {
+            logTimestamp();
+            debugPrint("Golemio API: Skipping departure - failed to parse timestamp: ");
+            debugPrintln(timestamp);
+            return; // Skip if timestamp parse fails
+        }
 
         // Store timestamp for future recalculation
         tempDepartures[tempCount].departureTime = depTime;
 
         // Calculate initial ETA for sorting/filtering
-        tempDepartures[tempCount].eta = calculateETA(depTime);
+        time_t now;
+        time(&now);
+        int diffSec = difftime(depTime, now);
+        int eta = (diffSec > 0) ? (diffSec / 60) : 0;
+        tempDepartures[tempCount].eta = eta;
     }
     else
     {

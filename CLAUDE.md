@@ -971,6 +971,179 @@ NVS namespace: "transport"
 - ETA calculation: Compares ISO timestamp from API with local time (mktime/difftime)
 - Display format: "Wed 08.Jan 14:35" on bottom row
 
+### Critical: Timezone Initialization Timing
+
+**⚠️ IMPORTANT:** Timezone MUST be configured before any timestamp parsing occurs!
+
+ESP32 has dual-core architecture, and timezone initialization timing is critical:
+
+#### The Problem
+- **Core 0**: Runs `setup()` - WiFi, web server, NTP, timezone config
+- **Core 1**: Runs API fetch task - can start **before** `setup()` completes
+- **Race condition**: If API task parses timestamps before `configTime()` is called, it uses UTC instead of CET
+
+#### The Fix
+Call `initTimeSync()` **immediately** after WiFi connects, before any other initialization:
+
+```cpp
+// main.cpp:851-865 - CRITICAL ORDER
+if (wifiConnected)
+{
+    // 1. Configure timezone FIRST (synchronous, immediate)
+    initTimeSync();  // Calls configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER)
+    apiFetchRequest.timezoneInitialized = true;  // Allow API fetches
+
+    // 2. Then start other services (web server, OTA, etc.)
+    webServer.begin();
+    // ...
+
+    // 3. Finally wait for NTP sync (asynchronous)
+    syncTime(10, 500);  // Waits for actual time from NTP server
+}
+```
+
+#### Why This Works
+- `configTime()` sets timezone parameters for `mktime()` **synchronously** - takes effect immediately
+- NTP sync happens **asynchronously** - actual time arrives later (but timezone config is already set)
+- API fetches are guarded by `timezoneInitialized` flag - prevents fetches before timezone configured
+
+#### Symptoms of Bug (if timezone not configured)
+- Departures appear 1 hour in the past (UTC vs CET difference)
+- Only first 2-3 departures affected if `configTime()` completes mid-parsing
+- Negative `diffSec` values in logs
+- Departures filtered out despite valid scheduled times
+
+### Timestamp Parsing: `parseTimestamp()` Utility
+
+**Location:** `src/utils/TimeUtils.{h,cpp}`
+
+All API implementations MUST use the centralized `parseTimestamp()` function for timestamp parsing:
+
+```cpp
+time_t parseTimestamp(const char* timestamp, const char* format = "%Y-%m-%dT%H:%M:%S")
+{
+    struct tm tm;
+    memset(&tm, 0, sizeof(tm));  // Initialize ALL fields (critical!)
+
+    if (strptime(timestamp, format, &tm) == NULL)
+        return -1;  // Parse failed
+
+    tm.tm_isdst = -1;  // Let mktime() auto-determine DST
+    return mktime(&tm);
+}
+```
+
+#### Why This Matters
+
+**Uninitialized struct tm bug:**
+- Without `memset()`: `tm_isdst` contains garbage from stack
+- With `memset()`: `tm_isdst = 0` (standard time)
+- With `tm.tm_isdst = -1`: mktime() uses timezone rules to decide (CORRECT!)
+
+**Critical fields:**
+- `tm_isdst = -1`: "Let mktime() decide based on configured timezone"
+- `tm_isdst = 0`: "Force standard time (CET)" - ignores CEST in summer
+- `tm_isdst = 1`: "Force daylight time (CEST)" - ignores CET in winter
+- `tm_isdst = garbage`: Undefined behavior!
+
+**ESP32 timezone configuration:**
+- `configTime(3600, 3600, "pool.ntp.org")` sets:
+  - Base offset: 3600 seconds (UTC+1 = CET)
+  - DST offset: +3600 seconds (UTC+2 = CEST)
+- `mktime()` with `tm_isdst = -1` uses these offsets + date to determine if DST active
+
+#### Usage in API Implementations
+
+**GolemioAPI.cpp:**
+```cpp
+#include "../utils/TimeUtils.h"
+
+time_t depTime = parseTimestamp(timestamp);
+if (depTime == -1) {
+    // Handle parse error
+    return;
+}
+tempDepartures[tempCount].departureTime = depTime;
+```
+
+**BvgAPI.cpp:**
+```cpp
+#include "../utils/TimeUtils.h"
+
+time_t depTime = parseTimestamp(when);
+if (depTime == -1) {
+    // Handle parse error
+    return;
+}
+tempDepartures[tempCount].departureTime = depTime;
+```
+
+**Benefits:**
+- Single source of truth for timestamp parsing
+- Consistent initialization across all APIs
+- Automatic DST handling
+- Error handling built-in
+- No code duplication
+- Easy to test in isolation
+
+### Debugging Time Issues
+
+**Key logging functions:**
+
+```cpp
+// Check if NTP sync succeeded
+if (!isTimeSynced()) {
+    debugPrintln("⚠️ Time not synced - year < 2020");
+}
+
+// Log current device time
+char timeStr[32];
+getFormattedTime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S");
+debugPrint("Device time: ");
+debugPrintln(timeStr);
+
+// Check if timezone initialized before parsing
+if (!apiFetchRequest.timezoneInitialized) {
+    debugPrintln("⚠️ Timezone not initialized - timestamps will be wrong!");
+}
+```
+
+**Common issues:**
+1. **Negative diffSec**: Timezone not configured, using UTC instead of CET
+2. **All departures filtered**: Device clock at epoch (1970) or not synced
+3. **First 2 deps wrong, rest correct**: Race condition - `configTime()` called mid-parsing
+4. **Random parsing errors**: Uninitialized `struct tm` (missing `memset()`)
+
+### NTP Sync vs Timezone Config
+
+**Two separate operations:**
+
+1. **Timezone Configuration** (`configTime()`)
+   - Sets timezone offsets for `mktime()`
+   - **Synchronous** - takes effect immediately
+   - Called: Once at boot after WiFi connects
+   - Purpose: Tell `mktime()` how to interpret local time
+
+2. **NTP Time Sync** (`syncTime()`)
+   - Fetches actual current time from NTP server
+   - **Asynchronous** - takes 1-5 seconds
+   - Called: Once at boot, can retry on failure
+   - Purpose: Set device's actual clock
+
+**Order matters:**
+```
+1. WiFi connects          → Network available
+2. configTime()           → Timezone configured (mktime() ready)
+3. API fetch can start    → Parsing timestamps works correctly
+4. syncTime()             → Device clock set to actual time
+5. NTP auto-updates       → Clock stays accurate (ESP32 handles this)
+```
+
+**Common mistake:** Waiting for NTP sync before allowing API fetches
+- **Wrong:** Wait for `syncTime()` → API fetch → timestamps correct
+- **Right:** Call `configTime()` → API fetch → timestamps correct (even if NTP not synced yet)
+- **Why:** `mktime()` only needs timezone config, not accurate current time, to parse timestamps correctly
+
 ## Rest Mode
 
 Rest mode allows scheduled display power saving by turning off the LED matrix during configurable time periods. It can be triggered either manually via the web UI or automatically based on configured time periods.

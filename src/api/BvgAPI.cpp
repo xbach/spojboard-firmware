@@ -1,6 +1,7 @@
 #include "BvgAPI.h"
 #include "../utils/Logger.h"
 #include "../utils/HttpUtils.h"
+#include "../utils/TimeUtils.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include <time.h>
@@ -68,17 +69,11 @@ TransitAPI::APIResult BvgAPI::fetchDepartures(const Config& config)
     // Sort all collected departures by ETA (ascending)
     qsort(tempDepartures, tempCount, sizeof(Departure), compareDepartures);
 
-    // Filter by minimum departure time and copy to final array (up to MAX_DEPARTURES for caching)
-    // Note: config.numDepartures is used for display only, not for limiting cache size
+    // Copy to final array (up to MAX_DEPARTURES for caching)
+    // Note: Filtering by minDepartureTime now happens in main.cpp (APIFetchTask) for consistency across all APIs
     result.departureCount = 0;
     for (int i = 0; i < tempCount && result.departureCount < MAX_DEPARTURES; i++)
     {
-        // Skip departures below minimum departure time
-        if (tempDepartures[i].eta < config.minDepartureTime)
-        {
-            continue;
-        }
-
         result.departures[result.departureCount] = tempDepartures[i];
         result.departureCount++;
     }
@@ -105,15 +100,16 @@ bool BvgAPI::querySingleStop(const char* stopId,
                              char* stopName,
                              bool& isFirstStop)
 {
-    // Build URL with 'when' parameter to offset query time by minDepartureTime
+    // Build URL without server-side time offset
     // Format: https://v6.bvg.transport.rest/stops/{stopId}/departures?duration=120&results=12&when={unix_timestamp}
     char url[256];
 
     // Calculate offset time: current time + minDepartureTime (in seconds)
     // BVG API accepts Unix timestamps (seconds since epoch)
     // Add 90-second buffer: BVG API returns departures ~80s before 'when' time + HTTP latency
+    // Device side filtering will happen after API call also, we request with filter to make response space effective
     time_t now = time(nullptr);
-    time_t whenTime = now + (config.minDepartureTime * 60) + 90;
+    time_t whenTime = now + (config.minDepartureTime * 60) + 80;
 
     snprintf(url,
              sizeof(url),
@@ -365,12 +361,10 @@ void BvgAPI::parseDepartureObject(JsonObject depJson, const Config& config, Depa
     }
 
     // Parse: "2026-01-11T14:30:00+01:00"
-    struct tm tm;
-    memset(&tm, 0, sizeof(tm));
+    // Note: parseTimestamp() ignores timezone offset and uses configured timezone (CET/CEST)
+    time_t depTime = parseTimestamp(when);
 
-    // Note: strptime doesn't handle timezone offset well on ESP32, so we parse basic format
-    // and ignore timezone (Berlin is always CET/CEST which matches Prague)
-    if (strptime(when, "%Y-%m-%dT%H:%M:%S", &tm) == NULL)
+    if (depTime == -1)
     {
         logTimestamp();
         debugPrint("BVG API: Skipping departure - failed to parse timestamp: ");
@@ -378,10 +372,7 @@ void BvgAPI::parseDepartureObject(JsonObject depJson, const Config& config, Depa
         return; // Skip if timestamp parse fails
     }
 
-    // Tell mktime to auto-determine DST
-    tm.tm_isdst = -1;
-
-    tempDepartures[tempCount].departureTime = mktime(&tm);
+    tempDepartures[tempCount].departureTime = depTime;
 
     // Calculate ETA (minutes from now)
     time_t now = time(nullptr);

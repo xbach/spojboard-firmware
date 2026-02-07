@@ -11,7 +11,7 @@ void initTimeSync()
 bool syncTime(int maxAttempts, int delayMs)
 {
     logTimestamp();
-    Serial.println("Syncing time...");
+    Serial.println("Syncing time via NTP...");
 
     struct tm timeinfo;
     int attempts = 0;
@@ -20,20 +20,37 @@ bool syncTime(int maxAttempts, int delayMs)
     {
         delay(delayMs);
         attempts++;
+
+        // Log progress for long syncs
+        if (attempts % 3 == 0)
+        {
+            logTimestamp();
+            Serial.print("NTP sync attempt ");
+            Serial.print(attempts);
+            Serial.print("/");
+            Serial.println(maxAttempts);
+        }
     }
 
     if (attempts >= maxAttempts)
     {
         logTimestamp();
-        Serial.println("Time sync failed!");
+        Serial.println("⚠️ NTP SYNC FAILED - Device clock may be incorrect!");
         return false;
     }
+
+    // Get current time as unix timestamp for verification
+    time_t now;
+    time(&now);
 
     char timeStr[32];
     strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
     logTimestamp();
-    Serial.print("Time synced: ");
-    Serial.println(timeStr);
+    Serial.print("✓ NTP sync successful: ");
+    Serial.print(timeStr);
+    Serial.print(" (unix=");
+    Serial.print((int)now);
+    Serial.println(")");
 
     return true;
 }
@@ -53,6 +70,43 @@ bool getFormattedTime(char* buffer, size_t size, const char* format)
 bool getCurrentTime(struct tm* timeinfo)
 {
     return getLocalTime(timeinfo);
+}
+
+bool isTimeSynced()
+{
+    struct tm timeinfo;
+    if (!getLocalTime(&timeinfo))
+    {
+        return false;
+    }
+
+    // Check if year is reasonable (after 2020)
+    // ESP32 defaults to epoch (1970) or compilation date if NTP fails
+    return (timeinfo.tm_year + 1900) >= 2020;
+}
+
+time_t parseTimestamp(const char* timestamp, const char* format)
+{
+    if (!timestamp)
+    {
+        return -1;
+    }
+
+    struct tm tm;
+    memset(&tm, 0, sizeof(tm)); // Initialize all fields to zero
+
+    // Parse the timestamp string
+    if (strptime(timestamp, format, &tm) == NULL)
+    {
+        return -1; // Parse failed
+    }
+
+    // Let mktime() auto-determine DST based on configured timezone
+    // This is critical: -1 means "use timezone rules to decide"
+    // 0 would mean "standard time only", 1 would mean "DST only"
+    tm.tm_isdst = -1;
+
+    return mktime(&tm);
 }
 
 // ============================================================================
