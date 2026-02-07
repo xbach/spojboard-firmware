@@ -74,15 +74,16 @@ TransitAPI::APIResult GolemioAPI::fetchDepartures(const Config& config)
         debugPrintln(msg);
     }
 
-    // Filter by minimum departure time and copy to final array
+    // Copy to final array (no filtering here - main.cpp handles filtering after fetch)
+    // Note: Device-side filtering is needed because:
+    // 1. Network latency causes departures to age during HTTP request/response
+    // 2. API issues may return stale data despite server-side filtering
+    // 3. Server-side offset filtering is useful but not sufficient alone
     result.departureCount = 0;
     for (int i = 0; i < tempCount && result.departureCount < MAX_DEPARTURES; i++)
     {
-        // if (tempDepartures[i].eta >= config.minDepartureTime) // removed as we use API for this now
-        // {
         result.departures[result.departureCount] = tempDepartures[i];
         result.departureCount++;
-        // }
     }
 
     char filterMsg[64];

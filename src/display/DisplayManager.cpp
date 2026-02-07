@@ -295,6 +295,8 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         display->setTextColor(COLOR_ORANGE);
     }
 
+    // Note: eta=0 can occur for departures leaving in 1-59 seconds (when minDepartureTime=0)
+    // Past departures are filtered out, so eta < 1 means "leaving within a minute"
     if (dep.eta < 1)
     {
         display->print("<1'");

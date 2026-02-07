@@ -40,6 +40,49 @@ WeatherAPI weatherAPI; // Weather forecast API
 Config config;
 
 // ============================================================================
+// Forward Declarations
+// ============================================================================
+void signalDisplayUpdate(); // Thread-safe display update signaling
+
+// ============================================================================
+// Dual-Core Display Task Infrastructure
+// ============================================================================
+TaskHandle_t displayTaskHandle = NULL;
+SemaphoreHandle_t displayMutex = NULL;
+
+// Thread-safe display update request structure
+struct DisplayUpdateRequest {
+    Departure departures[MAX_DEPARTURES];
+    int departureCount;
+    int numDepartures;
+    bool wifiConnected;
+    bool apMode;
+    char apSSID[64];
+    char apPassword[64];
+    bool apiError;
+    char apiErrorMsg[64];
+    char stopName[64];
+    bool cityConfigured;
+    bool demoMode;
+    bool restMode;
+    bool needsUpdate;
+} displayRequest = {.needsUpdate = false};
+
+// ============================================================================
+// API Fetch Task Infrastructure (runs on Core 1, non-blocking)
+// ============================================================================
+TaskHandle_t apiFetchTaskHandle = NULL;
+SemaphoreHandle_t apiDataMutex = NULL;
+
+// API fetch request flags (signals from loop to API task)
+struct APIFetchRequest {
+    bool fetchDeparturesNow;
+    bool fetchWeatherNow;
+    unsigned long lastDeparturesFetch;
+    unsigned long lastWeatherFetch;
+} apiFetchRequest = {.fetchDeparturesNow = false, .fetchWeatherNow = false, .lastDeparturesFetch = 0, .lastWeatherFetch = 0};
+
+// ============================================================================
 // Departure Data (structure defined in api/DepartureData.h)
 // ============================================================================
 Departure departures[MAX_DEPARTURES];
@@ -48,10 +91,8 @@ int departureCount = 0;
 // ============================================================================
 // State Variables
 // ============================================================================
-unsigned long lastApiCall = 0;
 unsigned long lastDisplayUpdate = 0;
 unsigned long lastEtaRecalc = 0; // For 10-second ETA recalculation
-unsigned long lastWeatherCall = 0; // For weather API polling
 bool needsDisplayUpdate = false;
 bool apiError = false;
 char apiErrorMsg[64] = "";
@@ -80,6 +121,14 @@ void onAPIStatus(const char* message)
 // ============================================================================
 void recalculateETAs()
 {
+    // Acquire mutex for thread-safe access to departure data
+    if (!xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(100)))
+    {
+        logTimestamp();
+        debugPrintln("ETA Recalc: Failed to acquire mutex, skipping");
+        return;
+    }
+
     // Recalculate ETAs from cached departureTime timestamps
     // Filter out stale departures (past their departure time)
     time_t now;
@@ -96,9 +145,10 @@ void recalculateETAs()
         int diffSec = difftime(departures[i].departureTime, now);
         int eta = (diffSec > 0) ? (diffSec / 60) : 0;
 
-        // Filter: Keep only departures that meet minimum departure time threshold
+        // Filter: Keep only FUTURE departures that meet minimum departure time threshold
         // (applies to all APIs including MQTT - filters during recalculation)
-        if (eta > 0 && eta >= config.minDepartureTime)
+        // Note: diffSec > 0 allows eta=0 (1-59 seconds) when minDepartureTime=0
+        if (diffSec > 0 && eta >= config.minDepartureTime)
         {
             // Copy departure if we're filtering out previous entries
             if (validCount != i)
@@ -144,12 +194,15 @@ void recalculateETAs()
         }
     }
 
+    // Release mutex
+    xSemaphoreGive(apiDataMutex);
+
     // Reset scroll state since departures may have changed positions
     displayManager.resetScroll();
 
     logTimestamp();
     debugPrintln("ETA Recalc: Complete, display update triggered");
-    needsDisplayUpdate = true;
+    signalDisplayUpdate();
 }
 
 // ============================================================================
@@ -184,75 +237,7 @@ bool isCityConfigured()
 }
 
 // ============================================================================
-// API Fetch Wrapper - Uses TransitAPI interface (GolemioAPI or BvgAPI)
-// ============================================================================
-void fetchDepartures()
-{
-    if (!wifiManager.isConnected() || transitAPI == nullptr)
-    {
-        return;
-    }
-
-    // Call API client
-    TransitAPI::APIResult result = transitAPI->fetchDepartures(config);
-
-    // Update global state with results
-    departureCount = result.departureCount;
-    for (int i = 0; i < result.departureCount; i++)
-    {
-        departures[i] = result.departures[i];
-    }
-
-    strlcpy(stopName, result.stopName, sizeof(stopName));
-
-    apiError = result.hasError;
-    if (result.hasError)
-    {
-        strlcpy(apiErrorMsg, result.errorMsg, sizeof(apiErrorMsg));
-    }
-
-    needsDisplayUpdate = true;
-}
-
-// ============================================================================
-// Weather API Fetch Wrapper
-// ============================================================================
-
-void fetchWeather()
-{
-    if (!wifiManager.isConnected() || !config.weatherEnabled)
-    {
-        return;
-    }
-
-    // Validate coordinates (non-zero)
-    if (config.weatherLatitude == 0.0 && config.weatherLongitude == 0.0)
-    {
-        return;
-    }
-
-    logTimestamp();
-    debugPrintln("Weather: Fetching forecast...");
-
-    weatherData = weatherAPI.fetchWeather(config.weatherLatitude, config.weatherLongitude);
-
-    if (weatherData.hasError)
-    {
-        logTimestamp();
-        debugPrint("Weather: Error - ");
-        debugPrintln(weatherData.errorMsg);
-    }
-    else
-    {
-        logTimestamp();
-        char msg[64];
-        snprintf(msg, sizeof(msg), "Weather: %d°C, code %d", weatherData.temperature, weatherData.weatherCode);
-        debugPrintln(msg);
-    }
-
-    needsDisplayUpdate = true;
-}
-
+// API Fetch functions moved to apiFetchTask (Core 1 background task)
 // ============================================================================
 // Callback Functions for ConfigWebServer
 // ============================================================================
@@ -274,14 +259,17 @@ void onConfigSave(const Config& newConfig, bool wifiChanged)
     }
     else
     {
-        // Trigger immediate API refresh
-        lastApiCall = 0;
+        // Signal API task for immediate refresh
+        apiFetchRequest.fetchDeparturesNow = true;
+        apiFetchRequest.fetchWeatherNow = true;
     }
 }
 
 void onRefresh()
 {
-    lastApiCall = 0; // Force immediate refresh
+    // Signal API task for immediate refresh
+    apiFetchRequest.fetchDeparturesNow = true;
+    apiFetchRequest.fetchWeatherNow = true;
 }
 
 void onReboot()
@@ -303,7 +291,7 @@ void onDemoStart(const Departure* demoDepartures, int demoCount)
     }
 
     // Trigger display update with demo data
-    needsDisplayUpdate = true;
+    signalDisplayUpdate();
 
     logTimestamp();
     debugPrintln("Demo mode activated - API polling stopped");
@@ -320,7 +308,7 @@ void onDemoStop()
         // Return to rest mode (was active before demo, stays active)
         displayManager.getDisplay()->clearScreen();
         displayManager.getDisplay()->flipDMABuffer();
-        needsDisplayUpdate = true; // Trigger display update to render rest mode state
+        signalDisplayUpdate(); // Trigger display update to render rest mode state
 
         logTimestamp();
         debugPrintln("Demo stopped - returning to rest mode (display off)");
@@ -329,9 +317,11 @@ void onDemoStop()
     {
         // Resume normal operation (rest mode was not active before demo)
         displayManager.setBrightness(config.brightness); // Restore brightness from config
-        lastApiCall = 0;       // Force immediate API refresh
-        lastWeatherCall = 0;   // Force weather refresh
-        needsDisplayUpdate = true; // Trigger display update to show current departures
+
+        // Signal API task for immediate refresh
+        apiFetchRequest.fetchDeparturesNow = true;
+        apiFetchRequest.fetchWeatherNow = true;
+        signalDisplayUpdate(); // Trigger display update to show current departures
 
         logTimestamp();
         debugPrintln("Demo mode deactivated - resuming normal operation");
@@ -357,12 +347,322 @@ void onRestMode(bool enabled)
         restModeActive = false;
         restModeManual = false; // Clear manual flag
         displayManager.setBrightness(config.brightness); // Restore brightness from config
-        lastApiCall = 0;       // Force immediate API refresh
-        lastWeatherCall = 0;   // Force weather refresh
-        needsDisplayUpdate = true;
+
+        // Signal API task for immediate refresh
+        apiFetchRequest.fetchDeparturesNow = true;
+        apiFetchRequest.fetchWeatherNow = true;
+        signalDisplayUpdate();
 
         logTimestamp();
         debugPrintln("RestMode: Deactivated via REST API - resuming normal operation");
+    }
+}
+
+// ============================================================================
+// API Fetch Task - Runs on Core 1 (handles blocking HTTP calls)
+// ============================================================================
+void apiFetchTask(void* parameter)
+{
+    logTimestamp();
+    debugPrintln("APIFetchTask: Started on Core 1");
+
+    for (;;)
+    {
+        unsigned long now = millis();
+        bool shouldFetchDepartures = false;
+        bool shouldFetchWeather = false;
+
+        // Check if immediate fetch is requested (from config save, refresh button, etc.)
+        if (apiFetchRequest.fetchDeparturesNow)
+        {
+            apiFetchRequest.fetchDeparturesNow = false;
+            shouldFetchDepartures = true;
+            logTimestamp();
+            debugPrintln("APIFetchTask: Immediate departures fetch requested");
+        }
+
+        if (apiFetchRequest.fetchWeatherNow)
+        {
+            apiFetchRequest.fetchWeatherNow = false;
+            shouldFetchWeather = true;
+            logTimestamp();
+            debugPrintln("APIFetchTask: Immediate weather fetch requested");
+        }
+
+        // Check periodic fetch intervals (only if not in demo/rest mode and WiFi connected)
+        if (!demoModeActive && !restModeActive && wifiManager.isConnected())
+        {
+            // Departures fetch interval
+            if (isCityConfigured())
+            {
+                unsigned long departuresInterval = (unsigned long)config.refreshInterval * 1000;
+                if (now - apiFetchRequest.lastDeparturesFetch >= departuresInterval ||
+                    apiFetchRequest.lastDeparturesFetch == 0)
+                {
+                    shouldFetchDepartures = true;
+                }
+            }
+
+            // Weather fetch interval
+            if (config.weatherEnabled && config.weatherLatitude != 0.0 && config.weatherLongitude != 0.0)
+            {
+                unsigned long weatherInterval = (unsigned long)config.weatherRefreshInterval * 60000;
+                if (now - apiFetchRequest.lastWeatherFetch >= weatherInterval ||
+                    apiFetchRequest.lastWeatherFetch == 0)
+                {
+                    shouldFetchWeather = true;
+                }
+            }
+        }
+
+        // Fetch departures (blocking HTTP call)
+        if (shouldFetchDepartures)
+        {
+            apiFetchRequest.lastDeparturesFetch = now;
+
+            logTimestamp();
+            debugPrintln("APIFetchTask: Fetching departures (blocking)...");
+
+            // Call API client (blocking operation)
+            TransitAPI::APIResult result = transitAPI->fetchDepartures(config);
+
+            // Filter out stale departures (already departed) and those below minDepartureTime
+            // This catches API issues, network latency, and stale data from any API source
+            int validCount = 0;
+            time_t now;
+            time(&now);
+
+            for (int i = 0; i < result.departureCount; i++)
+            {
+                // Check if departure is in the future (not already departed)
+                int diffSec = difftime(result.departures[i].departureTime, now);
+
+                // Calculate ETA (0 for departures in 0-59 seconds, or already departed)
+                int freshEta = (diffSec > 0) ? (diffSec / 60) : 0;
+
+                // Keep only FUTURE departures that meet minimum time threshold
+                // Note: diffSec > 0 ensures we only keep departures that haven't left yet
+                // This allows eta=0 (1-59 seconds) to display as "<1'" when minDepartureTime=0
+                if (diffSec > 0 && freshEta >= config.minDepartureTime)
+                {
+                    // Update with fresh ETA and copy to valid position
+                    result.departures[validCount] = result.departures[i];
+                    result.departures[validCount].eta = freshEta;
+                    validCount++;
+                }
+            }
+
+            // Log filtering stats
+            if (validCount != result.departureCount)
+            {
+                logTimestamp();
+                char filterMsg[80];
+                snprintf(filterMsg, sizeof(filterMsg),
+                         "APIFetchTask: Filtered %d stale departures (%d -> %d valid)",
+                         result.departureCount - validCount, result.departureCount, validCount);
+                debugPrintln(filterMsg);
+            }
+
+            result.departureCount = validCount;
+
+            // Update global state with mutex protection
+            if (xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(100)))
+            {
+                departureCount = result.departureCount;
+                for (int i = 0; i < result.departureCount; i++)
+                {
+                    departures[i] = result.departures[i];
+                }
+                strlcpy(stopName, result.stopName, sizeof(stopName));
+                apiError = result.hasError;
+                if (result.hasError)
+                {
+                    strlcpy(apiErrorMsg, result.errorMsg, sizeof(apiErrorMsg));
+                }
+                xSemaphoreGive(apiDataMutex);
+
+                // Signal display update
+                signalDisplayUpdate();
+
+                logTimestamp();
+                debugPrintln("APIFetchTask: Departures fetch complete");
+            }
+            else
+            {
+                logTimestamp();
+                debugPrintln("APIFetchTask: Failed to acquire mutex for departures update");
+            }
+        }
+
+        // Fetch weather (blocking HTTP call)
+        if (shouldFetchWeather)
+        {
+            apiFetchRequest.lastWeatherFetch = now;
+
+            logTimestamp();
+            debugPrintln("APIFetchTask: Fetching weather (blocking)...");
+
+            // Call weather API (blocking operation)
+            WeatherData newWeatherData = weatherAPI.fetchWeather(config.weatherLatitude, config.weatherLongitude);
+
+            // Update global weather state with mutex protection
+            if (xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(100)))
+            {
+                weatherData = newWeatherData;
+                xSemaphoreGive(apiDataMutex);
+
+                // Signal display update
+                signalDisplayUpdate();
+
+                if (weatherData.hasError)
+                {
+                    logTimestamp();
+                    debugPrint("APIFetchTask: Weather error - ");
+                    debugPrintln(weatherData.errorMsg);
+                }
+                else
+                {
+                    logTimestamp();
+                    char msg[64];
+                    snprintf(msg, sizeof(msg), "APIFetchTask: Weather updated: %d°C", weatherData.temperature);
+                    debugPrintln(msg);
+                }
+            }
+            else
+            {
+                logTimestamp();
+                debugPrintln("APIFetchTask: Failed to acquire mutex for weather update");
+            }
+        }
+
+        // Sleep for 100ms between checks (prevents busy-waiting, allows web server to run)
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+}
+
+// ============================================================================
+// Display Render Task - Runs on Core 1
+// ============================================================================
+void displayRenderTask(void* parameter)
+{
+    logTimestamp();
+    debugPrintln("DisplayTask: Started on Core 1");
+
+    for (;;)
+    {
+        // Wait for display update notification (blocks until signaled)
+        uint32_t notificationValue;
+        if (xTaskNotifyWait(0, 0, &notificationValue, portMAX_DELAY))
+        {
+            // Copy display data from request structure (thread-safe)
+            Departure localDepartures[MAX_DEPARTURES];
+            int localDepartureCount;
+            int localNumDepartures;
+            bool localWifiConnected;
+            bool localApMode;
+            char localApSSID[64];
+            char localApPassword[64];
+            bool localApiError;
+            char localApiErrorMsg[64];
+            char localStopName[64];
+            bool localCityConfigured;
+            bool localDemoMode;
+            bool localRestMode;
+
+            // Take mutex to safely copy display request
+            if (xSemaphoreTake(displayMutex, pdMS_TO_TICKS(100)))
+            {
+                if (!displayRequest.needsUpdate)
+                {
+                    xSemaphoreGive(displayMutex);
+                    continue; // Nothing to update
+                }
+
+                // Copy all data locally
+                memcpy(localDepartures, displayRequest.departures,
+                       sizeof(Departure) * displayRequest.departureCount);
+                localDepartureCount = displayRequest.departureCount;
+                localNumDepartures = displayRequest.numDepartures;
+                localWifiConnected = displayRequest.wifiConnected;
+                localApMode = displayRequest.apMode;
+                strlcpy(localApSSID, displayRequest.apSSID, sizeof(localApSSID));
+                strlcpy(localApPassword, displayRequest.apPassword, sizeof(localApPassword));
+                localApiError = displayRequest.apiError;
+                strlcpy(localApiErrorMsg, displayRequest.apiErrorMsg, sizeof(localApiErrorMsg));
+                strlcpy(localStopName, displayRequest.stopName, sizeof(localStopName));
+                localCityConfigured = displayRequest.cityConfigured;
+                localDemoMode = displayRequest.demoMode;
+                localRestMode = displayRequest.restMode;
+
+                displayRequest.needsUpdate = false;
+                xSemaphoreGive(displayMutex);
+            }
+            else
+            {
+                // Timeout - skip this update
+                logTimestamp();
+                debugPrintln("DisplayTask: Mutex timeout, skipping update");
+                continue;
+            }
+
+            // Render display with local copy (no mutex needed during render)
+            logTimestamp();
+            debugPrintln("DisplayTask: Rendering on Core 1");
+
+            displayController.render(localDepartures,
+                                    localDepartureCount,
+                                    localNumDepartures,
+                                    localWifiConnected,
+                                    localApMode,
+                                    localApSSID,
+                                    localApPassword,
+                                    localApiError,
+                                    localApiErrorMsg,
+                                    localStopName,
+                                    localCityConfigured,
+                                    localDemoMode,
+                                    localRestMode);
+
+            logTimestamp();
+            debugPrintln("DisplayTask: Render complete");
+        }
+
+        // Small yield to prevent task starvation
+        taskYIELD();
+    }
+}
+
+// Helper function to signal display update (thread-safe)
+void signalDisplayUpdate()
+{
+    if (xSemaphoreTake(displayMutex, pdMS_TO_TICKS(50)))
+    {
+        // Copy current state to display request
+        memcpy(displayRequest.departures, departures,
+               sizeof(Departure) * departureCount);
+        displayRequest.departureCount = departureCount;
+        displayRequest.numDepartures = config.numDepartures;
+        displayRequest.wifiConnected = wifiManager.isConnected();
+        displayRequest.apMode = wifiManager.isAPMode();
+        strlcpy(displayRequest.apSSID, wifiManager.getAPSSID(), sizeof(displayRequest.apSSID));
+        strlcpy(displayRequest.apPassword, wifiManager.getAPPassword(), sizeof(displayRequest.apPassword));
+        displayRequest.apiError = apiError;
+        strlcpy(displayRequest.apiErrorMsg, apiErrorMsg, sizeof(displayRequest.apiErrorMsg));
+        strlcpy(displayRequest.stopName, stopName, sizeof(displayRequest.stopName));
+        displayRequest.cityConfigured = isCityConfigured();
+        displayRequest.demoMode = demoModeActive;
+        displayRequest.restMode = restModeActive;
+        displayRequest.needsUpdate = true;
+
+        xSemaphoreGive(displayMutex);
+
+        // Notify display task to wake up and render
+        xTaskNotify(displayTaskHandle, 1, eSetValueWithOverwrite);
+    }
+    else
+    {
+        logTimestamp();
+        debugPrintln("signalDisplayUpdate: Mutex timeout, update skipped");
     }
 }
 
@@ -392,6 +692,30 @@ void setup()
     }
 
     logMemory("boot");
+
+    // Initialize display mutex FIRST (before any display operations)
+    displayMutex = xSemaphoreCreateMutex();
+    if (displayMutex == NULL)
+    {
+        Serial.println("FATAL: Failed to create display mutex!");
+        while (1)
+        {
+            delay(1000);
+        }
+    }
+    Serial.println("Display mutex created");
+
+    // Initialize API data mutex (protects departures[] and weatherData)
+    apiDataMutex = xSemaphoreCreateMutex();
+    if (apiDataMutex == NULL)
+    {
+        Serial.println("FATAL: Failed to create API data mutex!");
+        while (1)
+        {
+            delay(1000);
+        }
+    }
+    Serial.println("API data mutex created");
 
     // Load configuration FIRST (needed for display brightness)
     loadConfig(config);
@@ -429,6 +753,54 @@ void setup()
     logMemory("display_init");
 
     displayManager.drawStatus("Starting SpojBoard...", "FW v" FIRMWARE_RELEASE, COLOR_WHITE);
+
+    // Create display render task on Core 1 (separate from WiFi/network on Core 0)
+    BaseType_t taskCreated = xTaskCreatePinnedToCore(
+        displayRenderTask,      // Task function
+        "DisplayRender",        // Task name (for debugging)
+        8192,                   // Stack size (8KB - display operations need more memory)
+        NULL,                   // Task parameters
+        2,                      // Priority (2 = above idle, below critical network tasks)
+        &displayTaskHandle,     // Task handle
+        1                       // Core 1 (isolated from WiFi/web server on Core 0)
+    );
+
+    if (taskCreated != pdPASS || displayTaskHandle == NULL)
+    {
+        Serial.println("FATAL: Failed to create display task!");
+        while (1)
+        {
+            delay(1000);
+        }
+    }
+
+    logTimestamp();
+    debugPrintln("Display task created on Core 1");
+    delay(100); // Give display task time to start
+
+    // Create API fetch task on Core 1 (handles blocking HTTP calls without blocking loop)
+    taskCreated = xTaskCreatePinnedToCore(
+        apiFetchTask,           // Task function
+        "APIFetch",             // Task name (for debugging)
+        8192,                   // Stack size (8KB - HTTP client needs memory)
+        NULL,                   // Task parameters
+        1,                      // Priority (1 = lower than display task, allows web server to preempt)
+        &apiFetchTaskHandle,    // Task handle
+        1                       // Core 1 (same as loop/web server)
+    );
+
+    if (taskCreated != pdPASS || apiFetchTaskHandle == NULL)
+    {
+        Serial.println("FATAL: Failed to create API fetch task!");
+        while (1)
+        {
+            delay(1000);
+        }
+    }
+
+    logTimestamp();
+    debugPrintln("API fetch task created on Core 1");
+    delay(100); // Give API task time to start
 
     // Try to connect to WiFi (will fall back to AP mode if fails)
     if (!wifiManager.connectSTA(config, 20, 500))
@@ -503,22 +875,24 @@ void setup()
             }
         }
 
-        // Initial API call if configured
+        // Signal API task for initial fetch if configured
         if (isCityConfigured())
         {
-            fetchDepartures();
-            lastApiCall = millis(); // Prevent immediate second call in loop()
+            apiFetchRequest.fetchDeparturesNow = true;
+            logTimestamp();
+            debugPrintln("Setup: Signaled API task for initial departures fetch");
         }
 
-        // Initial weather call if configured
+        // Signal API task for initial weather fetch if configured
         if (config.weatherEnabled && config.weatherLatitude != 0.0 && config.weatherLongitude != 0.0)
         {
-            fetchWeather();
-            lastWeatherCall = millis();
+            apiFetchRequest.fetchWeatherNow = true;
+            logTimestamp();
+            debugPrintln("Setup: Signaled API task for initial weather fetch");
         }
     }
 
-    needsDisplayUpdate = true;
+    signalDisplayUpdate();
     logTimestamp();
     debugPrintln("Setup complete!\n");
 }
@@ -565,25 +939,14 @@ void loop()
         if (millis() - lastDisplayUpdate >= 5000)
         {
             lastDisplayUpdate = millis();
-            needsDisplayUpdate = true;
+            signalDisplayUpdate(); // Signal Core 1 display task to render
         }
 
+        // Check if needsDisplayUpdate flag is still used elsewhere
         if (needsDisplayUpdate)
         {
             needsDisplayUpdate = false;
-            displayController.render(departures,
-                                    departureCount,
-                                    config.numDepartures,
-                                    wifiManager.isConnected(),
-                                    wifiManager.isAPMode(),
-                                    wifiManager.getAPSSID(),
-                                    wifiManager.getAPPassword(),
-                                    apiError,
-                                    apiErrorMsg,
-                                    stopName,
-                                    isCityConfigured(),
-                                    demoModeActive,
-                                    restModeActive);
+            signalDisplayUpdate(); // Signal Core 1 display task to render
         }
 
         delay(10);
@@ -598,7 +961,7 @@ void loop()
     {
         logTimestamp();
         debugPrintln("WiFi: Disconnected!");
-        needsDisplayUpdate = true;
+        signalDisplayUpdate();
 
         // Attempt reconnection
         static unsigned long lastReconnectAttempt = 0;
@@ -612,7 +975,7 @@ void loop()
     {
         logTimestamp();
         debugPrintln("WiFi: Reconnected!");
-        needsDisplayUpdate = true;
+        signalDisplayUpdate();
     }
     wasConnected = isConnected;
 
@@ -645,9 +1008,11 @@ void loop()
                     // Exit rest mode (scheduled period ended)
                     restModeActive = false;
                     displayManager.setBrightness(config.brightness); // Restore brightness from config
-                    lastApiCall = 0;
-                    lastWeatherCall = 0;
-                    needsDisplayUpdate = true;
+
+                    // Signal API task for immediate refresh
+                    apiFetchRequest.fetchDeparturesNow = true;
+                    apiFetchRequest.fetchWeatherNow = true;
+                    signalDisplayUpdate();
                     logTimestamp();
                     debugPrintln("RestMode: Deactivated (scheduled) - resuming normal operation");
                 }
@@ -655,22 +1020,10 @@ void loop()
         }
     }
 
-    // Skip API polling and ETA recalculation in demo mode or rest mode
+    // Skip ETA recalculation in demo mode or rest mode
+    // (API fetching now handled by dedicated apiFetchTask on Core 1)
     if (!demoModeActive && !restModeActive)
     {
-        // Periodic API calls (only when connected and not in AP mode)
-        if (wifiManager.isConnected() && isCityConfigured())
-        {
-            unsigned long now = millis();
-            unsigned long interval = (unsigned long)config.refreshInterval * 1000;
-
-            if (now - lastApiCall >= interval || lastApiCall == 0)
-            {
-                lastApiCall = now;
-                fetchDepartures();
-            }
-        }
-
         // Real-time ETA recalculation every 10 seconds (only when connected and have departures)
         if (wifiManager.isConnected() && departureCount > 0)
         {
@@ -681,39 +1034,14 @@ void loop()
                 recalculateETAs();
             }
         }
-
-        // Periodic weather calls (only when connected and enabled)
-        if (wifiManager.isConnected() && config.weatherEnabled && config.weatherLatitude != 0.0 &&
-            config.weatherLongitude != 0.0)
-        {
-            unsigned long now = millis();
-            unsigned long weatherInterval = (unsigned long)config.weatherRefreshInterval * 60000; // Minutes to ms
-
-            if (now - lastWeatherCall >= weatherInterval || lastWeatherCall == 0)
-            {
-                lastWeatherCall = now;
-                fetchWeather();
-            }
-        }
     }
 
     // Update display (rest mode handled by DisplayController)
+    // Display rendering now happens on Core 1 via displayRenderTask
     if (needsDisplayUpdate)
     {
         needsDisplayUpdate = false;
-        displayController.render(departures,
-                                departureCount,
-                                config.numDepartures,
-                                wifiManager.isConnected(),
-                                wifiManager.isAPMode(),
-                                wifiManager.getAPSSID(),
-                                wifiManager.getAPPassword(),
-                                apiError,
-                                apiErrorMsg,
-                                stopName,
-                                isCityConfigured(),
-                                demoModeActive,
-                                restModeActive);
+        signalDisplayUpdate(); // Signal Core 1 display task to render
     }
 
     // Scroll update for long destinations (runs frequently, ~50ms)
