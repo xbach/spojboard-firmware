@@ -379,8 +379,7 @@ void onRestMode(bool enabled)
         // Enter rest mode (manual via REST API)
         restModeActive = true;
         restModeManual = true; // Mark as manually activated - skip periodic checks
-        displayManager.getDisplay()->clearScreen();
-        displayManager.getDisplay()->flipDMABuffer();
+        signalDisplayUpdate();
 
         logTimestamp();
         debugPrintln("RestMode: Activated via REST API - display off, API polling paused");
@@ -1090,8 +1089,7 @@ void loop()
                 {
                     // Enter rest mode (scheduled)
                     restModeActive = true;
-                    displayManager.getDisplay()->clearScreen();
-                    displayManager.getDisplay()->flipDMABuffer();
+                    signalDisplayUpdate();
                     logTimestamp();
                     debugPrintln("RestMode: Activated (scheduled) - display off, API polling paused");
                 }
