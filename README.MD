@@ -248,7 +248,7 @@ These colors are used by default and can be customized via the web interface:
 - **Red**: < 2 minutes
 - **Orange**: Delayed
 
-When dual ETA mode is enabled, both times are independently color-coded. Destinations use condensed font in dual mode to fit both ETAs.
+When dual ETA mode is enabled, both times are independently color-coded and use condensed font.
 
 ## Weather Display
 
