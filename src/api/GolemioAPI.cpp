@@ -133,7 +133,7 @@ bool GolemioAPI::querySingleStop(const char* stopId,
              "https://api.golemio.cz/v2/pid/departureboards?ids=%s&total=%d&preferredTimezone=Europe/"
              "Prague&minutesBefore=%d&minutesAfter=120",
              stopId,
-             MAX_DEPARTURES,
+             DEPS_PER_STOP,
              minutesBeforeParam);
 
     logTimestamp();

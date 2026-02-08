@@ -59,7 +59,7 @@ class MqttAPI : public TransitAPI
     static constexpr int MQTT_BUFFER_SIZE = 8192; // 8KB for MQTT messages
     static constexpr int RESPONSE_TIMEOUT_MS = 10000; // 10 seconds
     static constexpr int CONNECT_TIMEOUT_MS = 5000; // 5 seconds
-    static constexpr int MAX_TEMP_DEPARTURES = MAX_DEPARTURES * 12; // 144 departures
+    static constexpr int MAX_TEMP_DEPARTURES = DEPS_PER_STOP * 12; // 144 departures
 
     /**
      * Connect to MQTT broker with optional authentication

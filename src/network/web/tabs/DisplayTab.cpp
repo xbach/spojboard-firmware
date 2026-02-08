@@ -187,6 +187,14 @@ String buildDisplayTab(const Config* config)
     html += "<div class='help-text'>Scroll long destination names horizontally</div>";
     html += "</div>";
 
+    html += "<div>";
+    html += "<label><input type='checkbox' name='show_multi_times'";
+    if (config->showMultipleTimes)
+        html += " checked";
+    html += "> Show multiple departure times</label>";
+    html += "<div class='help-text'>Show next two departure times per line</div>";
+    html += "</div>";
+
     html += "</div>"; // End form-group
 
     // Line Colors Configuration

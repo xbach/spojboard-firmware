@@ -22,7 +22,7 @@ class ConfigWebServer
 {
   public:
     // Callback types for configuration events
-    typedef void (*ConfigSaveCallback)(const Config& newConfig, bool wifiChanged);
+    typedef void (*ConfigSaveCallback)(const Config& newConfig, bool wifiChanged, const char* tab);
     typedef void (*RefreshCallback)();
     typedef void (*RebootCallback)();
     typedef void (*DemoStartCallback)(const Departure* demoDepartures, int demoCount);
@@ -150,13 +150,15 @@ class ConfigWebServer
     void handlePreviewPage(); // GET: live preview HTML page
     void handleNotFound();
 
-    // Config parsing helpers (for handleSave refactoring)
+    // Config parsing helpers — one per tab for per-tab save dispatch
     void parseWifiSettings(Config* config, bool* wifiChanged);
-    void parseGeneralSettings(Config* config, bool* cityChanged);
+    void parseConnectionSettings(Config* config, bool* cityChanged);
+    void parseTransitSettings(Config* config);
     void parsePragueSettings(Config* config);
     void parseBerlinSettings(Config* config);
     void parseMqttSettings(Config* config);
-    void parseWeatherSettings(Config* config);
+    void parseDisplaySettings(Config* config);
+    void parseOptionalSettings(Config* config);
 
     // OTA progress callbacks (static for use as function pointers)
     static void otaProgressCallback(size_t progress, size_t total);

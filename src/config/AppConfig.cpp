@@ -67,6 +67,7 @@ void loadConfig(Config& config)
     config.debugMode = preferences.getBool("debugMode", false);  // Default: disabled
     config.showPlatform = preferences.getBool("showPlatform", false);  // Default: disabled
     config.scrollEnabled = preferences.getBool("scrollEnabled", false);  // Default: disabled
+    config.showMultipleTimes = preferences.getBool("showMultiEta", false);  // Default: disabled
     strlcpy(config.restModePeriods, preferences.getString("restPeriods", "").c_str(), sizeof(config.restModePeriods));
 
     // Load weather configuration
@@ -151,6 +152,7 @@ void saveConfig(const Config& config)
     preferences.putBool("debugMode", config.debugMode);
     preferences.putBool("showPlatform", config.showPlatform);
     preferences.putBool("scrollEnabled", config.scrollEnabled);
+    preferences.putBool("showMultiEta", config.showMultipleTimes);
     preferences.putString("restPeriods", config.restModePeriods);
 
     // Save weather configuration

@@ -118,6 +118,29 @@ void onAPIStatus(const char* message)
 }
 
 // ============================================================================
+// Second ETA Matching - Finds next departure for same line+destination
+// ============================================================================
+void attachSecondETAs(Departure* deps, int count)
+{
+    for (int i = 0; i < count; i++)
+    {
+        deps[i].secondEta = -1;
+        deps[i].secondDepartureTime = 0;
+        if (!config.showMultipleTimes) continue;
+        for (int j = i + 1; j < count; j++)
+        {
+            if (strcmp(deps[i].line, deps[j].line) == 0 &&
+                strcmp(deps[i].destination, deps[j].destination) == 0)
+            {
+                deps[i].secondEta = deps[j].eta;
+                deps[i].secondDepartureTime = deps[j].departureTime;
+                break;
+            }
+        }
+    }
+}
+
+// ============================================================================
 // ETA Recalculation - Updates ETAs from cached timestamps every 10s
 // ============================================================================
 void recalculateETAs()
@@ -195,6 +218,9 @@ void recalculateETAs()
         }
     }
 
+    // Recompute second ETAs after re-sort (matching pairs may have changed)
+    attachSecondETAs(departures, departureCount);
+
     // Release mutex
     xSemaphoreGive(apiDataMutex);
 
@@ -243,7 +269,7 @@ bool isCityConfigured()
 // Callback Functions for ConfigWebServer
 // ============================================================================
 
-void onConfigSave(const Config& newConfig, bool wifiChanged)
+void onConfigSave(const Config& newConfig, bool wifiChanged, const char* tab)
 {
     // Update config
     config = newConfig;
@@ -260,9 +286,21 @@ void onConfigSave(const Config& newConfig, bool wifiChanged)
     }
     else
     {
-        // Signal API task for immediate refresh
-        apiFetchRequest.fetchDeparturesNow = true;
-        apiFetchRequest.fetchWeatherNow = true;
+        // Tab-aware refresh: only trigger API refetch when transit/connection settings change
+        bool needsApiFetch = (strcmp(tab, "transit") == 0 || strcmp(tab, "all") == 0);
+        bool needsWeatherFetch = (strcmp(tab, "optional") == 0 || strcmp(tab, "all") == 0);
+
+        if (needsApiFetch)
+        {
+            apiFetchRequest.fetchDeparturesNow = true;
+        }
+        if (needsWeatherFetch)
+        {
+            apiFetchRequest.fetchWeatherNow = true;
+        }
+
+        // Always redraw display immediately so display/optional changes are visible
+        signalDisplayUpdate();
     }
 }
 
@@ -491,6 +529,9 @@ void apiFetchTask(void* parameter)
             }
 
             result.departureCount = validCount;
+
+            // Attach second ETAs for same line+destination pairs
+            attachSecondETAs(result.departures, result.departureCount);
 
             // Update global state with mutex protection
             if (xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(100)))

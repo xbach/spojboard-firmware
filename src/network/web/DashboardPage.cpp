@@ -9,7 +9,19 @@
 #include "tabs/SystemTab.h"
 #include <WiFi.h>
 
-String buildDashboardPage(
+// Send a chunk safely: skip empty strings (which would terminate chunked transfer)
+// and yield to let the TCP stack flush between chunks.
+static void sendChunk(WebServer* server, const String& content)
+{
+    if (content.length() > 0)
+    {
+        server->sendContent(content);
+        yield();
+    }
+}
+
+void sendDashboardPage(
+    WebServer* server,
     const Config* config,
     bool apModeActive,
     bool wifiConnected,
@@ -23,72 +35,79 @@ String buildDashboardPage(
     bool restModeActive,
     bool restModeManual)
 {
-    String html = FPSTR(HTML_HEADER);
+    // Use chunked transfer encoding to avoid building ~50KB HTML in RAM.
+    // Each section is sent and freed before the next is built.
+    server->setContentLength(CONTENT_LENGTH_UNKNOWN);
+    server->send(200, "text/html", "");
 
-    // Header with action buttons
-    html += buildHeader(apModeActive, restModeActive, restModeManual);
+    // Chunk 1: CSS + page structure (~12KB)
+    {
+        String structure = FPSTR(HTML_HEADER);
+        structure += buildHeader(apModeActive, restModeActive, restModeManual);
+        structure += buildStatusBanner(apModeActive, demoModeActive, restModeActive, restModeManual, apiError, apiErrorMsg,
+                                  apSSID, "");
+        structure += buildTabBar(apModeActive);
+        structure += "<form method='POST' action='/save' id='configForm'>";
+        sendChunk(server, structure);
+    }
 
-    // Status banners
-    html += buildStatusBanner(apModeActive, demoModeActive, restModeActive, restModeManual, apiError, apiErrorMsg,
-                              apSSID, "");
+    // Chunk 2: Connection + Transit Data tabs (~8KB)
+    {
+        String tabs1 = buildConnectionTab(config, apModeActive);
+        tabs1 += buildTransitDataTab(config);
+        sendChunk(server, tabs1);
+    }
 
-    // Tab navigation
-    html += buildTabBar(apModeActive);
+    // Chunk 3: Display tab + Optional tab + submit button (~8KB)
+    {
+        String tabs2 = buildDisplayTab(config);
+        if (!apModeActive)
+        {
+            tabs2 += buildOptionalTab(config);
+        }
+        tabs2 += "<div class='form-actions'>";
+        if (apModeActive)
+        {
+            tabs2 += "<button type='submit' class='btn-primary'>💾 Save & Connect to WiFi</button>";
+        }
+        else
+        {
+            tabs2 += "<button type='submit' class='btn-primary'>💾 Save Configuration</button>";
+        }
+        tabs2 += "</div>";
+        tabs2 += "</form>";
+        sendChunk(server, tabs2);
+    }
 
-    // Configuration form wrapping all tabs
-    html += "<form method='POST' action='/save' id='configForm'>";
-
-    // Tab 1: Connection
-    html += buildConnectionTab(config, apModeActive);
-
-    // Tab 2: Transit Data
-    html += buildTransitDataTab(config);
-
-    // Tab 3: Display
-    html += buildDisplayTab(config);
-
-    // Tab 4: Optional Features (STA mode only)
+    // Chunk 4: System tab (STA mode only, ~5KB)
     if (!apModeActive)
     {
-        html += buildOptionalTab(config);
+        sendChunk(server, buildSystemTab(config, apModeActive, ESP.getFreeHeap(), stopName, departureCount));
     }
 
-    // Submit button
-    html += "<div class='form-actions'>";
-    if (apModeActive)
+    // Chunk 5: Core scripts (~6KB)
     {
-        html += "<button type='submit' class='btn-primary'>💾 Save & Connect to WiFi</button>";
+        String scripts = FPSTR(SCRIPT_TAB_NAVIGATION);
+        scripts += FPSTR(SCRIPT_CITY_SWITCH);
+        scripts += FPSTR(SCRIPT_DISPLAY_TAB);
+        scripts += FPSTR(SCRIPT_CONFIG_SAVE);
+        sendChunk(server, scripts);
     }
-    else
-    {
-        html += "<button type='submit' class='btn-primary'>💾 Save Configuration</button>";
-    }
-    html += "</div>";
 
-    html += "</form>"; // End config form
-
-    // Tab 5: System (outside form - informational only)
+    // Chunk 6: Optional scripts (~18KB, STA mode only)
     if (!apModeActive)
     {
-        html += buildSystemTab(config, apModeActive, ESP.getFreeHeap(), stopName, departureCount);
+        String optScripts = FPSTR(SCRIPT_OPTIONAL_TAB);
+        optScripts += FPSTR(SCRIPT_LINE_COLORS);
+        optScripts += FPSTR(SCRIPT_REST_MODE);
+        optScripts += FPSTR(SCRIPT_REST_MODE_TOGGLE);
+        optScripts += FPSTR(SCRIPT_SYSTEM_ACTIONS);
+        optScripts += FPSTR(SCRIPT_GITHUB_UPDATE);
+        sendChunk(server, optScripts);
     }
 
-    // JavaScript scripts
-    html += FPSTR(SCRIPT_TAB_NAVIGATION);
-    html += FPSTR(SCRIPT_CITY_SWITCH);
-    html += FPSTR(SCRIPT_DISPLAY_TAB);
-    html += FPSTR(SCRIPT_CONFIG_SAVE);  // Form save with inline feedback
+    sendChunk(server, FPSTR(HTML_FOOTER));
 
-    if (!apModeActive)
-    {
-        html += FPSTR(SCRIPT_OPTIONAL_TAB);
-        html += FPSTR(SCRIPT_LINE_COLORS);
-        html += FPSTR(SCRIPT_REST_MODE);
-        html += FPSTR(SCRIPT_REST_MODE_TOGGLE);
-        html += FPSTR(SCRIPT_SYSTEM_ACTIONS);
-        html += FPSTR(SCRIPT_GITHUB_UPDATE);
-    }
-
-    html += FPSTR(HTML_FOOTER);
-    return html;
+    // Terminate chunked transfer
+    server->sendContent("");
 }

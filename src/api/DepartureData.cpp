@@ -53,7 +53,9 @@ int compareDepartures(const void* a, const void* b)
 {
     Departure* depA = (Departure*)a;
     Departure* depB = (Departure*)b;
-    return depA->eta - depB->eta; // Sort by ETA ascending
+    if (depA->eta != depB->eta)
+        return depA->eta - depB->eta; // Primary: ETA ascending
+    return strcmp(depA->line, depB->line); // Secondary: line name alphanumeric
 }
 
 // ============================================================================

@@ -175,7 +175,8 @@ void ConfigWebServer::handleRoot()
         return;
     }
 
-    String html = buildDashboardPage(
+    sendDashboardPage(
+        server,
         currentConfig,
         apModeActive,
         wifiConnected,
@@ -189,8 +190,6 @@ void ConfigWebServer::handleRoot()
         restModeActive,
         restModeManual
     );
-
-    server->send(200, "text/html", html);
 }
 
 void ConfigWebServer::handleSave()
@@ -206,43 +205,66 @@ void ConfigWebServer::handleSave()
     bool wifiChanged = false;
     bool cityChanged = false;
 
-    // Validate stop count before parsing (check both Prague and Berlin)
-    if (server->hasArg("prague_stops"))
+    // Determine which tab is being saved (default "all" for AP mode / backward compat)
+    String tab = server->hasArg("tab") ? server->arg("tab") : "all";
+
+    // Validate stop count before parsing (only when transit tab is being saved)
+    if (tab == "transit" || tab == "all")
     {
-        String stops = server->arg("prague_stops");
-        int numStops = countStops(stops.c_str());
-        if (numStops > 12)
+        if (server->hasArg("prague_stops"))
         {
-            server->send(400, "text/plain",
-                "Error: Too many stops configured (max 12). Please reduce the number of stops.\n"
-                "With 1-second delay between API calls, 12 stops takes 12+ seconds to query.");
-            logTimestamp();
-            debugPrintln("Config save failed: too many Prague stops");
-            return;
+            String stops = server->arg("prague_stops");
+            int numStops = countStops(stops.c_str());
+            if (numStops > 12)
+            {
+                server->send(400, "text/plain",
+                    "Error: Too many stops configured (max 12). Please reduce the number of stops.\n"
+                    "With 1-second delay between API calls, 12 stops takes 12+ seconds to query.");
+                logTimestamp();
+                debugPrintln("Config save failed: too many Prague stops");
+                return;
+            }
         }
-    }
-    if (server->hasArg("berlin_stops"))
-    {
-        String stops = server->arg("berlin_stops");
-        int numStops = countStops(stops.c_str());
-        if (numStops > 12)
+        if (server->hasArg("berlin_stops"))
         {
-            server->send(400, "text/plain",
-                "Error: Too many stops configured (max 12). Please reduce the number of stops.\n"
-                "With 1-second delay between API calls, 12 stops takes 12+ seconds to query.");
-            logTimestamp();
-            debugPrintln("Config save failed: too many Berlin stops");
-            return;
+            String stops = server->arg("berlin_stops");
+            int numStops = countStops(stops.c_str());
+            if (numStops > 12)
+            {
+                server->send(400, "text/plain",
+                    "Error: Too many stops configured (max 12). Please reduce the number of stops.\n"
+                    "With 1-second delay between API calls, 12 stops takes 12+ seconds to query.");
+                logTimestamp();
+                debugPrintln("Config save failed: too many Berlin stops");
+                return;
+            }
         }
     }
 
-    // Parse configuration using helper methods
-    parseWifiSettings(&newConfig, &wifiChanged);
-    parseGeneralSettings(&newConfig, &cityChanged);
-    parsePragueSettings(&newConfig);
-    parseBerlinSettings(&newConfig);
-    parseMqttSettings(&newConfig);
-    parseWeatherSettings(&newConfig);
+    // Parse configuration using tab-specific dispatch
+    // Only parse fields belonging to the active tab to avoid:
+    // 1. Wasting heap parsing fields that weren't sent
+    // 2. Resetting checkboxes (absent = false) from other tabs
+    if (tab == "connection" || tab == "all")
+    {
+        parseWifiSettings(&newConfig, &wifiChanged);
+        parseConnectionSettings(&newConfig, &cityChanged);
+    }
+    if (tab == "transit" || tab == "all")
+    {
+        parseTransitSettings(&newConfig);
+        parsePragueSettings(&newConfig);
+        parseBerlinSettings(&newConfig);
+        parseMqttSettings(&newConfig);
+    }
+    if (tab == "display" || tab == "all")
+    {
+        parseDisplaySettings(&newConfig);
+    }
+    if (tab == "optional" || tab == "all")
+    {
+        parseOptionalSettings(&newConfig);
+    }
 
     newConfig.configured = true;
 
@@ -333,7 +355,7 @@ void ConfigWebServer::handleSave()
 
     // Call the callback to notify main.cpp
     // Pass true for restart if either WiFi or city changed
-    onSaveCallback(newConfig, wifiChanged || cityChanged);
+    onSaveCallback(newConfig, wifiChanged || cityChanged, tab.c_str());
 }
 
 // ============================================================================
@@ -359,13 +381,11 @@ void ConfigWebServer::parseWifiSettings(Config* config, bool* wifiChanged)
     }
 }
 
-void ConfigWebServer::parseGeneralSettings(Config* config, bool* cityChanged)
+void ConfigWebServer::parseConnectionSettings(Config* config, bool* cityChanged)
 {
-    // Parse city field
     if (server->hasArg("city"))
     {
         String newCity = server->arg("city");
-        // Validate city value
         if (newCity == "Berlin" || newCity == "Prague" || newCity == "MQTT")
         {
             if (newCity != config->city)
@@ -376,12 +396,13 @@ void ConfigWebServer::parseGeneralSettings(Config* config, bool* cityChanged)
         }
         else
         {
-            // Invalid city value, default to Prague
             strlcpy(config->city, "Prague", sizeof(config->city));
         }
     }
+}
 
-    // Refresh interval
+void ConfigWebServer::parseTransitSettings(Config* config)
+{
     if (server->hasArg("refresh"))
     {
         config->refreshInterval = server->arg("refresh").toInt();
@@ -391,17 +412,6 @@ void ConfigWebServer::parseGeneralSettings(Config* config, bool* cityChanged)
             config->refreshInterval = 300;
     }
 
-    // Number of departures
-    if (server->hasArg("num_deps"))
-    {
-        config->numDepartures = server->arg("num_deps").toInt();
-        if (config->numDepartures < 1)
-            config->numDepartures = 1;
-        if (config->numDepartures > 3)
-            config->numDepartures = 3;  // Max 3 rows on display
-    }
-
-    // Minimum departure time
     if (server->hasArg("min_dep_time"))
     {
         config->minDepartureTime = server->arg("min_dep_time").toInt();
@@ -410,8 +420,10 @@ void ConfigWebServer::parseGeneralSettings(Config* config, bool* cityChanged)
         if (config->minDepartureTime > 30)
             config->minDepartureTime = 30;
     }
+}
 
-    // Brightness
+void ConfigWebServer::parseDisplaySettings(Config* config)
+{
     if (server->hasArg("brightness"))
     {
         config->brightness = server->arg("brightness").toInt();
@@ -421,7 +433,15 @@ void ConfigWebServer::parseGeneralSettings(Config* config, bool* cityChanged)
             config->brightness = 255;
     }
 
-    // Language
+    if (server->hasArg("num_deps"))
+    {
+        config->numDepartures = server->arg("num_deps").toInt();
+        if (config->numDepartures < 1)
+            config->numDepartures = 1;
+        if (config->numDepartures > 3)
+            config->numDepartures = 3;
+    }
+
     if (server->hasArg("language"))
     {
         String lang = server->arg("language");
@@ -435,36 +455,68 @@ void ConfigWebServer::parseGeneralSettings(Config* config, bool* cityChanged)
         }
     }
 
-    // Debug mode checkbox (unchecked = not present in POST data)
-    config->debugMode = server->hasArg("debug_mode");
-
-    // Show platform checkbox (unchecked = not present in POST data)
+    // Checkboxes: safe to set here because this only runs when tab == "display"
     config->showPlatform = server->hasArg("show_platform");
-
-    // Scrolling checkbox (unchecked = not present in POST data)
     config->scrollEnabled = server->hasArg("scroll_enabled");
+    config->showMultipleTimes = server->hasArg("show_multi_times");
 
     // Line color map (always update when not in AP mode to handle empty case)
     if (!apModeActive)
     {
-        // Get the value, defaulting to empty string if not present
         String colorMapValue = server->hasArg("line_color_map")
                                ? server->arg("line_color_map")
                                : "";
-
         strlcpy(config->lineColorMap, colorMapValue.c_str(), sizeof(config->lineColorMap));
 
-        // Log configuration
         logTimestamp();
         Serial.print("Line color map updated: ");
         Serial.println(strlen(config->lineColorMap) > 0 ? config->lineColorMap : "(empty - using defaults)");
+    }
+}
+
+void ConfigWebServer::parseOptionalSettings(Config* config)
+{
+    // Debug mode checkbox
+    config->debugMode = server->hasArg("debug_mode");
+
+    // Weather settings (absorbed from old parseWeatherSettings)
+    config->weatherEnabled = server->hasArg("weather_enabled");
+
+    if (server->hasArg("weather_lat"))
+    {
+        String latStr = server->arg("weather_lat");
+        latStr.replace(",", ".");
+        config->weatherLatitude = latStr.toFloat();
+        if (config->weatherLatitude < -90.0f)
+            config->weatherLatitude = -90.0f;
+        if (config->weatherLatitude > 90.0f)
+            config->weatherLatitude = 90.0f;
+    }
+
+    if (server->hasArg("weather_lon"))
+    {
+        String lonStr = server->arg("weather_lon");
+        lonStr.replace(",", ".");
+        config->weatherLongitude = lonStr.toFloat();
+        if (config->weatherLongitude < -180.0f)
+            config->weatherLongitude = -180.0f;
+        if (config->weatherLongitude > 180.0f)
+            config->weatherLongitude = 180.0f;
+    }
+
+    if (server->hasArg("weather_refresh"))
+    {
+        config->weatherRefreshInterval = server->arg("weather_refresh").toInt();
+        if (config->weatherRefreshInterval < 10)
+            config->weatherRefreshInterval = 10;
+        if (config->weatherRefreshInterval > 60)
+            config->weatherRefreshInterval = 60;
     }
 
     // Rest mode periods
     if (server->hasArg("rest_periods"))
     {
         String restPeriods = server->arg("rest_periods");
-
         if (restPeriods.length() < sizeof(config->restModePeriods))
         {
             strlcpy(config->restModePeriods, restPeriods.c_str(), sizeof(config->restModePeriods));
@@ -563,50 +615,6 @@ void ConfigWebServer::parseMqttSettings(Config* config)
         strlcpy(config->mqttFieldAC, server->arg("mqtt_fld_ac").c_str(), sizeof(config->mqttFieldAC));
 }
 
-void ConfigWebServer::parseWeatherSettings(Config* config)
-{
-    // Weather enabled checkbox
-    config->weatherEnabled = server->hasArg("weather_enabled");
-
-    // Latitude
-    if (server->hasArg("weather_lat"))
-    {
-        String latStr = server->arg("weather_lat");
-        // Replace comma with dot for decimal separator (locale compatibility)
-        latStr.replace(",", ".");
-        config->weatherLatitude = latStr.toFloat();
-        // Validate latitude range
-        if (config->weatherLatitude < -90.0f)
-            config->weatherLatitude = -90.0f;
-        if (config->weatherLatitude > 90.0f)
-            config->weatherLatitude = 90.0f;
-    }
-
-    // Longitude
-    if (server->hasArg("weather_lon"))
-    {
-        String lonStr = server->arg("weather_lon");
-        // Replace comma with dot for decimal separator (locale compatibility)
-        lonStr.replace(",", ".");
-        config->weatherLongitude = lonStr.toFloat();
-        // Validate longitude range
-        if (config->weatherLongitude < -180.0f)
-            config->weatherLongitude = -180.0f;
-        if (config->weatherLongitude > 180.0f)
-            config->weatherLongitude = 180.0f;
-    }
-
-    // Refresh interval
-    if (server->hasArg("weather_refresh"))
-    {
-        config->weatherRefreshInterval = server->arg("weather_refresh").toInt();
-        // Clamp to 10-60 minutes
-        if (config->weatherRefreshInterval < 10)
-            config->weatherRefreshInterval = 10;
-        if (config->weatherRefreshInterval > 60)
-            config->weatherRefreshInterval = 60;
-    }
-}
 
 void ConfigWebServer::handleRefresh()
 {
@@ -1024,6 +1032,22 @@ void ConfigWebServer::handleStartDemo()
             hasAC = acValue.indexOf("true") >= 0;
         }
 
+        // Find "secondEta":<value> pattern (optional, -1 = none)
+        int secondEta = -1;
+        String secondEtaKey = "\"secondEta\":";
+        int secondEtaStart = body.indexOf(secondEtaKey, lastFieldEnd);
+        if (secondEtaStart >= 0)
+        {
+            secondEtaStart += secondEtaKey.length();
+            int secondEtaEnd = body.indexOf(",", secondEtaStart);
+            if (secondEtaEnd < 0) secondEtaEnd = body.indexOf("}", secondEtaStart);
+            String secondEtaValue = body.substring(secondEtaStart, secondEtaEnd);
+            secondEta = secondEtaValue.toInt();
+            // toInt returns 0 for non-numeric; distinguish from actual 0
+            if (secondEta == 0 && secondEtaValue.indexOf("-1") >= 0)
+                secondEta = -1;
+        }
+
         // Copy to departure structure
         strlcpy(demoDepartures[demoCount].line, lineValue.c_str(), sizeof(demoDepartures[demoCount].line));
         strlcpy(demoDepartures[demoCount].destination, destValue.c_str(), sizeof(demoDepartures[demoCount].destination));
@@ -1032,7 +1056,9 @@ void ConfigWebServer::handleStartDemo()
         demoDepartures[demoCount].hasAC = hasAC;
         demoDepartures[demoCount].isDelayed = false;
         demoDepartures[demoCount].delayMinutes = 0;
-        demoDepartures[demoCount].departureTime = 0;  // Not used in demo mode
+        demoDepartures[demoCount].departureTime = 0;
+        demoDepartures[demoCount].secondEta = secondEta;
+        demoDepartures[demoCount].secondDepartureTime = 0;
 
         demoCount++;
 

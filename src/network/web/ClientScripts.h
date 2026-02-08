@@ -230,11 +230,6 @@ function serializeLineColors() {
 
     return true;  // Allow form submission
 }
-
-// Attach serializer to form submit
-document.querySelector('form').addEventListener('submit', function(e) {
-    serializeLineColors();
-});
 </script>
 )rawliteral";
 
@@ -369,13 +364,16 @@ async function startDemo(event) {
     // Build JSON payload
     const departures = [];
     for (let i = 1; i <= 3; i++) {
-        departures.push({
+        var dep = {
             line: formData.get('line' + i),
             destination: formData.get('dest' + i),
             eta: parseInt(formData.get('eta' + i)),
             platform: formData.get('platform' + i) || '',
             hasAC: formData.has('ac' + i)
-        });
+        };
+        var eta2 = formData.get('eta2_' + i);
+        dep.secondEta = (eta2 !== null && eta2 !== '') ? parseInt(eta2) : -1;
+        departures.push(dep);
     }
 
     try {
@@ -556,50 +554,79 @@ function factoryReset() {
 </script>
 )rawliteral";
 
-// Configuration form save with inline feedback
+// Configuration form save with per-tab field collection
 const char SCRIPT_CONFIG_SAVE[] PROGMEM = R"rawliteral(
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('configForm');
+    var form = document.getElementById('configForm');
     if (!form) return;
 
     form.addEventListener('submit', async function(e) {
         e.preventDefault();
 
-        const submitBtn = form.querySelector('button[type="submit"]');
-        const originalText = submitBtn.innerText;
-        const originalBackground = submitBtn.style.background;
+        var submitBtn = form.querySelector('button[type="submit"]');
+        var originalText = submitBtn.innerText;
+        var originalBackground = submitBtn.style.background;
 
-        // Disable button and show saving state
         submitBtn.disabled = true;
         submitBtn.innerText = '💾 Saving...';
 
         try {
-            const formData = new FormData(form);
-            const response = await fetch('/save', {
+            // Determine active tab
+            var activeTabBtn = document.querySelector('.tab.active');
+            var activeTabName = activeTabBtn ? activeTabBtn.getAttribute('data-tab') : null;
+
+            // AP mode: button text includes "Connect to WiFi"
+            var isApMode = originalText.includes('Connect to WiFi');
+
+            // Run line color serialization before collecting form data
+            if ((activeTabName === 'display' || isApMode) && typeof serializeLineColors === 'function') {
+                serializeLineColors();
+            }
+
+            var formData;
+            if (isApMode || !activeTabName || activeTabName === 'system') {
+                // AP mode or fallback: send ALL fields
+                formData = new FormData(form);
+            } else {
+                // STA mode: only collect inputs from the active tab panel
+                formData = new FormData();
+                formData.append('tab', activeTabName);
+                var panel = document.getElementById('tab-' + activeTabName);
+                if (panel) {
+                    panel.querySelectorAll('input, select, textarea').forEach(function(el) {
+                        if (!el.name) return;
+                        if (el.type === 'checkbox') {
+                            if (el.checked) formData.append(el.name, el.value || 'on');
+                        } else if (el.type === 'radio') {
+                            if (el.checked) formData.append(el.name, el.value);
+                        } else {
+                            formData.append(el.name, el.value);
+                        }
+                    });
+                }
+            }
+
+            var response = await fetch('/save', {
                 method: 'POST',
                 body: formData
             });
 
-            // Handle error responses with details
             if (!response.ok) {
-                const errorText = await response.text();
+                var errorText = await response.text();
                 throw new Error(errorText || 'HTTP ' + response.status);
             }
 
-            const contentType = response.headers.get('content-type');
+            var contentType = response.headers.get('content-type');
 
-            // Check if response is JSON (normal save) or HTML (restart required)
             if (contentType && contentType.includes('application/json')) {
-                // Normal save - show success feedback
-                const data = await response.json();
+                var data = await response.json();
 
                 if (data.success) {
                     submitBtn.style.background = '#2ed573';
                     submitBtn.innerText = '✓ Saved!';
 
-                    // Reset button after 2 seconds
-                    setTimeout(() => {
+                    setTimeout(function() {
                         submitBtn.style.background = originalBackground;
                         submitBtn.innerText = originalText;
                         submitBtn.disabled = false;
@@ -608,21 +635,18 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw new Error(data.message || 'Save failed');
                 }
             } else {
-                // Restart required - display the restart confirmation page (HTML response)
-                const html = await response.text();
-                // Replace entire page with the restart page from server
-                // This is safe: HTML comes from our own trusted server, not user input
+                // Restart required - replace page with restart confirmation
+                // Safe: HTML comes from our own trusted ESP32 server
+                var restartHtml = await response.text();
                 document.open();
-                document.write(html);
+                document.write(restartHtml);
                 document.close();
             }
         } catch (error) {
-            // Show error feedback with details
             submitBtn.style.background = '#ff6b6b';
             submitBtn.innerText = '✗ Save Failed';
 
-            // Show error message below button
-            let errorDiv = document.getElementById('save-error-msg');
+            var errorDiv = document.getElementById('save-error-msg');
             if (!errorDiv) {
                 errorDiv = document.createElement('div');
                 errorDiv.id = 'save-error-msg';
@@ -632,8 +656,7 @@ document.addEventListener('DOMContentLoaded', function() {
             errorDiv.textContent = error.message;
             errorDiv.style.display = 'block';
 
-            // Reset button after 5 seconds (longer for errors so user can read)
-            setTimeout(() => {
+            setTimeout(function() {
                 submitBtn.style.background = originalBackground;
                 submitBtn.innerText = originalText;
                 submitBtn.disabled = false;

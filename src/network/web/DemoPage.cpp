@@ -47,6 +47,13 @@ String buildDemoPage()
         html += "</div>";
 
         html += "<div>";
+        html += "<label for='eta2_" + String(i) + "'>2ND ETA (optional)</label>";
+        html += "<input type='number' id='eta2_" + String(i) + "' name='eta2_" + String(i) + "' value='" +
+                String(i == 1 ? "14" : (i == 2 ? "22" : "")) +
+                "' min='0' max='120' placeholder='empty = none'>";
+        html += "</div>";
+
+        html += "<div>";
         html += "<label for='platform" + String(i) + "'>PLATFORM/TRACK (optional)</label>";
         html += "<input type='text' id='platform" + String(i) + "' name='platform" + String(i) + "' value='" +
                 String(i == 1 ? "2" : (i == 2 ? "1" : "")) +

@@ -207,6 +207,10 @@ private:
     int currentDepartureCount;
     int currentNumToDisplay;
 
+    // Rendered departures buffer (maps row index to actual departure shown)
+    // Used by scroll system - may differ from currentDepartures[row] due to dedup
+    Departure renderedDeps[3];
+
     // Internal drawing functions
     void drawDeparture(int row, const Departure& dep);
     void redrawDestination(int row, const Departure& dep);

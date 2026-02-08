@@ -7,7 +7,8 @@
 // Departure Data Structures
 // ============================================================================
 
-#define MAX_DEPARTURES 12 // Increased for better caching with filtering
+#define DEPS_PER_STOP 12   // Departures requested per stop from API
+#define MAX_DEPARTURES 24  // Result cache size (larger for secondEta matching across multi-stop hubs)
 
 struct Departure
 {
@@ -19,6 +20,8 @@ struct Departure
     bool hasAC; // Air conditioning
     bool isDelayed; // Has delay
     int delayMinutes; // Delay in minutes
+    int secondEta; // ETA of next departure for same line+destination (-1 if none)
+    time_t secondDepartureTime; // Timestamp of second departure (0 if none)
 };
 
 // ============================================================================

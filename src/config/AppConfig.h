@@ -144,6 +144,7 @@ struct Config
     bool debugMode;         // Enable telnet logging and verbose output
     bool showPlatform;      // Display platform/track between destination and ETA
     bool scrollEnabled;     // Enable scrolling for long destination names (default: off)
+    bool showMultipleTimes; // Show next two departure times per line (default: off)
     char restModePeriods[256]; // Rest mode time periods (format: "HH:MM-HH:MM,HH:MM-HH:MM")
 
     // Weather configuration

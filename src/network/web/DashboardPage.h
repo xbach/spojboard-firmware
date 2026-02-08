@@ -2,11 +2,14 @@
 #define DASHBOARD_PAGE_H
 
 #include <Arduino.h>
+#include <WebServer.h>
 #include "../../config/AppConfig.h"
 
-// Build the main dashboard HTML page
-// Returns a String containing the complete HTML
-String buildDashboardPage(
+// Send the main dashboard HTML page using chunked transfer encoding.
+// Each section (tabs, scripts) is sent individually to avoid building
+// the entire ~50KB page in RAM at once. Peak heap usage: ~5-10KB.
+void sendDashboardPage(
+    WebServer* server,
     const Config* config,
     bool apModeActive,
     bool wifiConnected,

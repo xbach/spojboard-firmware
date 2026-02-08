@@ -113,8 +113,9 @@ bool BvgAPI::querySingleStop(const char* stopId,
 
     snprintf(url,
              sizeof(url),
-             "https://v6.bvg.transport.rest/stops/%s/departures?duration=120&results=12&when=%ld",
+             "https://v6.bvg.transport.rest/stops/%s/departures?duration=120&results=%d&when=%ld",
              stopId,
+             DEPS_PER_STOP,
              (long)whenTime);
 
     HTTPClient http;
