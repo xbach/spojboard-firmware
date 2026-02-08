@@ -1,4 +1,5 @@
 #include "SystemTab.h"
+#include "../WebUtils.h"
 #include <WiFi.h>
 
 String buildSystemTab(const Config* config, bool apModeActive, size_t freeHeap, const char* stopName,
@@ -36,7 +37,7 @@ String buildSystemTab(const Config* config, bool apModeActive, size_t freeHeap, 
         // Transit provider
         html += "<div class='info-row'>";
         html += "<span class='info-label'>Transit Provider:</span>";
-        html += "<span class='info-value'>" + String(config->city) + "</span>";
+        html += "<span class='info-value'>" + escapeHtml(config->city) + "</span>";
         html += "</div>";
 
         // Current stop name
@@ -44,7 +45,7 @@ String buildSystemTab(const Config* config, bool apModeActive, size_t freeHeap, 
         {
             html += "<div class='info-row'>";
             html += "<span class='info-label'>Stop:</span>";
-            html += "<span class='info-value'>" + String(stopName) + "</span>";
+            html += "<span class='info-value'>" + escapeHtml(stopName) + "</span>";
             html += "</div>";
         }
 

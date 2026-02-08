@@ -1,4 +1,5 @@
 #include "TabBuilder.h"
+#include "WebUtils.h"
 
 String buildHeader(bool apModeActive, bool restModeActive, bool restModeManual)
 {
@@ -96,10 +97,10 @@ String buildStatusBanner(bool apModeActive, bool demoModeActive, bool restModeAc
         html += "<div><strong>📶 AP Mode Active</strong> - Configure WiFi to connect to your network";
         if (apSsid && apSsid[0])
         {
-            html += "<br>Network: <strong>" + String(apSsid) + "</strong>";
+            html += "<br>Network: <strong>" + escapeHtml(apSsid) + "</strong>";
             if (apPassword && apPassword[0])
             {
-                html += " | Password: <strong>" + String(apPassword) + "</strong>";
+                html += " | Password: <strong>" + escapeHtml(apPassword) + "</strong>";
             }
         }
         html += "</div>";
@@ -141,7 +142,7 @@ String buildStatusBanner(bool apModeActive, bool demoModeActive, bool restModeAc
     {
         html += "<div class=\"banner banner-error\">";
         html += "<span class=\"status-dot\"></span>";
-        html += "<div><strong>⚠ API Error:</strong> " + String(apiErrorMsg) + "</div>";
+        html += "<div><strong>⚠ API Error:</strong> " + escapeHtml(apiErrorMsg) + "</div>";
         html += "</div>";
     }
 

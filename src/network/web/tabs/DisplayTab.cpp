@@ -1,4 +1,5 @@
 #include "DisplayTab.h"
+#include "../WebUtils.h"
 
 // Helper: Build line colors table
 static String buildLineColorsTable(const Config* config)
@@ -48,7 +49,7 @@ static String buildLineColorsTable(const Config* config)
 
                 html += "<tr>";
                 html += "<td><input type='text' class='line-input' value='";
-                html += line;
+                html += escapeHtml(line.c_str());
                 html += "' placeholder='Line number'></td>";
                 html += "<td><select class='color-select'>";
                 html += "<option value='RED'";

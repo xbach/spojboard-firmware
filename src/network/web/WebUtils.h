@@ -17,4 +17,11 @@ int countStops(const char* stopIds);
  */
 String escapeJsonString(const char* str);
 
+/**
+ * Escape special HTML characters to prevent XSS
+ * @param str String to escape (null-safe)
+ * @return Escaped string safe for HTML attributes and text content
+ */
+String escapeHtml(const char* str);
+
 #endif // WEB_UTILS_H

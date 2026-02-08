@@ -1,4 +1,5 @@
 #include "ConnectionTab.h"
+#include "../WebUtils.h"
 
 String buildConnectionTab(const Config* config, bool apModeActive)
 {
@@ -11,7 +12,7 @@ String buildConnectionTab(const Config* config, bool apModeActive)
 
     html += "<label for='ssid'>WIFI SSID</label>";
     html += "<input type='text' id='ssid' name='ssid' value='";
-    html += config->wifiSsid;
+    html += escapeHtml(config->wifiSsid);
     html += "' required placeholder='Your WiFi network name'>";
 
     html += "<label for='password'>WIFI PASSWORD</label>";

@@ -57,10 +57,10 @@ void loadConfig(Config& config)
         }
     }
 
-    config.refreshInterval = preferences.getInt("refresh", 60);  // Increased to 60s to reduce API load
-    config.numDepartures = preferences.getInt("numDeps", 3);     // Display rows (1-3)
-    config.minDepartureTime = preferences.getInt("minDepTime", 3);
-    config.brightness = preferences.getInt("brightness", 90);
+    config.refreshInterval = constrain(preferences.getInt("refresh", 60), 10, 300);
+    config.numDepartures = constrain(preferences.getInt("numDeps", 3), 1, 3);
+    config.minDepartureTime = constrain(preferences.getInt("minDepTime", 3), 0, 30);
+    config.brightness = constrain(preferences.getInt("brightness", 90), 0, 255);
     strlcpy(config.lineColorMap, preferences.getString("lineColorMap", "").c_str(), sizeof(config.lineColorMap));
     strlcpy(config.city, preferences.getString("city", "Prague").c_str(), sizeof(config.city));  // Default: Prague for backward compatibility
     strlcpy(config.language, preferences.getString("language", "en").c_str(), sizeof(config.language));  // Default: English
@@ -74,7 +74,7 @@ void loadConfig(Config& config)
     config.weatherEnabled = preferences.getBool("weatherEnable", false);  // Default: disabled
     config.weatherLatitude = preferences.getFloat("weatherLat", 50.0755);  // Default: Prague
     config.weatherLongitude = preferences.getFloat("weatherLon", 14.4378); // Default: Prague
-    config.weatherRefreshInterval = preferences.getInt("weatherRefresh", 15);  // Default: 15 minutes
+    config.weatherRefreshInterval = constrain(preferences.getInt("weatherRefresh", 15), 5, 120);
 
     config.configured = preferences.getBool("configured", false);
 

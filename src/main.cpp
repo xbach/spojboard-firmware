@@ -65,6 +65,7 @@ struct DisplayUpdateRequest {
     bool cityConfigured;
     bool demoMode;
     bool restMode;
+    WeatherData weather;
     bool needsUpdate;
 } displayRequest = {.needsUpdate = false};
 
@@ -322,11 +323,15 @@ void onDemoStart(const Departure* demoDepartures, int demoCount)
     // Enter demo mode: stop API polling and display updates
     demoModeActive = true;
 
-    // Copy demo departures to global state
-    departureCount = (demoCount > MAX_DEPARTURES) ? MAX_DEPARTURES : demoCount;
-    for (int i = 0; i < departureCount; i++)
+    // Copy demo departures to global state (mutex-protected)
+    if (xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(100)))
     {
-        departures[i] = demoDepartures[i];
+        departureCount = (demoCount > MAX_DEPARTURES) ? MAX_DEPARTURES : demoCount;
+        for (int i = 0; i < departureCount; i++)
+        {
+            departures[i] = demoDepartures[i];
+        }
+        xSemaphoreGive(apiDataMutex);
     }
 
     // Trigger display update with demo data
@@ -636,6 +641,7 @@ void displayRenderTask(void* parameter)
             bool localCityConfigured;
             bool localDemoMode;
             bool localRestMode;
+            WeatherData localWeather;
 
             // Take mutex to safely copy display request
             if (xSemaphoreTake(displayMutex, pdMS_TO_TICKS(100)))
@@ -661,6 +667,7 @@ void displayRenderTask(void* parameter)
                 localCityConfigured = displayRequest.cityConfigured;
                 localDemoMode = displayRequest.demoMode;
                 localRestMode = displayRequest.restMode;
+                localWeather = displayRequest.weather;
 
                 displayRequest.needsUpdate = false;
                 xSemaphoreGive(displayMutex);
@@ -674,6 +681,9 @@ void displayRenderTask(void* parameter)
             }
 
             // Render display with local copy (no mutex needed during render)
+            // Use local weather snapshot instead of global pointer (thread-safe)
+            displayManager.setWeatherData(&localWeather);
+
             logTimestamp();
             debugPrintln("DisplayTask: Rendering on Core 1");
 
@@ -720,6 +730,7 @@ void signalDisplayUpdate()
         displayRequest.cityConfigured = isCityConfigured();
         displayRequest.demoMode = demoModeActive;
         displayRequest.restMode = restModeActive;
+        displayRequest.weather = weatherData;
         displayRequest.needsUpdate = true;
 
         xSemaphoreGive(displayMutex);
@@ -922,8 +933,8 @@ void setup()
         debugPrintln("Web server failed to start!");
     }
 
-    // Pass weather data pointer to display manager
-    displayManager.setWeatherData(&weatherData);
+    // Weather data is now passed via DisplayUpdateRequest snapshot pattern
+    // (no direct pointer sharing - thread-safe copy in signalDisplayUpdate)
 
     // Setup captive portal detection handlers
     if (wifiManager.isAPMode())

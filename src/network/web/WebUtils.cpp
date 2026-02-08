@@ -18,6 +18,39 @@ int countStops(const char* stopIds)
     return count;
 }
 
+String escapeHtml(const char* str)
+{
+    String result = "";
+    if (!str)
+        return result;
+
+    for (size_t i = 0; str[i] != '\0'; i++)
+    {
+        switch (str[i])
+        {
+        case '&':
+            result += "&amp;";
+            break;
+        case '<':
+            result += "&lt;";
+            break;
+        case '>':
+            result += "&gt;";
+            break;
+        case '"':
+            result += "&quot;";
+            break;
+        case '\'':
+            result += "&#39;";
+            break;
+        default:
+            result += str[i];
+            break;
+        }
+    }
+    return result;
+}
+
 String escapeJsonString(const char* str)
 {
     String result = "";

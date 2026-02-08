@@ -172,7 +172,7 @@ String readHttpResponse(HTTPClient& http, size_t maxSize, bool debugMode)
         char buffer[512];
         int remaining = contentLen > 0 ? contentLen : -1;
 
-        while (http.connected() || stream->available())
+        while ((http.connected() || stream->available()) && payload.length() < maxSize)
         {
             // Wait for data if needed
             int waitCount = 0;

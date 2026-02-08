@@ -46,7 +46,7 @@ jobs:
       run: |
         RELEASE_NUM=${{ steps.get_version.outputs.RELEASE_NUM }}
         # Extract section between [r$RELEASE_NUM] and next [r or end of file
-        CHANGELOG=$(awk "/## \[r${RELEASE_NUM}\]/,/## \[r[0-9]/" CHANGELOG.md | sed '1d;$d')
+        CHANGELOG=$(awk "/## \[r${RELEASE_NUM}\]/,/## \[r[0-9]+/" CHANGELOG.md | sed '1d;$d')
         # If empty, use default message
         if [ -z "$CHANGELOG" ]; then
           CHANGELOG="See commit history for details."

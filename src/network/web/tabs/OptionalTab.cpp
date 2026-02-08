@@ -1,4 +1,5 @@
 #include "OptionalTab.h"
+#include "../WebUtils.h"
 
 String buildOptionalTab(const Config* config)
 {
@@ -67,7 +68,7 @@ String buildOptionalTab(const Config* config)
     html += "<div>";
     html += "<label for='restModePeriods'>TIME PERIODS</label>";
     html += "<input type='text' id='restModePeriods' name='rest_periods' value='";
-    html += config->restModePeriods;
+    html += escapeHtml(config->restModePeriods);
     html += "' placeholder='HH:MM-HH:MM,HH:MM-HH:MM'>";
     html += "<div class='help-text'>Display turns off during these times (e.g., \"23:00-07:00\"). Multiple "
             "periods comma-separated.</div>";

@@ -1,4 +1,5 @@
 #include "TransitDataTab.h"
+#include "../WebUtils.h"
 
 // Helper: Build Prague API section
 static String buildPragueSection(const Config* config, bool isPrague)
@@ -23,7 +24,7 @@ static String buildPragueSection(const Config* config, bool isPrague)
     // Stop IDs field
     html += "<label for='pragueStopIds'>STOP IDS</label>";
     html += "<input type='text' id='pragueStopIds' name='prague_stops' value='";
-    html += config->pragueStopIds;
+    html += escapeHtml(config->pragueStopIds);
     html += "' placeholder='U693Z2P,U694Z2P'>";
     html += "<div class='help-text'>Comma-separated GTFS stop IDs. Find IDs at <a "
             "href='https://data.pid.cz/stops/json/stops.json' target='_blank' "
@@ -48,7 +49,7 @@ static String buildBerlinSection(const Config* config, bool isBerlin)
     // Stop IDs field (no API key needed)
     html += "<label for='berlinStopIds'>STOP IDS</label>";
     html += "<input type='text' id='berlinStopIds' name='berlin_stops' value='";
-    html += config->berlinStopIds;
+    html += escapeHtml(config->berlinStopIds);
     html += "' placeholder='900013102,900014101'>";
     html += "<div class='help-text'>Comma-separated numeric stop IDs. Find IDs at <a "
             "href='https://v6.bvg.transport.rest/' target='_blank' "
@@ -73,7 +74,7 @@ static String buildMqttSection(const Config* config, bool isMqtt)
     // Broker address
     html += "<label for='mqttBroker'>BROKER ADDRESS</label>";
     html += "<input type='text' id='mqttBroker' name='mqtt_broker' value='";
-    html += config->mqttBroker;
+    html += escapeHtml(config->mqttBroker);
     html += "' placeholder='homeassistant.local or 192.168.1.100'>";
 
     // Port + Username (2-column grid)
@@ -87,7 +88,7 @@ static String buildMqttSection(const Config* config, bool isMqtt)
     html += "<div>";
     html += "<label for='mqttUsername'>USERNAME (optional)</label>";
     html += "<input type='text' id='mqttUsername' name='mqtt_user' value='";
-    html += config->mqttUsername;
+    html += escapeHtml(config->mqttUsername);
     html += "' placeholder='Leave empty for no auth'>";
     html += "</div>";
     html += "</div>";
@@ -103,13 +104,13 @@ static String buildMqttSection(const Config* config, bool isMqtt)
     html += "<div>";
     html += "<label for='mqttRequestTopic'>REQUEST TOPIC</label>";
     html += "<input type='text' id='mqttRequestTopic' name='mqtt_req_topic' value='";
-    html += config->mqttRequestTopic;
+    html += escapeHtml(config->mqttRequestTopic);
     html += "' placeholder='spojboard/request'>";
     html += "</div>";
     html += "<div>";
     html += "<label for='mqttResponseTopic'>RESPONSE TOPIC</label>";
     html += "<input type='text' id='mqttResponseTopic' name='mqtt_resp_topic' value='";
-    html += config->mqttResponseTopic;
+    html += escapeHtml(config->mqttResponseTopic);
     html += "' placeholder='spojboard/response'>";
     html += "</div>";
     html += "</div>";
@@ -138,13 +139,13 @@ static String buildMqttSection(const Config* config, bool isMqtt)
     html += "<div>";
     html += "<label for='mqttFieldLine'>LINE NUMBER FIELD</label>";
     html += "<input type='text' id='mqttFieldLine' name='mqtt_fld_line' value='";
-    html += config->mqttFieldLine;
+    html += escapeHtml(config->mqttFieldLine);
     html += "' placeholder='line'>";
     html += "</div>";
     html += "<div>";
     html += "<label for='mqttFieldDestination'>DESTINATION FIELD</label>";
     html += "<input type='text' id='mqttFieldDestination' name='mqtt_fld_dest' value='";
-    html += config->mqttFieldDestination;
+    html += escapeHtml(config->mqttFieldDestination);
     html += "' placeholder='dest'>";
     html += "</div>";
 
@@ -152,13 +153,13 @@ static String buildMqttSection(const Config* config, bool isMqtt)
     html += "<div>";
     html += "<label for='mqttFieldEta'>ETA FIELD (minutes)</label>";
     html += "<input type='text' id='mqttFieldEta' name='mqtt_fld_eta' value='";
-    html += config->mqttFieldEta;
+    html += escapeHtml(config->mqttFieldEta);
     html += "' placeholder='eta'>";
     html += "</div>";
     html += "<div>";
     html += "<label for='mqttFieldTimestamp'>TIMESTAMP FIELD (unix)</label>";
     html += "<input type='text' id='mqttFieldTimestamp' name='mqtt_fld_time' value='";
-    html += config->mqttFieldTimestamp;
+    html += escapeHtml(config->mqttFieldTimestamp);
     html += "' placeholder='dep'>";
     html += "</div>";
 
@@ -166,13 +167,13 @@ static String buildMqttSection(const Config* config, bool isMqtt)
     html += "<div>";
     html += "<label for='mqttFieldPlatform'>PLATFORM FIELD (optional)</label>";
     html += "<input type='text' id='mqttFieldPlatform' name='mqtt_fld_plat' value='";
-    html += config->mqttFieldPlatform;
+    html += escapeHtml(config->mqttFieldPlatform);
     html += "' placeholder='plt'>";
     html += "</div>";
     html += "<div>";
     html += "<label for='mqttFieldAC'>AC FLAG FIELD (optional)</label>";
     html += "<input type='text' id='mqttFieldAC' name='mqtt_fld_ac' value='";
-    html += config->mqttFieldAC;
+    html += escapeHtml(config->mqttFieldAC);
     html += "' placeholder='ac'>";
     html += "</div>";
 
