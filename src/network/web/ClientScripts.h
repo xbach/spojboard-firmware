@@ -321,11 +321,10 @@ const char SCRIPT_REST_MODE_TOGGLE[] PROGMEM = R"rawliteral(
 <script>
 async function toggleRestMode() {
     const btn = document.getElementById('restModeBtn');
-    const isCurrentlyActive = (btn.innerText === 'Disable Rest Mode');
+    const isCurrentlyActive = btn.classList.contains('active');
     const newState = !isCurrentlyActive;
 
     btn.disabled = true;
-    btn.innerText = newState ? 'Disabling...' : 'Enabling...';
 
     try {
         const response = await fetch('/rest-mode', {
@@ -337,17 +336,14 @@ async function toggleRestMode() {
         const data = await response.json();
 
         if (data.success) {
-            // Reload page to refresh status
             window.location.reload();
         } else {
             alert('Failed to toggle rest mode: ' + (data.error || 'Unknown error'));
             btn.disabled = false;
-            btn.innerText = isCurrentlyActive ? 'Disable Rest Mode' : 'Enable Rest Mode';
         }
     } catch (error) {
         alert('Error: ' + error.message);
         btn.disabled = false;
-        btn.innerText = isCurrentlyActive ? 'Disable Rest Mode' : 'Enable Rest Mode';
     }
 }
 </script>
@@ -522,10 +518,6 @@ function refreshDepartures() {
     fetch('/refresh', { method: 'POST' })
         .then(() => { alert('Refresh triggered. Departure data will update momentarily.'); })
         .catch(error => { alert('Error: ' + error.message); });
-}
-
-function openPreview() {
-    window.open('/preview', '_blank', 'width=800,height=600');
 }
 
 function rebootDevice() {

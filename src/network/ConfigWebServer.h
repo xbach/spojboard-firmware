@@ -146,8 +146,6 @@ class ConfigWebServer
     void handleStartDemo(); // POST: start demo mode with sample data
     void handleStopDemo(); // POST: stop demo mode and resume normal operation
     void handleRestMode(); // POST: control rest mode via REST API
-    void handleDisplayStateAPI(); // GET: JSON with current display state for preview
-    void handlePreviewPage(); // GET: live preview HTML page
     void handleNotFound();
 
     // Config parsing helpers — one per tab for per-tab save dispatch

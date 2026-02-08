@@ -299,7 +299,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         char etaText[8];
         if (dep.eta < 1)
             snprintf(etaText, sizeof(etaText), "<1'");
-        else if (dep.eta >= 60)
+        else if (dep.eta >= 100)
             snprintf(etaText, sizeof(etaText), ">1h");
         else
             snprintf(etaText, sizeof(etaText), "%d'", dep.eta);
@@ -321,7 +321,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         char eta2Text[8];
         if (dep.secondEta < 1)
             snprintf(eta2Text, sizeof(eta2Text), "<1'");
-        else if (dep.secondEta >= 60)
+        else if (dep.secondEta >= 100)
             snprintf(eta2Text, sizeof(eta2Text), ">1h");
         else
             snprintf(eta2Text, sizeof(eta2Text), "%d'", dep.secondEta);
@@ -345,7 +345,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         char etaText[8];
         if (dep.eta < 1)
             snprintf(etaText, sizeof(etaText), "<1'");
-        else if (dep.eta >= 60)
+        else if (dep.eta >= 100)
             snprintf(etaText, sizeof(etaText), ">1h");
         else
             snprintf(etaText, sizeof(etaText), "%d'", dep.eta);

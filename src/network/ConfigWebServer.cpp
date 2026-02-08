@@ -6,7 +6,6 @@
 #include "web/DashboardPage.h"
 #include "web/DemoPage.h"
 #include "web/UpdatePage.h"
-#include "web/PreviewPage.h"
 #include "web/ApiHandlers.h"
 #include "web/WebUtils.h"
 #include <WiFi.h>
@@ -86,10 +85,6 @@ bool ConfigWebServer::begin()
                { handleStopDemo(); });
     server->on("/rest-mode", HTTP_POST, [this]()
                { handleRestMode(); });
-    server->on("/api/display-state", HTTP_GET, [this]()
-               { handleDisplayStateAPI(); });
-    server->on("/preview", HTTP_GET, [this]()
-               { handlePreviewPage(); });
     server->onNotFound([this]()
                        { handleNotFound(); });
 
@@ -1154,57 +1149,3 @@ void ConfigWebServer::handleRestMode()
     server->send(200, "application/json", response);
 }
 
-void ConfigWebServer::handleDisplayStateAPI()
-{
-    if (!displayManager)
-    {
-        server->send(500, "application/json", "{\"error\":\"Display not initialized\"}");
-        return;
-    }
-
-    // Get current display data
-    const Departure* departures = displayManager->getCurrentDepartures();
-    int numToDisplay = displayManager->getCurrentNumToDisplay();
-    int departureCount = displayManager->getCurrentDepartureCount();
-    const WeatherData* weather = displayManager->getWeatherData();
-
-    // Limit to actual display capacity (max 3 rows, or numToDisplay if less)
-    int rowsToShow = (departureCount < numToDisplay) ? departureCount : numToDisplay;
-    if (rowsToShow > 3)
-        rowsToShow = 3;
-
-    // Check if API key is configured based on city
-    bool apiKeyConfigured = false;
-    if (currentConfig)
-    {
-        if (strcmp(currentConfig->city, "Prague") == 0)
-        {
-            apiKeyConfigured = (currentConfig->pragueApiKey[0] != '\0' && currentConfig->pragueStopIds[0] != '\0');
-        }
-        else if (strcmp(currentConfig->city, "Berlin") == 0)
-        {
-            apiKeyConfigured = (currentConfig->berlinStopIds[0] != '\0');
-        }
-        else if (strcmp(currentConfig->city, "MQTT") == 0)
-        {
-            apiKeyConfigured = (currentConfig->mqttBroker[0] != '\0');
-        }
-    }
-
-    // Build JSON response using ApiHandlers
-    String json = buildDisplayStateJson(
-        departures, rowsToShow, weather,
-        apModeActive, wifiConnected, apiKeyConfigured,
-        apiError, apiErrorMsg, demoModeActive,
-        restModeActive, restModeManual, departureCount,
-        stopName, apSSID, apPassword
-    );
-
-    server->send(200, "application/json", json);
-}
-
-void ConfigWebServer::handlePreviewPage()
-{
-    String html = buildPreviewPage();
-    server->send(200, "text/html", html);
-}

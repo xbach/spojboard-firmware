@@ -22,12 +22,9 @@ String buildHeader(bool apModeActive, bool restModeActive, bool restModeManual)
         // Demo button (STA mode)
         html += "<button class=\"action-btn\" onclick=\"window.location.href='/demo'\" title=\"Display Demo\">▶</button>";
 
-        // Preview button (STA mode only)
-        html += "<button class=\"action-btn\" onclick=\"openPreview()\" title=\"Live Preview\">👁</button>";
-
         // Rest mode toggle button (STA mode only)
         String restClass = (restModeActive && restModeManual) ? "action-btn active" : "action-btn";
-        html += "<button class=\"" + restClass + "\" onclick=\"toggleRestMode()\" title=\"";
+        html += "<button id=\"restModeBtn\" class=\"" + restClass + "\" onclick=\"toggleRestMode()\" title=\"";
         html += (restModeActive && restModeManual) ? "Disable Rest Mode" : "Enable Rest Mode";
         html += "\">💤</button>";
     }
