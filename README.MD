@@ -25,7 +25,9 @@ Standalone operation with web-based configuration, no external server required f
 - **Local ETA Updates**: Recalculates ETAs every 10 seconds from cached timestamps without additional API calls - reduces server load while keeping display fresh
 - **Multi-Stop Support**: Query up to 12 stops simultaneously (144 departure buffer), automatically sorted by departure time with 1s rate limiting
 - **WiFi Setup Portal**: Automatic AP mode with captive portal when WiFi fails - no code editing needed
-- **Web Configuration**: Easy setup via built-in web interface with city selector
+- **Dual ETA Display**: Optionally show next two departure times per line - see departure frequency at a glance (disabled by default)
+- **Dual-Core Architecture**: FreeRTOS multi-task design - Core 0 handles WiFi interrupts, Core 1 runs display rendering, API fetching, and web server concurrently for responsive operation
+- **Web Configuration**: Easy setup via tabbed web interface with city selector and per-tab save
 - **Persistent Settings**: Configuration stored in ESP32 flash memory, survives reboots
 - **Extended Character Support**: Custom 8-bit ISO-8859-2 fonts with automatic UTF-8 conversion (ž, š, č, ř, ň, ť, ď, ß, etc.)
 - **Adaptive Font Rendering**: Automatically switches to condensed font for long destination names (>16 chars), fitting up to 23 characters on screen
@@ -125,32 +127,19 @@ If the device can't connect to WiFi (wrong password, network down, etc.), it wil
 
 ## Web Interface
 
-The built-in web server provides:
+The built-in web server provides a tabbed configuration interface with per-tab save:
 
-- **Status Dashboard**: WiFi status, API status, memory usage, mode indicators (Demo Mode, Rest Mode with manual/scheduled differentiation)
-- **Configuration Form**:
-  - WiFi credentials
-  - Data source selector (Prague, Berlin, or MQTT)
-  - API key (Prague only)
-  - MQTT broker, topics, and field mappings (MQTT only) - see [MQTT Guide](docs/MQTT.md)
-  - Stop ID(s) - comma-separated for multiple stops (max 12, not used for MQTT)
-  - Refresh interval (10-300 seconds)
-  - Number of departures to display (1-3 rows)
-  - Minimum departure time (0-30 minutes) - filter during ETA recalculation
-  - Display brightness (0-255)
-  - Custom line colors with position-based wildcard patterns (e.g., "9*" for 2-digit, "4**" for 3-digit)
-  - Debug mode (enables telnet logging on port 23)
-  - Scrolling mode (scroll long destination names)
-  - Weather display (enable/disable, latitude/longitude, refresh interval)
-  - Rest mode (time periods when display turns off, e.g., "23:00-07:00")
-- **Actions**:
-  - Force refresh
-  - Display demo (preview custom departures)
-  - Enable/Disable Rest Mode (manual toggle)
-  - Update firmware (manual .bin upload)
-  - Check for updates (GitHub releases)
-  - Reboot device
-  - Factory reset
+- **Connection Tab** (📡): WiFi credentials, data source selector (Prague, Berlin, or MQTT)
+- **Transit Data Tab** (🚇): API-specific configuration (dynamically shown based on selected city)
+  - Prague: API key, stop IDs
+  - Berlin: Stop IDs
+  - MQTT: Broker, topics, field mappings - see [MQTT Guide](docs/MQTT.md)
+  - Refresh interval, minimum departure time, number of departures
+- **Display Tab** (🖥): Brightness, custom line colors with wildcard patterns, dual ETA toggle, scrolling
+- **Optional Tab** (⭐): Weather display, rest mode periods, debug mode (STA mode only)
+- **System Tab** (⚙): System info, firmware updates, actions (STA mode only)
+- **Action Bar**: Force refresh, demo mode, rest mode toggle (context-aware per mode)
+- **Status Banners**: AP mode, demo mode, rest mode (manual/scheduled), API errors
 
 ### AP Mode vs Normal Mode
 
@@ -188,13 +177,25 @@ No stop IDs needed - configure your MQTT broker to aggregate and filter departur
 │ [31] Sídliště Řepy           12' │  Row 1
 │ [7 ] Radlická                 5' │  Row 2
 │ [A ] Depo Hostivař            2' │  Row 3
-│ Mon| Feb 15    ☀ 18°    14:35    │  Row 4 (Date/Time + Weather)
+│ 08.02. Donnerstag  ☀ 15° 14:23  │  Row 4 (Date/Day/Weather/Time)
 └────────────────────────────────────┘
 ```
 
+### Dual ETA Mode (Optional)
+When "Show multiple departure times" is enabled, each row shows the next two departures for the same line and destination:
+```
+┌────────────────────────────────────┐
+│ [31] Nádraží            5'  32' │  Row 1
+│ [A ] Letenské           2'  18' │  Row 2
+│ [S9] Masarykovo        <1'  24' │  Row 3
+│ 15.02. Saturday  ☀ 18°  14:35   │  Row 4
+└────────────────────────────────────┘
+```
+Both ETAs are independently color-coded (red < 2min, yellow 2-5min, white > 5min). If no matching second departure exists, only the first ETA is shown.
+
 **Weather in Status Bar** (when enabled):
-- Weather icon and temperature displayed between date and time
-- Temperature color-coded: blue (cold), white (mild), yellow (warm), red (hot)
+- Weather icon and temperature displayed between day name and time
+- Temperature color-coded: cyan (cold), white (mild), yellow (warm), red (hot)
 - Icon color indicates condition: yellow (sunny), white (cloudy), cyan (rain), blue (snow)
 
 **Visual Design**:
@@ -203,6 +204,7 @@ No stop IDs needed - configure your MQTT broker to aggregate and filter departur
 - All destinations start at the same X position regardless of route length
 - Adaptive font rendering: automatically switches to condensed font for destinations longer than 16 characters
 - Destination text dynamically truncated based on ETA display width and font choice to prevent overlap
+- Status bar: numeric date (DD.MM.) + full localized day name (English/Czech/German) + optional weather + time
 
 ### AP Setup Mode
 ```
@@ -245,6 +247,8 @@ These colors are used by default and can be customized via the web interface:
 - **Yellow**: 2-5 minutes
 - **Red**: < 2 minutes
 - **Orange**: Delayed
+
+When dual ETA mode is enabled, both times are independently color-coded. Destinations use condensed font in dual mode to fit both ETAs.
 
 ## Weather Display
 
@@ -379,7 +383,7 @@ All firmware updates (both methods):
 
 ## Technical Details
 
-For detailed information about the data flow pipeline, memory allocation, and design decisions, see **[Architecture & Data Flow](docs/ARCHITECTURE.md)**.
+For detailed information about the dual-core architecture, data flow pipeline, memory allocation, and design decisions, see **[Architecture & Data Flow](docs/ARCHITECTURE.md)**.
 
 ### AP Mode Credentials
 - SSID: `SpojBoard-XXXX` (XXXX = last 4 chars of MAC address)

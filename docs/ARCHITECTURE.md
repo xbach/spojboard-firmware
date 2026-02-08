@@ -4,12 +4,85 @@ Technical documentation for developers and contributors.
 
 ## Table of Contents
 
+- [Dual-Core Architecture](#dual-core-architecture)
 - [Configuration Constants](#configuration-constants)
 - [Complete Pipeline Flow](#complete-pipeline-flow)
 - [Design Rationale](#design-rationale)
 - [Memory Allocation](#memory-allocation)
 - [State Machine](#state-machine)
 - [Module Dependencies](#module-dependencies)
+
+## Dual-Core Architecture
+
+SpojBoard utilizes both cores of the ESP32-S3 for optimal performance using FreeRTOS tasks.
+
+### Core Distribution
+
+```
+┌─────────────────────────────────────────────────┐
+│ CORE 0 (WiFi Network Stack)                     │
+├─────────────────────────────────────────────────┤
+│ WiFi interrupt handlers (sub-ms response)       │
+│ LwIP TCP/IP stack                               │
+│ NO application tasks                            │
+└─────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────┐
+│ CORE 1 (Application Tasks)                      │
+├─────────────────────────────────────────────────┤
+│ displayRenderTask()  [Priority 2]               │
+│   Waits for notification, copies data via       │
+│   mutex, renders to HUB75 (~100ms)              │
+│                                                 │
+│ apiFetchTask()       [Priority 1]               │
+│   Handles blocking HTTP calls (200-2000ms)      │
+│   Updates departures via mutex, sleeps 100ms    │
+│                                                 │
+│ Arduino loop()       [Priority 1]               │
+│   Web server, ETA recalculation, state mgmt    │
+└─────────────────────────────────────────────────┘
+```
+
+### Thread Safety
+
+Two mutexes protect shared data with short lock durations (~1ms):
+
+- **`displayMutex`** - Protects `DisplayUpdateRequest` struct (display task <-> loop)
+- **`apiDataMutex`** - Protects `departures[]` array and weather data (API task <-> loop)
+
+**Data snapshot pattern**: Data is copied under mutex, then processed without locks. Rendering and HTTP calls never hold a mutex.
+
+### Why This Design?
+
+**Before (single-threaded):** API calls (1-2s) blocked the web server and display updates.
+
+**After (multi-task):**
+- Web server stays responsive during API calls
+- Display updates queued in <1ms via `signalDisplayUpdate()`
+- WiFi interrupts on Core 0 never blocked by application code
+- Display task (Priority 2) preempts API task (Priority 1) when needed
+
+### DisplayController
+
+The `DisplayController` class acts as a state machine that determines **what** to display, delegating the **how** to `DisplayManager`:
+
+```
+DisplayController (decides what to show)
+    ↓ calls appropriate method
+DisplayManager (renders to LED matrix)
+    ↓ uses
+HUB75 Hardware
+```
+
+**Priority-based state evaluation:**
+1. Demo mode (highest) - custom sample departures
+2. Rest mode - display off
+3. AP mode - WiFi setup credentials
+4. WiFi connecting - connection status
+5. Setup required - web UI address
+6. API error - error message
+7. No departures - info message
+8. Normal operation (lowest) - real departures
 
 ## Configuration Constants
 
@@ -174,6 +247,13 @@ The device operates in two modes:
 - Available in both AP and STA modes
 - Manually stopped via web interface or device reboot
 
+### Rest Mode (`restModeActive=true`)
+- Display cleared and brightness set to 0
+- Triggered manually (web UI / REST API) or by scheduled time periods
+- API polling continues (data stays fresh for when display resumes)
+- Manual activation tracked separately (`restModeManual` flag)
+- Scheduled activation follows configured periods (e.g., "23:00-07:00")
+
 ### State Transitions
 
 ```
@@ -207,8 +287,8 @@ Layered architecture with zero circular dependencies:
                         ↓
 ┌─────────────────────────────────────────────────────────┐
 │ Layer 5: Business Logic                                 │
-│   TransitAPI (abstract), GolemioAPI, BvgAPI,            │
-│   GitHubOTA                                             │
+│   TransitAPI (abstract), GolemioAPI, BvgAPI, MqttAPI,   │
+│   GitHubOTA, WeatherAPI                                 │
 └─────────────────────────────────────────────────────────┘
                         ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -219,7 +299,8 @@ Layered architecture with zero circular dependencies:
                         ↓
 ┌─────────────────────────────────────────────────────────┐
 │ Layer 3: Hardware Abstraction                           │
-│   DisplayManager, DisplayColors, TimeUtils              │
+│   DisplayController, DisplayManager, DisplayColors,     │
+│   TimeUtils, RestMode                                   │
 └─────────────────────────────────────────────────────────┘
                         ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -246,30 +327,37 @@ Layered architecture with zero circular dependencies:
 
 ```
 main.cpp
-  ├─ Creates all modules
+  ├─ Creates all modules and FreeRTOS tasks
   ├─ Registers callbacks
-  ├─ Owns global state (departures array)
-  └─ Orchestrates timing (API calls, ETA updates, display refresh)
+  ├─ Owns global state (departures array, mutexes)
+  ├─ Runs loop() on Core 1: web server, ETA recalc, state management
+  ├─ apiFetchTask() on Core 1: blocking HTTP calls, weather fetches
+  └─ displayRenderTask() on Core 1: display rendering via notification
+
+DisplayController
+  ├─ State machine: decides what to display (8 priority levels)
+  ├─ Delegates rendering to DisplayManager
+  └─ No direct hardware access
+
+DisplayManager
+  ├─ Pure rendering layer for LED matrix
+  ├─ Receives data as parameters (no caching)
+  ├─ Handles UTF-8 to ISO-8859-2 conversion at render time
+  └─ Accesses config pointer for color mapping and dual ETA mode
 
 WiFiManager
   ├─ Manages WiFi connection
   ├─ Notifies main.cpp of state changes via flags
   └─ Provides status query methods
 
-GolemioAPI
-  ├─ Fetches departures via HTTP
+GolemioAPI / BvgAPI / MqttAPI
+  ├─ Fetches departures via HTTP or MQTT
   ├─ Returns APIResult struct (no state stored)
   └─ Uses statusCallback for progress updates
 
-DisplayManager
-  ├─ Renders to LED matrix
-  ├─ Receives data as parameters (no caching)
-  ├─ Handles UTF-8 to ISO-8859-2 conversion at render time
-  └─ Accesses config pointer for color mapping
-
 ConfigWebServer
-  ├─ Serves web interface
-  ├─ Handles demo mode via callbacks
+  ├─ Serves tabbed web interface (5 tabs, per-tab save)
+  ├─ Handles demo mode and rest mode via callbacks
   └─ Communicates with main.cpp via callback pattern
 ```
 

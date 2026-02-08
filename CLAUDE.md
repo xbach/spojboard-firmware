@@ -35,7 +35,7 @@ ESP32-based transit departure display that fetches real-time data from multiple 
 - Web-based configuration interface with data source selector
 - GitHub-based OTA firmware updates with user confirmation
 - Weather display with Open-Meteo API integration (temperature and weather icon in status bar)
-- Rest mode for scheduled display power saving (configurable time periods)
+- Rest mode for scheduled or manually triggered display power saving (configurable time periods)
 
 ## Build & Development Commands
 

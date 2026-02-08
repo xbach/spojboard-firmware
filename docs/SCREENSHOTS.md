@@ -26,17 +26,20 @@ Automatically switches to condensed font when destination names exceed 16 charac
 
 ## Web Interface
 
+The web interface was redesigned with a tabbed layout for better organization. Configuration is split across five tabs: Connection, Transit Data, Display, Optional, and System.
+
 ### Main Configuration Screen
 
 ![Settings Screen 1](images/settings01.png)
 
+> **Note:** Screenshots may show the older single-page layout. The current interface uses a tabbed design with per-tab save functionality.
+
 Web-based configuration interface showing:
-- WiFi settings (SSID and password)
-- Golemio API key configuration
-- Stop ID management with multi-stop support
-- Display preferences (refresh interval, number of departures, minimum departure time)
-- Brightness control
-- Custom line color mapping with pattern matching support
+- **Connection tab**: WiFi settings and data source selector (Prague/Berlin/MQTT)
+- **Transit Data tab**: API-specific settings (API keys, stop IDs, refresh interval)
+- **Display tab**: Brightness, line colors, dual ETA toggle, scrolling options
+- **Optional tab**: Weather display, rest mode periods, debug mode
+- **System tab**: Device info, firmware updates, actions (refresh, reboot, factory reset)
 
 ### Configuration Details
 
@@ -49,15 +52,26 @@ Additional configuration options including:
 - GitHub-based OTA update checker
 - Factory reset option
 
+## Dual ETA Display
+
+When "Show multiple departure times" is enabled in the Display tab, each row shows the next two departures for the same line and destination side by side:
+```
+[31] Nádraží            5'  32'
+[A ] Letenské           2'  18'
+```
+Both ETAs are independently color-coded by urgency. Useful for high-frequency services to see departure intervals at a glance.
+
 ## Features Shown
 
 - **Color-coded line numbers** with uniform black background boxes
 - **Adaptive font system** for optimal text display
 - **Real-time ETA** with color-coded urgency (white, yellow, red)
+- **Dual ETA mode** showing next two departures per line (optional)
 - **AC indicator** (asterisk) for air-conditioned vehicles
 - **Czech character support** with proper diacritics (ř, ž, š, č, etc.)
-- **Web configuration** accessible from any device
+- **Tabbed web configuration** with per-tab save
 - **Custom line colors** with flexible pattern matching
+- **Weather and rest mode** in status bar and web UI
 
 ---
 
