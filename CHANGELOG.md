@@ -2,6 +2,34 @@
 
 All notable changes to SpojBoard firmware will be documented in this file.
 
+## [r5] - Unreleased
+
+### Added
+- Dual ETA display showing next departure for same line+destination
+- Platform-to-arrow directional symbols (configurable per platform/stop ID)
+- Multi-hardware variant support (MatrixPortal S3 + generic ESP32-S3 N8R2)
+- Manual rest mode toggle via web UI
+- Departures debug list in web config
+- "Loading Departures..." screen on boot and rest mode exit (replaces misleading "No Departures")
+- Help text for line color wildcard pattern syntax
+- Rest mode period input validation (HH:MM-HH:MM format)
+
+### Changed
+- Redesigned web configuration interface with tabbed layout
+- Per-tab config save (only sends active tab fields)
+- Full day names and numeric dates in status bar
+- Display rendering moved to CPU core 1 for smoother updates
+- Display state machine centralized in DisplayController
+- Departure sort: secondary sort by destination (was line name)
+- Cold temperature color changed from blue to cyan
+
+### Fixed
+- Line color config lost on save (stale JS serialization overwrote with wrong selectors)
+- Timezone parsing issues for some departures
+- XSS vulnerabilities, thread safety, HTTP limits, config validation
+- Rest mode display clearing via signalDisplayUpdate
+- Font descender artifacts removed
+
 ## [r4] - 2026-01-20
 
 ### Added
