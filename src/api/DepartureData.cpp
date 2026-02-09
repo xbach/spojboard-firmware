@@ -55,7 +55,7 @@ int compareDepartures(const void* a, const void* b)
     Departure* depB = (Departure*)b;
     if (depA->eta != depB->eta)
         return depA->eta - depB->eta; // Primary: ETA ascending
-    return strcmp(depA->line, depB->line); // Secondary: line name alphanumeric
+    return strcmp(depA->destination, depB->destination); // Secondary: destination alphabetical
 }
 
 // ============================================================================

@@ -8,6 +8,7 @@ static String buildLineColorsTable(const Config* config)
 
     html += "<div class='form-group'>";
     html += "<div class='form-group-title'>Line Colors</div>";
+    html += "<div class='help-text' style='margin-bottom:10px;'>use * as position wildcards: 9* matches 90-99, 4** matches 400-499. exact matches take priority over patterns. unmapped lines use defaults.</div>";
 
     // Parse existing line color map
     String lineColorMap = String(config->lineColorMap);

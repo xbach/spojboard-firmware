@@ -30,7 +30,7 @@ struct Departure
 // ============================================================================
 
 /**
- * Comparison function for qsort - sorts departures by ETA ascending
+ * Comparison function for qsort - sorts departures by ETA ascending, then destination alphabetical
  * @param a First departure
  * @param b Second departure
  * @return Negative if a < b, positive if a > b, zero if equal

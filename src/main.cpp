@@ -65,6 +65,7 @@ struct DisplayUpdateRequest {
     bool cityConfigured;
     bool demoMode;
     bool restMode;
+    bool departuresLoading;
     WeatherData weather;
     bool needsUpdate;
 } displayRequest = {.needsUpdate = false};
@@ -102,6 +103,7 @@ char stopName[64] = "";
 bool demoModeActive = false; // Demo mode flag - stops API polling and display updates
 bool restModeActive = false; // Rest mode flag - pauses API polling and turns off display
 bool restModeManual = false; // True if rest mode was activated via REST API (skip periodic check)
+bool awaitingDepartures = true; // True until first API fetch completes (shows "Loading" instead of "No Departures")
 int lastRestCheckMinute = -1; // Last minute when rest check triggered (0-59)
 WeatherData weatherData = {}; // Global weather state
 
@@ -389,6 +391,7 @@ void onRestMode(bool enabled)
         // Exit rest mode
         restModeActive = false;
         restModeManual = false; // Clear manual flag
+        awaitingDepartures = true; // Show loading state until fresh data arrives
         displayManager.setBrightness(config.brightness); // Restore brightness from config
 
         // Signal API task for immediate refresh
@@ -551,6 +554,7 @@ void apiFetchTask(void* parameter)
                 {
                     strlcpy(apiErrorMsg, result.errorMsg, sizeof(apiErrorMsg));
                 }
+                awaitingDepartures = false;
                 xSemaphoreGive(apiDataMutex);
 
                 // Signal display update
@@ -640,6 +644,7 @@ void displayRenderTask(void* parameter)
             bool localCityConfigured;
             bool localDemoMode;
             bool localRestMode;
+            bool localDeparturesLoading;
             WeatherData localWeather;
 
             // Take mutex to safely copy display request
@@ -666,6 +671,7 @@ void displayRenderTask(void* parameter)
                 localCityConfigured = displayRequest.cityConfigured;
                 localDemoMode = displayRequest.demoMode;
                 localRestMode = displayRequest.restMode;
+                localDeparturesLoading = displayRequest.departuresLoading;
                 localWeather = displayRequest.weather;
 
                 displayRequest.needsUpdate = false;
@@ -698,7 +704,8 @@ void displayRenderTask(void* parameter)
                                     localStopName,
                                     localCityConfigured,
                                     localDemoMode,
-                                    localRestMode);
+                                    localRestMode,
+                                    localDeparturesLoading);
 
             logTimestamp();
             debugPrintln("DisplayTask: Render complete");
@@ -729,6 +736,7 @@ void signalDisplayUpdate()
         displayRequest.cityConfigured = isCityConfigured();
         displayRequest.demoMode = demoModeActive;
         displayRequest.restMode = restModeActive;
+        displayRequest.departuresLoading = awaitingDepartures;
         displayRequest.weather = weatherData;
         displayRequest.needsUpdate = true;
 
@@ -1097,6 +1105,7 @@ void loop()
                 {
                     // Exit rest mode (scheduled period ended)
                     restModeActive = false;
+                    awaitingDepartures = true; // Show loading state until fresh data arrives
                     displayManager.setBrightness(config.brightness); // Restore brightness from config
 
                     // Signal API task for immediate refresh

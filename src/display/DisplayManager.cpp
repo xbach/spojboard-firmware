@@ -274,8 +274,8 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     // Thresholds: fontMedium @ 6px/char, fontCondensed @ 4px/char
     // Dual ETA needs more right-side space, so thresholds are lower
     int mediumThreshold;
-    if (dualEta)
-        mediumThreshold = platformReservedPx > 0 ? 10 : 12;
+    if (config->showMultipleTimes)
+        mediumThreshold = platformReservedPx > 0 ? 11 : 12;
     else
         mediumThreshold = platformReservedPx > 0 ? 12 : 14;
     mediumThreshold -= dep.hasAC ? 1 : 0;
@@ -523,20 +523,13 @@ void DisplayManager::drawDateTime()
             display->setCursor(75, y + 7);
             display->print(iconCode); // Letter 'a'-'t' renders as weather icon
 
-            // Draw temperature right-aligned to degree symbol at X=103 (shifted +8px from X=93)
-            // with its own color
+            // Draw temperature left-aligned after weather icon
             display->setFont(fontSmall);
             display->setTextColor(getTemperatureColor(weatherData->temperature));
             char tempStr[8];
             snprintf(tempStr, sizeof(tempStr), "%d\xB0", weatherData->temperature);
 
-            // Calculate text width and right-align to degree anchor (X=103)
-            int16_t x1, y1;
-            uint16_t w, h;
-            display->getTextBounds(tempStr, 0, 0, &x1, &y1, &w, &h);
-            int tempX = 98 - w + x1; // Right-align to X=103, compensate for x1 offset
-
-            display->setCursor(tempX, y + 7);
+            display->setCursor(86, y + 7);
             display->print(tempStr); // Temperature with degree symbol
 
             // Switch back to small font for time display

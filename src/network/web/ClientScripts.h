@@ -168,153 +168,6 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 )rawliteral";
 
-// Line color configuration JavaScript
-const char SCRIPT_LINE_COLORS[] PROGMEM = R"rawliteral(
-<script>
-// Add new empty row to line color table
-function addLineRow() {
-    const tbody = document.getElementById('lineColorRows');
-    const row = tbody.insertRow();
-
-    // Line input cell
-    const cell1 = row.insertCell(0);
-    cell1.style.padding = '8px';
-    cell1.innerHTML = "<input type='text' class='lineInput' style='width:80px; padding:5px;' maxlength='5' placeholder='A or 9*'>";
-
-    // Color select cell
-    const cell2 = row.insertCell(1);
-    cell2.style.padding = '8px';
-    const colors = ['RED', 'GREEN', 'BLUE', 'YELLOW', 'ORANGE', 'PURPLE', 'CYAN', 'WHITE'];
-    let selectHtml = "<select class='colorSelect' style='width:100%; padding:5px;'>";
-    colors.forEach(color => {
-        selectHtml += `<option value='${color}'>${color}</option>`;
-    });
-    selectHtml += "</select>";
-    cell2.innerHTML = selectHtml;
-
-    // Delete button cell
-    const cell3 = row.insertCell(2);
-    cell3.style.padding = '8px';
-    cell3.style.textAlign = 'center';
-    cell3.innerHTML = "<button type='button' onclick='deleteLineRow(this)' style='background:#ff6b6b; color:#fff; padding:5px 10px; border:none; cursor:pointer;'>X</button>";
-}
-
-// Delete row from table
-function deleteLineRow(btn) {
-    const row = btn.closest('tr');
-    row.remove();
-}
-
-// Serialize table to hidden input before form submit
-function serializeLineColors() {
-    const rows = document.querySelectorAll('#lineColorRows tr');
-    const mappings = [];
-
-    rows.forEach(row => {
-        const lineInput = row.querySelector('.lineInput');
-        const colorSelect = row.querySelector('.colorSelect');
-
-        if (lineInput && colorSelect) {
-            const line = lineInput.value.trim().toUpperCase();
-            const color = colorSelect.value;
-
-            // Only include non-empty line names
-            if (line.length > 0) {
-                mappings.push(`${line}=${color}`);
-            }
-        }
-    });
-
-    // Store as comma-separated string
-    document.getElementById('lineColorMapData').value = mappings.join(',');
-
-    return true;  // Allow form submission
-}
-</script>
-)rawliteral";
-
-// Rest mode configuration JavaScript
-const char SCRIPT_REST_MODE[] PROGMEM = R"rawliteral(
-<script>
-// Add new empty row to rest mode table
-function addRestRow() {
-    const tbody = document.getElementById('restModeRows');
-    const row = tbody.insertRow();
-
-    // From Time: Hour + Minute dropdowns
-    const cell1 = row.insertCell(0);
-    cell1.style.padding = '8px';
-    let fromHtml = '<select class="restFromHour" style="padding:5px; margin-right:5px;">';
-    for (let h = 0; h < 24; h++) {
-        const hour = String(h).padStart(2, '0');
-        fromHtml += `<option value="${hour}">${hour}</option>`;
-    }
-    fromHtml += '</select>:<select class="restFromMin" style="padding:5px;">';
-    fromHtml += '<option value="00">00</option><option value="30">30</option>';
-    fromHtml += '</select>';
-    cell1.innerHTML = fromHtml;
-
-    // To Time: Hour + Minute dropdowns
-    const cell2 = row.insertCell(1);
-    cell2.style.padding = '8px';
-    let toHtml = '<select class="restToHour" style="padding:5px; margin-right:5px;">';
-    for (let h = 0; h < 24; h++) {
-        const hour = String(h).padStart(2, '0');
-        toHtml += `<option value="${hour}">${hour}</option>`;
-    }
-    toHtml += '</select>:<select class="restToMin" style="padding:5px;">';
-    toHtml += '<option value="00">00</option><option value="30">30</option>';
-    toHtml += '</select>';
-    cell2.innerHTML = toHtml;
-
-    // Delete button
-    const cell3 = row.insertCell(2);
-    cell3.style.padding = '8px';
-    cell3.style.textAlign = 'center';
-    cell3.innerHTML = "<button type='button' onclick='deleteRestRow(this)' style='background:#ff6b6b; color:#fff; padding:5px 10px; border:none; cursor:pointer;'>X</button>";
-}
-
-// Delete row from table
-function deleteRestRow(btn) {
-    btn.closest('tr').remove();
-}
-
-// Serialize table to hidden input before form submit
-function serializeRestPeriods() {
-    const rows = document.querySelectorAll('#restModeRows tr');
-    const periods = [];
-
-    rows.forEach(row => {
-        const fromHour = row.querySelector('.restFromHour').value;
-        const fromMin = row.querySelector('.restFromMin').value;
-        const toHour = row.querySelector('.restToHour').value;
-        const toMin = row.querySelector('.restToMin').value;
-
-        const fromTime = `${fromHour}:${fromMin}`;
-        const toTime = `${toHour}:${toMin}`;
-
-        periods.push(`${fromTime}-${toTime}`);
-    });
-
-    document.getElementById('restPeriodsData').value = periods.join(',');
-    return true;
-}
-
-// Attach serializer to form submit (must happen after DOM ready)
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.querySelector('form');
-    const existingHandler = form.onsubmit;
-
-    form.addEventListener('submit', function(e) {
-        // Call existing handlers (e.g., serializeLineColors)
-        if (existingHandler) {
-            existingHandler(e);
-        }
-        serializeRestPeriods();
-    });
-});
-</script>
-)rawliteral";
 
 // Rest mode toggle JavaScript
 const char SCRIPT_REST_MODE_TOGGLE[] PROGMEM = R"rawliteral(
@@ -487,7 +340,10 @@ function serializeLineColors() {
         }
     });
 
-    return pairs.join(',');
+    const result = pairs.join(',');
+    const hidden = document.getElementById('lineColorMapData');
+    if (hidden) hidden.value = result;
+    return result;
 }
 </script>
 )rawliteral";
@@ -631,6 +487,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 var symData = serializePlatformSymbols();
                 var symInput = document.getElementById('platformSymbolMapData');
                 if (symInput) symInput.value = symData;
+            }
+
+            // Validate rest mode periods (HH:MM-HH:MM format)
+            if (activeTabName === 'optional' || isApMode) {
+                var restInput = document.getElementById('restModePeriods');
+                if (restInput && restInput.value.trim()) {
+                    var periods = restInput.value.split(',');
+                    for (var i = 0; i < periods.length; i++) {
+                        var p = periods[i].trim();
+                        if (!/^\d{2}:\d{2}-\d{2}:\d{2}$/.test(p)) {
+                            throw new Error('Invalid rest period: "' + p + '". Use HH:MM-HH:MM format.');
+                        }
+                        var parts = p.split(/[-:]/);
+                        var h1 = parseInt(parts[0]), m1 = parseInt(parts[1]);
+                        var h2 = parseInt(parts[2]), m2 = parseInt(parts[3]);
+                        if (h1 > 23 || m1 > 59 || h2 > 23 || m2 > 59) {
+                            throw new Error('Invalid time in "' + p + '". Hours: 00-23, minutes: 00-59.');
+                        }
+                    }
+                }
             }
 
             var formData;

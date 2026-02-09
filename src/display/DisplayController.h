@@ -30,7 +30,7 @@ public:
      * 3. WiFi connecting
      * 4. Setup required (no API key)
      * 5. API error
-     * 6. No departures
+     * 6. No departures (loading or empty)
      * 7. Normal operation (show departures)
      *
      * @param departures Array of departures
@@ -46,13 +46,15 @@ public:
      * @param apiKeyConfigured API key/config present
      * @param demoModeActive Demo mode active
      * @param restModeActive Rest mode active (display off)
+     * @param departuresLoading Awaiting first fetch (shows loading instead of no departures)
      */
     void render(const Departure* departures, int departureCount, int numToDisplay,
                 bool wifiConnected, bool apModeActive,
                 const char* apSSID, const char* apPassword,
                 bool apiError, const char* apiErrorMsg,
                 const char* stopName, bool apiKeyConfigured,
-                bool demoModeActive, bool restModeActive);
+                bool demoModeActive, bool restModeActive,
+                bool departuresLoading);
 
 private:
     DisplayManager& displayManager;

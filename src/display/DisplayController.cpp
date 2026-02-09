@@ -11,7 +11,8 @@ void DisplayController::render(const Departure* departures, int departureCount, 
                                const char* apSSID, const char* apPassword,
                                bool apiError, const char* apiErrorMsg,
                                const char* stopName, bool apiKeyConfigured,
-                               bool demoModeActive, bool restModeActive)
+                               bool demoModeActive, bool restModeActive,
+                               bool departuresLoading)
 {
     // ========================================================================
     // State Machine: Determine what to display based on priority
@@ -68,14 +69,18 @@ void DisplayController::render(const Departure* departures, int departureCount, 
         return;
     }
 
-    // Priority 7: No departures
+    // Priority 7: No departures (loading or genuinely empty)
     if (departureCount == 0)
     {
-        // Show IP address to remind user where SpojBoard web UI is
-        char ipStr[32];
-        sprintf(ipStr, "Check: %s", WiFi.localIP().toString().c_str());
-        displayManager.drawStatus("No Departures", ipStr, COLOR_YELLOW);
-        displayManager.drawDateTime(); // Still show time bar
+        if (departuresLoading)
+        {
+            displayManager.drawStatus("Loading Departures...", "", COLOR_YELLOW);
+        }
+        else
+        {
+            displayManager.drawStatus("No Departures", "", COLOR_YELLOW);
+        }
+        displayManager.drawDateTime();
         return;
     }
 
