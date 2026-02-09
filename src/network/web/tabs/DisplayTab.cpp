@@ -132,7 +132,7 @@ String buildDisplayTab(const Config* config)
     html += "<label for='brightness'>BRIGHTNESS</label>";
     html += "<input type='range' id='brightness' name='brightness' min='0' max='255' value='";
     html += String(config->brightness);
-    html += "'>";
+    html += "' oninput=\"document.getElementById('brightnessValue').textContent=this.value\">";
     html += "<div class='help-text'>Current: <span id='brightnessValue'>";
     html += String(config->brightness);
     html += "</span></div>";

@@ -8,5 +8,4 @@ docs/plans
 CODE_REVIEW.MD
 
 # Local Claude Code instruction files
-commit-msg.md
-update-claude-md.md
+CLAUDE.md
