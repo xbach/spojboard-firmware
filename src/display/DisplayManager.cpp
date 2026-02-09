@@ -128,7 +128,8 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     display->print(lineConverted);
 
     // AC indicator (asterisk before destination)
-    int destX = 22; // Fixed position for all destinations (18px max route width + 4px gap)
+    // Tighter gap when both dual ETA and platform are enabled to reclaim destination space
+    int destX = (config && config->showMultipleTimes && config->showPlatform) ? 20 : 22;
     if (dep.hasAC)
     {
         display->setTextColor(COLOR_CYAN);
@@ -144,21 +145,21 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     {
         willShowPlatform = true;
         // Dynamic reservation based on platform length:
-        // 1 char: medium font (6px) + 3px buffer = 9px
-        // 2 chars: condensed font (8px) + 3px buffer = 11px
-        // 3 chars: condensed font (12px) + 3px buffer = 15px
+        // 1 char: medium font (6px) + 1px buffer = 7px
+        // 2 chars: condensed font (8px) + 1px buffer = 9px
+        // 3 chars: condensed font (12px) + 1px buffer = 13px
         int platformLen = strlen(dep.platform);
         if (platformLen >= 3)
         {
-            platformReservedPx = 15; // 3 condensed chars + buffer
+            platformReservedPx = 13; // 3 condensed chars + buffer
         }
         else if (platformLen == 2)
         {
-            platformReservedPx = 11; // 2 condensed chars + buffer
+            platformReservedPx = 9; // 2 condensed chars + buffer
         }
         else
         {
-            platformReservedPx = 9; // 1 medium char + buffer
+            platformReservedPx = 7; // 1 medium char + buffer
         }
     }
 
@@ -167,22 +168,24 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
 
     int destLen = strlen(destConverted);
 
-    // Calculate available space: ETA position - destination start - platform reservation
-    // ETA positions: 111px (wide: >=10 or <1), 117px (narrow: 1-9)
-    // Dual ETA mode: fixed at 103px to fit two condensed-font times
-    int etaPosition;
+    // Calculate right-side ETA area width based on display mode
+    // Dual ETA: secondary in fontCondensed (4px/char, max 3 chars = 12px, right edge X=108)
+    //         + primary in fontMedium (6px/char, max 3 chars = 18px, right edge X=127) = 30px
+    // Single ETA: fontMedium only — wide (>=10 or <1): 3 chars = 17px, narrow (1-9): 2 chars = 11px
+    int etaAreaWidth;
     if (dualEta)
     {
-        etaPosition = 103;
+        etaAreaWidth = 30;
     }
     else
     {
-        etaPosition = (dep.eta >= 10 || dep.eta < 1) ? 111 : 117;
+        etaAreaWidth = (dep.eta >= 10 || dep.eta < 1) ? 17 : 11;
     }
 
-    // When platform is shown, always reserve space for widest ETA position
+    // When platform is shown in single-ETA mode, always reserve wide ETA space
     // to keep platform alignment consistent across rows
-    int spaceCalcEta = dualEta ? 103 : ((platformReservedPx > 0) ? 111 : etaPosition);
+    int effectiveEtaArea = (!dualEta && platformReservedPx > 0) ? 17 : etaAreaWidth;
+    int spaceCalcEta = 128 - effectiveEtaArea;
     int availableSpace = spaceCalcEta - destX - platformReservedPx;
 
     // Font selection based on destination length and available space
@@ -190,9 +193,12 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     int maxChars;
 
     // Thresholds: fontMedium @ 6px/char, fontCondensed @ 4px/char
-    // Without platform: ~89px → 14 chars (medium) or 22 chars (condensed)
-    // With platform: ~74px → 12 chars (medium) or 18 chars (condensed)
-    int mediumThreshold = platformReservedPx > 0 ? 12 : 14;
+    // Dual ETA needs more right-side space, so thresholds are lower
+    int mediumThreshold;
+    if (dualEta)
+        mediumThreshold = platformReservedPx > 0 ? 10 : 12;
+    else
+        mediumThreshold = platformReservedPx > 0 ? 12 : 14;
     mediumThreshold -= dep.hasAC ? 1 : 0;
 
     if (destLen <= mediumThreshold)
@@ -205,7 +211,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     {
         // Long destination - use condensed font
         destFont = fontCondensed;
-        maxChars = availableSpace / 4 - 1; // 4px per char, -1 for padding
+        maxChars = availableSpace / 4; // 4px per char, -1 for padding
     }
 
     // Safety cap: prevent buffer overflow
@@ -275,9 +281,9 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         display->getTextBounds(platformConverted, 0, 0, &px1, &py1, &pw, &ph);
 
         // Position: right-align to ETA position anchor
-        // Dual ETA: anchor at 103px (shifted 8px left), normal: 111px
-        int platformAnchor = config && config->showMultipleTimes ? 103 : 111;
-        int platformX = platformAnchor - pw - 3 - px1;
+        // Dual ETA: anchor at 98px (shifted left for mixed-font ETAs), normal: 111px
+        int platformAnchor = config && config->showMultipleTimes ? 97 : 111;
+        int platformX = platformAnchor - pw - 1 - px1;
 
         display->setTextColor(COLOR_CYAN); // Match AC indicator
         display->setCursor(platformX, y + 7);
@@ -291,11 +297,30 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
 
     if (dualEta)
     {
-        // Dual ETA mode: two right-aligned condensed-font columns
-        // First ETA right edge at 114, second at 127
+        // Dual ETA mode: secondary (supplementary) on left, primary (next departure) on right
+        // Secondary right edge at 114, primary right edge at 127
+
+        // Secondary ETA — fontCondensed (supplementary), fixed dim gray
+        // Right edge at X=108, leaving 19px for primary ETA (medium font needs ~18px)
         display->setFont(fontCondensed);
 
-        // First ETA
+        char eta2Text[8];
+        if (dep.secondEta < 1)
+            snprintf(eta2Text, sizeof(eta2Text), "<1'");
+        else if (dep.secondEta >= 100)
+            snprintf(eta2Text, sizeof(eta2Text), ">1h");
+        else
+            snprintf(eta2Text, sizeof(eta2Text), "%d'", dep.secondEta);
+
+        display->setTextColor(display->color565(90, 90, 90));
+
+        display->getTextBounds(eta2Text, 0, 0, &tx1, &ty1, &tw, &th);
+        display->setCursor(109 - tw - tx1, y + 7);
+        display->print(eta2Text);
+
+        // Primary ETA — fontMedium, urgency-colored, rightmost position
+        display->setFont(fontMedium);
+
         char etaText[8];
         if (dep.eta < 1)
             snprintf(etaText, sizeof(etaText), "<1'");
@@ -314,28 +339,8 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
             display->setTextColor(COLOR_WHITE);
 
         display->getTextBounds(etaText, 0, 0, &tx1, &ty1, &tw, &th);
-        display->setCursor(114 - tw - tx1, y + 7);
-        display->print(etaText);
-
-        // Second ETA
-        char eta2Text[8];
-        if (dep.secondEta < 1)
-            snprintf(eta2Text, sizeof(eta2Text), "<1'");
-        else if (dep.secondEta >= 100)
-            snprintf(eta2Text, sizeof(eta2Text), ">1h");
-        else
-            snprintf(eta2Text, sizeof(eta2Text), "%d'", dep.secondEta);
-
-        if (dep.secondEta < 2)
-            display->setTextColor(COLOR_RED);
-        else if (dep.secondEta < 5)
-            display->setTextColor(COLOR_YELLOW);
-        else
-            display->setTextColor(COLOR_WHITE);
-
-        display->getTextBounds(eta2Text, 0, 0, &tx1, &ty1, &tw, &th);
         display->setCursor(127 - tw - tx1, y + 7);
-        display->print(eta2Text);
+        display->print(etaText);
     }
     else
     {
@@ -911,7 +916,7 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
     utf8tocp(destConverted);
 
     // Calculate destX (same logic as drawDeparture)
-    int destX = 22;
+    int destX = (config && config->showMultipleTimes && config->showPlatform) ? 20 : 22;
     if (dep.hasAC)
     {
         destX += 6;
@@ -924,30 +929,31 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
         int platformLen = strlen(dep.platform);
         if (platformLen >= 3)
         {
-            platformReservedPx = 15;
+            platformReservedPx = 13;
         }
         else if (platformLen == 2)
         {
-            platformReservedPx = 11;
+            platformReservedPx = 9;
         }
         else
         {
-            platformReservedPx = 9;
+            platformReservedPx = 7;
         }
     }
 
-    // Calculate ETA position and available space
+    // Calculate ETA area width and available space (mirrors drawDeparture logic)
     bool dualEta = config && config->showMultipleTimes && dep.secondEta >= 0;
-    int etaPosition;
+    int etaAreaWidth;
     if (dualEta)
     {
-        etaPosition = 103;
+        etaAreaWidth = 30;
     }
     else
     {
-        etaPosition = (dep.eta >= 10 || dep.eta < 1) ? 111 : 117;
+        etaAreaWidth = (dep.eta >= 10 || dep.eta < 1) ? 17 : 11;
     }
-    int spaceCalcEta = dualEta ? 103 : ((platformReservedPx > 0) ? 111 : etaPosition);
+    int effectiveEtaArea = (!dualEta && platformReservedPx > 0) ? 17 : etaAreaWidth;
+    int spaceCalcEta = 128 - effectiveEtaArea;
     int availableSpace = spaceCalcEta - destX - platformReservedPx;
 
     // Determine font and maxChars (same logic as drawDeparture)
@@ -955,7 +961,11 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
     const GFXfont *destFont;
     int maxChars;
 
-    int mediumThreshold = platformReservedPx > 0 ? 12 : 14;
+    int mediumThreshold;
+    if (dualEta)
+        mediumThreshold = platformReservedPx > 0 ? 10 : 12;
+    else
+        mediumThreshold = platformReservedPx > 0 ? 12 : 14;
     mediumThreshold -= dep.hasAC ? 1 : 0;
 
     if (destLen <= mediumThreshold)
@@ -966,7 +976,7 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
     else
     {
         destFont = fontCondensed;
-        maxChars = availableSpace / 4 - 1; // -1 for padding
+        maxChars = availableSpace / 4; // 4px per char
     }
 
     if (maxChars > 63)
