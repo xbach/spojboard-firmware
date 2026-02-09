@@ -87,6 +87,73 @@ void DisplayManager::setBrightness(int brightness)
     }
 }
 
+// Match platform value or stop ID against platformSymbolMap config string
+// Returns direction digit ('1'-'8') or '\0' if no match
+static char getPlatformSymbol(const char* platform, const char* stopId, const char* symbolMap)
+{
+    if (!symbolMap || symbolMap[0] == '\0')
+        return '\0';
+
+    char mapCopy[256];
+    strlcpy(mapCopy, symbolMap, sizeof(mapCopy));
+
+    // Pass 1: Check platform value matches (non-ID: prefixed entries)
+    if (platform && platform[0] != '\0')
+    {
+        char* token = strtok(mapCopy, ",");
+        while (token != nullptr)
+        {
+            char* equals = strchr(token, '=');
+            if (equals)
+            {
+                *equals = '\0';
+                const char* key = token;
+                const char* value = equals + 1;
+
+                // Skip ID: prefixed entries in first pass
+                if (strncmp(key, "ID:", 3) != 0)
+                {
+                    if (strcasecmp(platform, key) == 0)
+                    {
+                        if (value[0] >= '1' && value[0] <= '8')
+                            return value[0];
+                    }
+                }
+            }
+            token = strtok(nullptr, ",");
+        }
+    }
+
+    // Pass 2: Check stop ID matches (ID: prefixed entries)
+    if (stopId && stopId[0] != '\0')
+    {
+        strlcpy(mapCopy, symbolMap, sizeof(mapCopy));
+        char* token = strtok(mapCopy, ",");
+        while (token != nullptr)
+        {
+            char* equals = strchr(token, '=');
+            if (equals)
+            {
+                *equals = '\0';
+                const char* key = token;
+                const char* value = equals + 1;
+
+                if (strncmp(key, "ID:", 3) == 0)
+                {
+                    if (strcasecmp(stopId, key + 3) == 0)
+                    {
+                        if (value[0] >= '1' && value[0] <= '8')
+                            return value[0];
+                    }
+                }
+            }
+            token = strtok(nullptr, ",");
+        }
+    }
+
+    return '\0';
+}
+
 void DisplayManager::drawDeparture(int row, const Departure &dep)
 {
     int y = row * 8; // Each row is 8 pixels
@@ -138,10 +205,22 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         destX += 6;
     }
 
+    // Check for platform symbol override
+    char symbolChar = '\0';
+    if (config && config->showPlatform && config->platformSymbolMap[0] != '\0')
+    {
+        symbolChar = getPlatformSymbol(dep.platform, dep.sourceStopId, config->platformSymbolMap);
+    }
+
     // Calculate space reserved for platform (if enabled and present)
     int platformReservedPx = 0;
     bool willShowPlatform = false;
-    if (config && config->showPlatform && dep.platform[0] != '\0')
+    if (symbolChar != '\0')
+    {
+        willShowPlatform = true;
+        platformReservedPx = 7; // 5px glyph + buffer
+    }
+    else if (config && config->showPlatform && dep.platform[0] != '\0')
     {
         willShowPlatform = true;
         // Dynamic reservation based on platform length:
@@ -259,35 +338,54 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     // Platform display (if enabled and present)
     if (willShowPlatform)
     {
-        // Convert platform to ISO-8859-2 (in case of special characters)
-        char platformConverted[8];
-        strlcpy(platformConverted, dep.platform, sizeof(platformConverted));
-        utf8tocp(platformConverted);
-
-        // Safety truncation to 3 characters
-        if (strlen(platformConverted) > 3)
+        if (symbolChar != '\0')
         {
-            platformConverted[3] = '\0';
+            // Render directional arrow using weather font
+            display->setFont(fontWeather);
+            int platformAnchor = config && config->showMultipleTimes ? 97 : 111;
+
+            int16_t px1, py1;
+            uint16_t pw, ph;
+            char symBuf[2] = {symbolChar, '\0'};
+            display->getTextBounds(symBuf, 0, 0, &px1, &py1, &pw, &ph);
+            int platformX = platformAnchor - pw - 1 - px1;
+
+            display->setTextColor(COLOR_CYAN);
+            display->setCursor(platformX, y + 7);
+            display->print(symBuf);
         }
+        else
+        {
+            // Original text rendering for platform
+            char platformConverted[8];
+            strlcpy(platformConverted, dep.platform, sizeof(platformConverted));
+            utf8tocp(platformConverted);
 
-        // Select font based on platform length (same logic as line numbers)
-        int platformLen = strlen(platformConverted);
-        const GFXfont *platformFont = (platformLen >= 2) ? fontCondensed : fontMedium;
-        display->setFont(platformFont);
+            // Safety truncation to 3 characters
+            if (strlen(platformConverted) > 3)
+            {
+                platformConverted[3] = '\0';
+            }
 
-        // Get actual text bounds for proper alignment (like line number centering)
-        int16_t px1, py1;
-        uint16_t pw, ph;
-        display->getTextBounds(platformConverted, 0, 0, &px1, &py1, &pw, &ph);
+            // Select font based on platform length (same logic as line numbers)
+            int platformLen = strlen(platformConverted);
+            const GFXfont *platformFont = (platformLen >= 2) ? fontCondensed : fontMedium;
+            display->setFont(platformFont);
 
-        // Position: right-align to ETA position anchor
-        // Dual ETA: anchor at 98px (shifted left for mixed-font ETAs), normal: 111px
-        int platformAnchor = config && config->showMultipleTimes ? 97 : 111;
-        int platformX = platformAnchor - pw - 1 - px1;
+            // Get actual text bounds for proper alignment (like line number centering)
+            int16_t px1, py1;
+            uint16_t pw, ph;
+            display->getTextBounds(platformConverted, 0, 0, &px1, &py1, &pw, &ph);
 
-        display->setTextColor(COLOR_CYAN); // Match AC indicator
-        display->setCursor(platformX, y + 7);
-        display->print(platformConverted);
+            // Position: right-align to ETA position anchor
+            // Dual ETA: anchor at 98px (shifted left for mixed-font ETAs), normal: 111px
+            int platformAnchor = config && config->showMultipleTimes ? 97 : 111;
+            int platformX = platformAnchor - pw - 1 - px1;
+
+            display->setTextColor(COLOR_CYAN); // Match AC indicator
+            display->setCursor(platformX, y + 7);
+            display->print(platformConverted);
+        }
     }
 
     // ETA display — right-aligned to panel edge
@@ -427,6 +525,7 @@ void DisplayManager::drawDateTime()
 
             // Draw temperature right-aligned to degree symbol at X=103 (shifted +8px from X=93)
             // with its own color
+            display->setFont(fontSmall);
             display->setTextColor(getTemperatureColor(weatherData->temperature));
             char tempStr[8];
             snprintf(tempStr, sizeof(tempStr), "%d\xB0", weatherData->temperature);
@@ -924,7 +1023,16 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
 
     // Calculate platform reserved space (same logic as drawDeparture)
     int platformReservedPx = 0;
-    if (config && config->showPlatform && dep.platform[0] != '\0')
+    char symbolChar = '\0';
+    if (config && config->showPlatform && config->platformSymbolMap[0] != '\0')
+    {
+        symbolChar = getPlatformSymbol(dep.platform, dep.sourceStopId, config->platformSymbolMap);
+    }
+    if (symbolChar != '\0')
+    {
+        platformReservedPx = 7;
+    }
+    else if (config && config->showPlatform && dep.platform[0] != '\0')
     {
         int platformLen = strlen(dep.platform);
         if (platformLen >= 3)

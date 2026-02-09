@@ -139,6 +139,7 @@ struct Config
     int minDepartureTime;   // Minimum departure time in minutes (filter out departures < this)
     int brightness;         // Display brightness (0-255)
     char lineColorMap[256]; // Line color mappings (format: "A=GREEN,B=YELLOW,9*=CYAN")
+    char platformSymbolMap[256]; // Platform-to-arrow mappings (format: "B=3,ID:U693Z2P=7")
     char city[16];          // Transit city: "Prague" or "Berlin"
     char language[8];       // Display language: "en", "cs", "de"
     bool debugMode;         // Enable telnet logging and verbose output

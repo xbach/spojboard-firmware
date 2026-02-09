@@ -472,6 +472,15 @@ void ConfigWebServer::parseDisplaySettings(Config* config)
         Serial.print("Line color map updated: ");
         Serial.println(strlen(config->lineColorMap) > 0 ? config->lineColorMap : "(empty - using defaults)");
     }
+
+    // Platform symbol map
+    if (!apModeActive)
+    {
+        String symbolMapValue = server->hasArg("platform_symbol_map")
+                                ? server->arg("platform_symbol_map")
+                                : "";
+        strlcpy(config->platformSymbolMap, symbolMapValue.c_str(), sizeof(config->platformSymbolMap));
+    }
 }
 
 void ConfigWebServer::parseOptionalSettings(Config* config)

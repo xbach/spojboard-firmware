@@ -242,7 +242,7 @@ bool BvgAPI::querySingleStop(const char* stopId,
         if (tempCount >= MAX_TEMP_DEPARTURES)
             break;
 
-        parseDepartureObject(depJson, config, tempDepartures, tempCount);
+        parseDepartureObject(depJson, config, tempDepartures, tempCount, stopId);
     }
 
     logTimestamp();
@@ -253,7 +253,7 @@ bool BvgAPI::querySingleStop(const char* stopId,
     return true;
 }
 
-void BvgAPI::parseDepartureObject(JsonObject depJson, const Config& config, Departure* tempDepartures, int& tempCount)
+void BvgAPI::parseDepartureObject(JsonObject depJson, const Config& config, Departure* tempDepartures, int& tempCount, const char* stopId)
 {
     // Extract line name (from line.name)
     if (!depJson.containsKey("line") || !depJson["line"].containsKey("name"))
@@ -423,6 +423,9 @@ void BvgAPI::parseDepartureObject(JsonObject depJson, const Config& config, Depa
 
     // BVG API doesn't provide AC info
     tempDepartures[tempCount].hasAC = false;
+
+    // Source stop ID (for platform symbol matching)
+    strlcpy(tempDepartures[tempCount].sourceStopId, stopId, sizeof(tempDepartures[0].sourceStopId));
 
     tempCount++;
 }

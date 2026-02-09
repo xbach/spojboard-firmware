@@ -836,7 +836,7 @@ void setup()
     BaseType_t taskCreated = xTaskCreatePinnedToCore(
         displayRenderTask,      // Task function
         "DisplayRender",        // Task name (for debugging)
-        8192,                   // Stack size (8KB - display operations need more memory)
+        10240,                  // Stack size (10KB - display operations + platform symbol matching)
         NULL,                   // Task parameters
         2,                      // Priority (2 = above idle, below critical network tasks)
         &displayTaskHandle,     // Task handle
@@ -860,7 +860,7 @@ void setup()
     taskCreated = xTaskCreatePinnedToCore(
         apiFetchTask,           // Task function
         "APIFetch",             // Task name (for debugging)
-        8192,                   // Stack size (8KB - HTTP client needs memory)
+        10240,                  // Stack size (10KB - HTTP client + APIResult on stack)
         NULL,                   // Task parameters
         1,                      // Priority (1 = lower than display task, allows web server to preempt)
         &apiFetchTaskHandle,    // Task handle

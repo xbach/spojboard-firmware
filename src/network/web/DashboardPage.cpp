@@ -99,6 +99,7 @@ void sendDashboardPage(
     {
         String optScripts = FPSTR(SCRIPT_OPTIONAL_TAB);
         optScripts += FPSTR(SCRIPT_LINE_COLORS);
+        optScripts += FPSTR(SCRIPT_PLATFORM_SYMBOLS);
         optScripts += FPSTR(SCRIPT_REST_MODE);
         optScripts += FPSTR(SCRIPT_REST_MODE_TOGGLE);
         optScripts += FPSTR(SCRIPT_SYSTEM_ACTIONS);

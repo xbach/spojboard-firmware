@@ -53,6 +53,7 @@ String buildDeparturesPage(const Departure* deps, int count)
         html += "<th class='center'>Plat</th>";
         html += "<th class='center'>Delay</th>";
         html += "<th class='center'>AC</th>";
+        html += "<th>Stop ID</th>";
         html += "</tr></thead><tbody>";
 
         for (int i = 0; i < count; i++)
@@ -109,6 +110,14 @@ String buildDeparturesPage(const Departure* deps, int count)
                 html += "<span style='color:#666;'>-</span>";
             html += "</td>";
 
+            // Stop ID
+            html += "<td style='color:#666;font-size:11px;'>";
+            if (deps[i].sourceStopId[0] != '\0')
+                html += escapeHtml(deps[i].sourceStopId);
+            else
+                html += "-";
+            html += "</td>";
+
             html += "</tr>";
         }
 
@@ -146,7 +155,7 @@ String buildDeparturesPage(const Departure* deps, int count)
             "var t=document.createElement('table');"
             "var th=document.createElement('thead');"
             "var hr=document.createElement('tr');"
-            "var hds=['#','Line','Destination','ETA','2nd','Plat','Delay','AC'];"
+            "var hds=['#','Line','Destination','ETA','2nd','Plat','Delay','AC','Stop ID'];"
             "for(var h=0;h<hds.length;h++){"
             "var cell=document.createElement('th');cell.textContent=hds[h];"
             "if(h==3)cell.style.textAlign='right';"
@@ -164,7 +173,8 @@ String buildDeparturesPage(const Departure* deps, int count)
             "{v:dep.s>=0?dep.s+' min':'-',s:'text-align:center;color:#999;font-size:12px;'},"
             "{v:dep.p||'-',s:'text-align:center;color:#fcd34d;font-size:12px;'},"
             "{v:dep.dl?'+'+dep.dm:'-',s:'text-align:center;font-size:12px;color:'+(dep.dl?'#fb7185':'#666')},"
-            "{v:dep.ac?'*':'-',s:'text-align:center;font-size:12px;color:'+(dep.ac?'#67e8f9':'#666')}"
+            "{v:dep.ac?'*':'-',s:'text-align:center;font-size:12px;color:'+(dep.ac?'#67e8f9':'#666')},"
+            "{v:dep.sid||'-',s:'color:#666;font-size:11px;'}"
             "];"
             "for(var j=0;j<vals.length;j++){"
             "var td=document.createElement('td');td.textContent=vals[j].v;"
@@ -211,7 +221,10 @@ String buildDeparturesJson(const Departure* deps, int count)
         json += deps[i].isDelayed ? "true" : "false";
         json += ",\"dm\":";
         json += String(deps[i].delayMinutes);
-        json += "}";
+        json += ",\"sid\":\"";
+        json += escapeJsonString(deps[i].sourceStopId);
+        json += "\"}";
+
     }
 
     json += "]}";

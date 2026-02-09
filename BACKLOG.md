@@ -41,14 +41,14 @@ This file tracks planned features, improvements, and technical debt for the Spoj
   - [x] Per-tab config save in web UI
 
 ### Platform Display Customization
-- [ ] Custom platform override
-  - [ ] Configurable platform symbol per platform value
-  - [ ] Add `config.platformSymbolMap` string field (format: "PLT_VALUE=SYMBOL,...")
-  - [ ] Example: "B=>,A=<,C=^,D=v"
-  - [ ] Will use a custom font for the symbols to allow for 8 direction symbols
-  - [ ] Update web UI for platform symbol configuration
-  - [ ] Update `DisplayManager` to use custom symbols
-  - [ ] Document symbol usage
+- [x] Custom platform override
+  - [x] Configurable platform symbol per platform value or stop ID
+  - [x] Add `config.platformSymbolMap` string field (format: "B=3,ID:U693Z2P=7")
+  - [x] 8 directional arrows (1=N, 2=NE, 3=E, 4=SE, 5=S, 6=SW, 7=W, 8=NW) via weather font glyphs
+  - [x] Two-tier matching: platform value first, then stop ID (ID: prefix) fallback
+  - [x] Update web UI for platform symbol configuration
+  - [x] Update `DisplayManager` to use custom symbols
+  - [x] Added `sourceStopId` to Departure struct for stop-based matching
 
 ---
 

@@ -17,6 +17,7 @@ struct Departure
     int eta; // Minutes until departure (recalculated from departureTime)
     time_t departureTime; // Unix timestamp of departure (from API)
     char platform[8]; // Platform/track (e.g., "D", "3", optional)
+    char sourceStopId[16]; // Stop ID that produced this departure (for symbol matching)
     bool hasAC; // Air conditioning
     bool isDelayed; // Has delay
     int delayMinutes; // Delay in minutes

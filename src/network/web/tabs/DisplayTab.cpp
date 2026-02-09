@@ -86,7 +86,7 @@ static String buildLineColorsTable(const Config* config)
                 html += ">WHITE</option>";
                 html += "</select></td>";
                 html += "<td class='center'><button type='button' class='delete-btn' "
-                        "onclick='deleteLineColorRow(this)'>Delete</button></td>";
+                        "onclick='deleteLineColorRow(this)'>&#x2715;</button></td>";
                 html += "</tr>";
             }
 
@@ -112,6 +112,90 @@ static String buildLineColorsTable(const Config* config)
     html += "<input type='hidden' id='lineColorMapData' name='line_color_map' value=''>";
 
     html += "</div>"; // End form-group
+
+    return html;
+}
+
+// Helper: Build platform symbols table
+static String buildPlatformSymbolsTable(const Config* config)
+{
+    String html = "";
+
+    html += "<div class='form-group'>";
+    html += "<div class='form-group-title'>Platform Symbols</div>";
+    html += "<div class='help-text' style='margin-bottom:10px;'>Map platform values or stop IDs (prefix ID:) to directional arrows. Requires \"Show platform number\" enabled.</div>";
+
+    String symbolMap = String(config->platformSymbolMap);
+    bool hasRows = symbolMap.length() > 0;
+
+    html += "<table>";
+    html += "<thead><tr>";
+    html += "<th>Match</th>";
+    html += "<th>Direction</th>";
+    html += "<th class='center'>Action</th>";
+    html += "</tr></thead>";
+    html += "<tbody id='platformSymbolsTableBody'>";
+
+    if (hasRows)
+    {
+        int startIdx = 0;
+        while (startIdx < (int)symbolMap.length())
+        {
+            int commaIdx = symbolMap.indexOf(',', startIdx);
+            if (commaIdx == -1)
+                commaIdx = symbolMap.length();
+
+            String pair = symbolMap.substring(startIdx, commaIdx);
+            int equalIdx = pair.indexOf('=');
+
+            if (equalIdx != -1)
+            {
+                String match = pair.substring(0, equalIdx);
+                String dir = pair.substring(equalIdx + 1);
+                match.trim();
+                dir.trim();
+
+                html += "<tr>";
+                html += "<td><input type='text' class='symbol-match' value='";
+                html += escapeHtml(match.c_str());
+                html += "' placeholder='B or ID:U693Z2P'></td>";
+                html += "<td><select class='symbol-dir'>";
+
+                const char* labels[] = {"1 - \xe2\x86\x91 N", "2 - \xe2\x86\x97 NE", "3 - \xe2\x86\x92 E", "4 - \xe2\x86\x98 SE",
+                                        "5 - \xe2\x86\x93 S", "6 - \xe2\x86\x99 SW", "7 - \xe2\x86\x90 W", "8 - \xe2\x86\x96 NW"};
+                for (int d = 1; d <= 8; d++)
+                {
+                    html += "<option value='";
+                    html += String(d);
+                    html += "'";
+                    if (dir == String(d))
+                        html += " selected";
+                    html += ">";
+                    html += labels[d - 1];
+                    html += "</option>";
+                }
+
+                html += "</select></td>";
+                html += "<td class='center'><button type='button' class='delete-btn' "
+                        "onclick='deletePlatformSymbolRow(this)'>&#x2715;</button></td>";
+                html += "</tr>";
+            }
+
+            startIdx = commaIdx + 1;
+        }
+    }
+    else
+    {
+        html += "<tr id='symbolEmptyState'>";
+        html += "<td colspan='3' style='text-align:center;color:#666;padding:20px;'>";
+        html += "No platform symbols configured. Click \"+ Add Symbol\" to add one.";
+        html += "</td></tr>";
+    }
+
+    html += "</tbody></table>";
+    html += "<button type='button' class='secondary' onclick='addPlatformSymbolRow()'>+ Add Symbol</button>";
+    html += "<input type='hidden' id='platformSymbolMapData' name='platform_symbol_map' value=''>";
+    html += "</div>";
 
     return html;
 }
@@ -200,6 +284,9 @@ String buildDisplayTab(const Config* config)
 
     // Line Colors Configuration
     html += buildLineColorsTable(config);
+
+    // Platform Symbols Configuration
+    html += buildPlatformSymbolsTable(config);
 
     html += "</div>"; // End tab-display
 

@@ -62,6 +62,7 @@ void loadConfig(Config& config)
     config.minDepartureTime = constrain(preferences.getInt("minDepTime", 3), 0, 30);
     config.brightness = constrain(preferences.getInt("brightness", 90), 0, 255);
     strlcpy(config.lineColorMap, preferences.getString("lineColorMap", "").c_str(), sizeof(config.lineColorMap));
+    strlcpy(config.platformSymbolMap, preferences.getString("pltSymMap", "").c_str(), sizeof(config.platformSymbolMap));
     strlcpy(config.city, preferences.getString("city", "Prague").c_str(), sizeof(config.city));  // Default: Prague for backward compatibility
     strlcpy(config.language, preferences.getString("language", "en").c_str(), sizeof(config.language));  // Default: English
     config.debugMode = preferences.getBool("debugMode", false);  // Default: disabled
@@ -147,6 +148,7 @@ void saveConfig(const Config& config)
     preferences.putInt("minDepTime", config.minDepartureTime);
     preferences.putInt("brightness", config.brightness);
     preferences.putString("lineColorMap", config.lineColorMap);
+    preferences.putString("pltSymMap", config.platformSymbolMap);
     preferences.putString("city", config.city);
     preferences.putString("language", config.language);
     preferences.putBool("debugMode", config.debugMode);

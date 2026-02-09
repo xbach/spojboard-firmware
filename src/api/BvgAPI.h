@@ -62,7 +62,7 @@ class BvgAPI : public TransitAPI
      * @param tempDepartures Array to add to
      * @param tempCount Current count (will be incremented)
      */
-    void parseDepartureObject(JsonObject depJson, const Config& config, Departure* tempDepartures, int& tempCount);
+    void parseDepartureObject(JsonObject depJson, const Config& config, Departure* tempDepartures, int& tempCount, const char* stopId);
 };
 
 #endif // BVGAPI_H

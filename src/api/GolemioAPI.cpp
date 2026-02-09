@@ -252,7 +252,7 @@ bool GolemioAPI::querySingleStop(const char* stopId,
                 if (tempCount >= MAX_TEMP_DEPARTURES)
                     break;
 
-                parseDepartureObject(dep, config, tempDepartures, tempCount);
+                parseDepartureObject(dep, config, tempDepartures, tempCount, stopId);
             }
         }
 
@@ -278,7 +278,8 @@ bool GolemioAPI::querySingleStop(const char* stopId,
 void GolemioAPI::parseDepartureObject(JsonObject depJson,
                                       const Config& config,
                                       Departure* tempDepartures,
-                                      int& tempCount)
+                                      int& tempCount,
+                                      const char* stopId)
 {
     // Route/Line info
     const char* line = depJson["route"]["short_name"];
@@ -378,6 +379,9 @@ void GolemioAPI::parseDepartureObject(JsonObject depJson,
             }
         }
     }
+
+    // Source stop ID (for platform symbol matching)
+    strlcpy(tempDepartures[tempCount].sourceStopId, stopId, sizeof(tempDepartures[0].sourceStopId));
 
     // Debug log for first few departures (only if debug mode enabled)
     if (config.debugMode && tempCount < 3)

@@ -492,6 +492,58 @@ function serializeLineColors() {
 </script>
 )rawliteral";
 
+// Platform symbol configuration JavaScript
+const char SCRIPT_PLATFORM_SYMBOLS[] PROGMEM = R"rawliteral(
+<script>
+function addPlatformSymbolRow() {
+    var tbody = document.getElementById('platformSymbolsTableBody');
+    var emptyState = document.getElementById('symbolEmptyState');
+    if (emptyState) { emptyState.remove(); }
+
+    var row = tbody.insertRow();
+    var dirOptions = '<option value="1">1 - \u2191 N</option><option value="2">2 - \u2197 NE</option><option value="3">3 - \u2192 E</option><option value="4">4 - \u2198 SE</option><option value="5">5 - \u2193 S</option><option value="6">6 - \u2199 SW</option><option value="7">7 - \u2190 W</option><option value="8">8 - \u2196 NW</option>';
+    // Safe: dirOptions is a static string with no user input; innerHTML is used for consistent structure with existing patterns (see addLineColorRow)
+    row.innerHTML = '<td><input type="text" class="symbol-match" placeholder="B or ID:U693Z2P"></td><td><select class="symbol-dir">' + dirOptions + '</select></td><td class="center"><button type="button" class="delete-btn" onclick="deletePlatformSymbolRow(this)">Delete</button></td>';
+}
+
+function deletePlatformSymbolRow(btn) {
+    var row = btn.closest('tr');
+    var tbody = document.getElementById('platformSymbolsTableBody');
+    row.remove();
+
+    if (tbody.rows.length === 0) {
+        var emptyRow = tbody.insertRow();
+        emptyRow.id = 'symbolEmptyState';
+        var cell = emptyRow.insertCell(0);
+        cell.colSpan = 3;
+        cell.style.textAlign = 'center';
+        cell.style.color = '#666';
+        cell.style.padding = '20px';
+        cell.textContent = 'No platform symbols configured. Click "+ Add Symbol" to add one.';
+    }
+}
+
+function serializePlatformSymbols() {
+    var tbody = document.getElementById('platformSymbolsTableBody');
+    if (!tbody) return '';
+
+    var rows = tbody.querySelectorAll('tr:not(#symbolEmptyState)');
+    var pairs = [];
+
+    rows.forEach(function(row) {
+        var matchInput = row.querySelector('.symbol-match');
+        var dirSelect = row.querySelector('.symbol-dir');
+
+        if (matchInput && dirSelect && matchInput.value.trim()) {
+            pairs.push(matchInput.value.trim() + '=' + dirSelect.value);
+        }
+    });
+
+    return pairs.join(',');
+}
+</script>
+)rawliteral";
+
 // Optional tab handlers
 const char SCRIPT_OPTIONAL_TAB[] PROGMEM = R"rawliteral(
 <script>
@@ -571,9 +623,14 @@ document.addEventListener('DOMContentLoaded', function() {
             // AP mode: button text includes "Connect to WiFi"
             var isApMode = originalText.includes('Connect to WiFi');
 
-            // Run line color serialization before collecting form data
+            // Run serialization before collecting form data
             if ((activeTabName === 'display' || isApMode) && typeof serializeLineColors === 'function') {
                 serializeLineColors();
+            }
+            if ((activeTabName === 'display' || isApMode) && typeof serializePlatformSymbols === 'function') {
+                var symData = serializePlatformSymbols();
+                var symInput = document.getElementById('platformSymbolMapData');
+                if (symInput) symInput.value = symData;
             }
 
             var formData;

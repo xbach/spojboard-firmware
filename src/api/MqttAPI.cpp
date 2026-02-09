@@ -413,6 +413,9 @@ bool MqttAPI::parseResponse(const Config& config, Departure* tempDepartures, int
         dep.isDelayed = false;
         dep.delayMinutes = 0;
 
+        // MQTT has no stop ID concept
+        dep.sourceStopId[0] = '\0';
+
         // Debug log for first few departures (only if debug mode enabled)
         if (config.debugMode && tempCount < 3)
         {
