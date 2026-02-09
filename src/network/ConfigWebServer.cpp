@@ -5,6 +5,7 @@
 #include "web/WebTemplates.h"
 #include "web/DashboardPage.h"
 #include "web/DemoPage.h"
+#include "web/DeparturesPage.h"
 #include "web/UpdatePage.h"
 #include "web/ApiHandlers.h"
 #include "web/WebUtils.h"
@@ -85,6 +86,10 @@ bool ConfigWebServer::begin()
                { handleStopDemo(); });
     server->on("/rest-mode", HTTP_POST, [this]()
                { handleRestMode(); });
+    server->on("/departures", HTTP_GET, [this]()
+               { handleDepartures(); });
+    server->on("/departures-data", HTTP_GET, [this]()
+               { handleDeparturesData(); });
     server->onNotFound([this]()
                        { handleNotFound(); });
 
@@ -1149,3 +1154,49 @@ void ConfigWebServer::handleRestMode()
     server->send(200, "application/json", response);
 }
 
+// ============================================================================
+// Departure Data Viewer
+// ============================================================================
+
+// Access global departure cache from main.cpp (protected by apiDataMutex)
+extern Departure departures[];
+extern int departureCount;
+extern SemaphoreHandle_t apiDataMutex;
+
+void ConfigWebServer::handleDepartures()
+{
+    // Acquire mutex to safely snapshot departure data
+    Departure localDeps[MAX_DEPARTURES];
+    int localCount = 0;
+
+    if (apiDataMutex != NULL && xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(100)))
+    {
+        localCount = departureCount;
+        for (int i = 0; i < localCount && i < MAX_DEPARTURES; i++)
+        {
+            localDeps[i] = departures[i];
+        }
+        xSemaphoreGive(apiDataMutex);
+    }
+
+    server->send(200, "text/html", buildDeparturesPage(localDeps, localCount));
+}
+
+void ConfigWebServer::handleDeparturesData()
+{
+    // Acquire mutex to safely snapshot departure data
+    Departure localDeps[MAX_DEPARTURES];
+    int localCount = 0;
+
+    if (apiDataMutex != NULL && xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(100)))
+    {
+        localCount = departureCount;
+        for (int i = 0; i < localCount && i < MAX_DEPARTURES; i++)
+        {
+            localDeps[i] = departures[i];
+        }
+        xSemaphoreGive(apiDataMutex);
+    }
+
+    server->send(200, "application/json", buildDeparturesJson(localDeps, localCount));
+}

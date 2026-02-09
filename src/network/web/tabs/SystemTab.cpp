@@ -49,10 +49,11 @@ String buildSystemTab(const Config* config, bool apModeActive, size_t freeHeap, 
             html += "</div>";
         }
 
-        // Departure count
+        // Departure count with link to details
         html += "<div class='info-row'>";
         html += "<span class='info-label'>Cached Departures:</span>";
-        html += "<span class='info-value'>" + String(departureCount) + "</span>";
+        html += "<span class='info-value'><a href='/departures' style='color:#67e8f9;text-decoration:none;'>"
+                + String(departureCount) + " &rarr;</a></span>";
         html += "</div>";
     }
 
