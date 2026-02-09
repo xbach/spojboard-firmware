@@ -93,12 +93,58 @@ Bottom Row (Pins 9-16):
 
 ## Power Connections
 
-**Important:** LED panels draw significant current (2-4A per panel at full brightness).
+**Measured power requirements:** SpojBoard draws 0.3-0.7A during normal operation, with transient peaks up to 1.6A during WiFi connection, OTA updates, or boot sequences.
 
-- **MatrixPortal S3:** Power the panel using the MatrixPortal's screw terminals (5V/GND). The board passes power through to the panel.
-- **ESP32-S3 N8R2:** Power the panel directly from a separate 5V power supply (4A+). Connect ESP32 GND to panel GND for common ground reference.
+### Connection Options
 
-⚠️ Never power the panel from the ESP32's 5V pin - it cannot supply enough current.
+**MatrixPortal S3:**
+- Power via MatrixPortal's **USB-C port** (5V 2A+ adapter) **and** connect display power via **screw terminals** (5V/GND)
+- The MatrixPortal passes USB-C power through to the LED panels via screw terminals
+- Use any quality USB-C phone charger (2A or higher)
+
+**ESP32-S3 N8R2:**
+- Power LED panels directly via their screw terminals from separate 5V supply (2A+ minimum, 3A recommended)
+- Power ESP32 board via USB for programming/serial (can remain connected)
+- **Important**: Connect ESP32 GND to panel GND for common ground reference
+
+### Power Supply Recommendations
+
+| Supply Type | Rating | Suitability | Notes |
+|-------------|--------|-------------|-------|
+| **USB-C Wall Adapter** | 5V 2A (10W) | ✅ Adequate | Covers all normal operation + transient peaks |
+| **USB-C Wall Adapter** | 5V 3A (15W) | ✅ Recommended | Extra safety margin for simultaneous loads |
+| **USB-C Wall Adapter** | 5V 1A (5W) | ❌ Insufficient | Will cause brownouts during WiFi activity |
+| **Screw Terminal PSU** | 5V 2-3A | ✅ For ESP32-S3 N8R2 | Use with generic dev boards |
+
+### Compatible Power Supplies
+
+**USB-C (recommended for MatrixPortal S3):**
+- Apple 12W USB-C adapter (2.4A)
+- Anker PowerPort III Nano (2A+)
+- Samsung EP-TA20 (2A)
+- Any quality USB-C phone charger rated 2A or higher
+
+**Screw Terminal Supplies (for ESP32-S3 N8R2):**
+- Mean Well RS-15-5 (5V 3A)
+- Any regulated 5V 2-3A DC power supply with screw terminal output
+
+⚠️ **Never power the panels from the ESP32's 5V pin** - it cannot supply enough current and will cause the board to reset.
+
+### Understanding Power Specifications
+
+Published HUB75 panel specifications often cite 4-6A current draw at full brightness with all LEDs displaying white. However, SpojBoard's real-world usage (text display, mixed colors, brightness 90 default) draws significantly less power:
+
+- **Theoretical maximum** (all white, brightness 255): ~4-6A per manufacturer specs
+- **Measured actual usage** (text display, brightness 90): ~0.3A average
+- **Measured worst case** (text display, brightness 255): ~0.7A peak
+
+The difference is due to:
+1. Text displays use far fewer LEDs than solid colors
+2. Mixed colors (red/green/blue) draw less current than white
+3. Default brightness (90/255 = 35%) significantly reduces power
+4. Most pixels are black (off) in typical departure display
+
+A 2A supply provides 2.8× safety margin over measured peaks, while a 3A supply provides 4.3× margin.
 
 ## Troubleshooting
 

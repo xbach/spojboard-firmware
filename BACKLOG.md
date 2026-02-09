@@ -13,8 +13,8 @@ This file tracks planned features, improvements, and technical debt for the Spoj
 ## High Priority Features
 
 ### Status Bar Improvements
-- [ ] Extend day of week to full word (no abbreviations)
-- [ ] Shorten date format to numeric (e.g., "15.02" instead of "08.Jan")
+- [x] Extend day of week to full word (no abbreviations)
+- [x] Shorten date format to numeric (e.g., "15.02" instead of "08.Jan")
 
 ### Display Configuration
 - [ ] Add option to remove status bar entirely
@@ -34,13 +34,11 @@ This file tracks planned features, improvements, and technical debt for the Spoj
   - [ ] MQTT: document search approach (server-side responsibility)
 
 ### Departure Time Display
-- [ ] Add option to show next two departure times per line
-  - [ ] Disable platform display when this mode is active
-  - [ ] Add `config.showMultipleTimes` boolean setting
-  - [ ] Design display layout (how to fit 2 times per line)
-  - [ ] Update `Departure` struct to hold multiple times
-  - [ ] Update API parsers to collect multiple times per line
-  - [ ] Update `DisplayManager` rendering logic
+- [x] Add option to show next two departure times per line (dual ETA mode)
+  - [x] Condensed font for dual ETAs, adaptive destination font based on available space
+  - [x] Update API parsers to collect multiple times per line
+  - [x] Update `DisplayManager` rendering logic
+  - [x] Per-tab config save in web UI
 
 ### Platform Display Customization
 - [ ] Custom platform override
@@ -94,7 +92,7 @@ This file tracks planned features, improvements, and technical debt for the Spoj
 
 ## Technical Debt
 
-- [ ] Refactor `ConfigWebServer` HTML generation (move to dedicated files)
+- [x] Refactor `ConfigWebServer` HTML generation (moved to `src/network/web/` dedicated files)
 - [ ] Extract font rendering logic from `DisplayManager`
 - [ ] Improve error recovery in API clients
 - [ ] Add memory usage monitoring/logging
@@ -104,6 +102,11 @@ This file tracks planned features, improvements, and technical debt for the Spoj
 
 ## Documentation
 
+- [x] Update power supply requirements in README/docs
+  - Updated measured data: 5V, brightness 90: 0.3A avg, brightness 255: 0.65A avg / 0.7A peak, transient spikes: 1.6A
+  - Recommendations: 5V 2A minimum, 5V 3A recommended
+  - USB-C focused, future-safe approach
+  - Updated README.md (lines 60, 67, 74-83) and WIRING.md (lines 94-101)
 - [ ] Add hardware assembly guide with photos
 - [ ] Document custom font creation process
 - [ ] Add troubleshooting guide

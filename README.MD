@@ -57,14 +57,14 @@ SpojBoard supports two hardware variants. The firmware automatically detects and
 
 - **Board**: [Adafruit MatrixPortal ESP32-S3](https://www.adafruit.com/product/5778)
 - **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total)
-- **Power**: 5V 3A via USB-C or screw terminals
+- **Power**: 5V 2A minimum (3A recommended) via USB-C
 - **Wiring**: Built-in HUB75 connector - just plug in your panels
 
 ### Option 2: Generic ESP32-S3 N8R2
 
 - **Board**: ESP32-S3-DevKitC-1 or similar (8MB flash minimum)
 - **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total)
-- **Power**: External 5V 4A+ supply (panels powered separately)
+- **Power**: 5V 2A minimum (3A recommended) via screw terminals on panels
 - **Wiring**: Standard HUB75 rainbow cable to GPIO pins
 
 **→ See [Wiring Guide](docs/WIRING.md) for complete pinout and connection instructions.**
@@ -75,12 +75,20 @@ SpojBoard supports two hardware variants. The firmware automatically detects and
 
 HUB75 LED matrix panels require external 5V power.
 
-**Typical power consumption (displaying text):**
-- Two 64×32 panels (128×32): ~1-2A at typical brightness showing colored text
-- ESP32-S3: ~500mA peak during WiFi transmission
-- **Total**: ~2-3A typical
+**Measured power consumption (real-world testing):**
+- **Normal operation** (brightness 90, default): ~0.3A average
+- **Maximum brightness** (brightness 255): ~0.65A average, 0.7A peak
+- **Transient spikes**: Up to 1.6A during WiFi connection, OTA updates, or boot
 
-**Note:** Peak consumption with all LEDs at full white would be ~5A, but this never occurs during normal operation with text display.
+**Recommended power supply:**
+- **5V 2A minimum** (provides 2.8× headroom over normal peaks, adequate for all conditions)
+- **5V 3A recommended** (extra safety margin for simultaneous WiFi/OTA/display load)
+
+**Compatible supplies:**
+- **USB-C**: Any quality 5V 2A+ phone charger or USB PD adapter (10W+)
+- **Screw terminals**: 5V 2-3A regulated DC power supply (for generic ESP32 boards)
+
+**Note:** Published HUB75 specifications often cite 5-6A at full brightness with all LEDs white, but SpojBoard's text-based display with typical content uses significantly less power in practice.
 
 ## Quick Start
 
