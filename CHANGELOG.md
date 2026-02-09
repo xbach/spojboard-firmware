@@ -2,7 +2,7 @@
 
 All notable changes to SpojBoard firmware will be documented in this file.
 
-## [r5] - Unreleased
+## [r5] - 2026-02-09
 
 ### Added
 - Dual ETA display showing next departure for same line+destination
