@@ -154,6 +154,100 @@ static char getPlatformSymbol(const char* platform, const char* stopId, const ch
     return '\0';
 }
 
+DestLayout DisplayManager::calcDestLayout(const Departure &dep)
+{
+    DestLayout layout;
+
+    // Starting X position for destination text
+    // Tighter gap when both dual ETA and platform are enabled to reclaim destination space
+    layout.destX = (config && config->showMultipleTimes && config->showPlatform) ? 20 : 22;
+    if (dep.hasAC)
+    {
+        layout.destX += 6;
+    }
+
+    // Check for platform symbol override
+    layout.symbolChar = '\0';
+    if (config && config->showPlatform && config->platformSymbolMap[0] != '\0')
+    {
+        layout.symbolChar = getPlatformSymbol(dep.platform, dep.sourceStopId, config->platformSymbolMap);
+    }
+
+    // Calculate space reserved for platform (if enabled and present)
+    layout.platformReservedPx = 0;
+    layout.willShowPlatform = false;
+    if (layout.symbolChar != '\0')
+    {
+        layout.willShowPlatform = true;
+        layout.platformReservedPx = 7; // 5px glyph + buffer
+    }
+    else if (config && config->showPlatform && dep.platform[0] != '\0')
+    {
+        layout.willShowPlatform = true;
+        // Dynamic reservation based on platform length:
+        // 1 char: medium font (6px) + 1px buffer = 7px
+        // 2 chars: condensed font (8px) + 1px buffer = 9px
+        // 3 chars: condensed font (12px) + 1px buffer = 13px
+        int platformLen = strlen(dep.platform);
+        if (platformLen >= 3)
+            layout.platformReservedPx = 13;
+        else if (platformLen == 2)
+            layout.platformReservedPx = 9;
+        else
+            layout.platformReservedPx = 7;
+    }
+
+    // Determine if this row should use dual ETA layout
+    layout.dualEta = config && config->showMultipleTimes && dep.secondEta >= 0;
+
+    // Calculate right-side ETA area width based on display mode
+    // Dual ETA: secondary in fontCondensed (4px/char, max 3 chars = 12px, right edge X=108)
+    //         + primary in fontMedium (6px/char, max 3 chars = 18px, right edge X=127) = 30px
+    // Single ETA: fontMedium only — wide (>=10 or <1): 3 chars = 17px, narrow (1-9): 2 chars = 11px
+    int etaAreaWidth;
+    if (layout.dualEta)
+        etaAreaWidth = 30;
+    else
+        etaAreaWidth = (dep.eta >= 10 || dep.eta < 1) ? 17 : 11;
+
+    // When showMultipleTimes is on globally, always reserve dual-ETA width
+    // so destination boundary matches the platform anchor position
+    int effectiveEtaArea = (config && config->showMultipleTimes && layout.platformReservedPx > 0) ? 30 : etaAreaWidth;
+    layout.spaceCalcEta = 128 - effectiveEtaArea;
+    int availableSpace = layout.spaceCalcEta - layout.destX - layout.platformReservedPx;
+
+    // Font selection based on destination length and available space
+    int destLen = strlen(dep.destination);
+
+    // Thresholds: fontMedium @ 6px/char, fontCondensed @ 4px/char
+    // Dual ETA needs more right-side space, so thresholds are lower
+    int mediumThreshold;
+    if (config && config->showMultipleTimes)
+        mediumThreshold = layout.platformReservedPx > 0 ? 11 : 12;
+    else
+        mediumThreshold = layout.platformReservedPx > 0 ? 12 : 14;
+    mediumThreshold -= dep.hasAC ? 1 : 0;
+
+    if (destLen <= mediumThreshold)
+    {
+        layout.font = fontMedium;
+        layout.maxChars = availableSpace / 6; // 6px per char
+    }
+    else
+    {
+        layout.font = fontCondensed;
+        layout.maxChars = availableSpace / 4 - 1; // 4px per char, -1 for padding
+    }
+
+    // Safety cap: prevent buffer overflow
+    if (layout.maxChars > 63)
+        layout.maxChars = 63; // destTrunc buffer size - 1
+    if (layout.maxChars < 1)
+        layout.maxChars = 1; // Ensure at least 1 char
+
+    return layout;
+}
+
 void DisplayManager::drawDeparture(int row, const Departure &dep)
 {
     int y = row * 8; // Each row is 8 pixels
@@ -166,8 +260,8 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     utf8tocp(lineConverted);
     utf8tocp(destConverted);
 
-    // Determine if this row should use dual ETA layout
-    bool dualEta = config && config->showMultipleTimes && dep.secondEta >= 0;
+    // Calculate destination layout (font, maxChars, platform reservation, etc.)
+    DestLayout layout = calcDestLayout(dep);
 
     // Draw line number background - always black (fixed width for all routes)
     uint16_t lineColor = getLineColorWithConfig(dep.line, config ? config->lineColorMap : "");
@@ -195,122 +289,29 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     display->print(lineConverted);
 
     // AC indicator (asterisk before destination)
-    // Tighter gap when both dual ETA and platform are enabled to reclaim destination space
-    int destX = (config && config->showMultipleTimes && config->showPlatform) ? 20 : 22;
     if (dep.hasAC)
     {
+        int acX = (config && config->showMultipleTimes && config->showPlatform) ? 20 : 22;
         display->setTextColor(COLOR_CYAN);
-        display->setCursor(destX, y + 7);
+        display->setCursor(acX, y + 7);
         display->print("*");
-        destX += 6;
     }
 
-    // Check for platform symbol override
-    char symbolChar = '\0';
-    if (config && config->showPlatform && config->platformSymbolMap[0] != '\0')
-    {
-        symbolChar = getPlatformSymbol(dep.platform, dep.sourceStopId, config->platformSymbolMap);
-    }
-
-    // Calculate space reserved for platform (if enabled and present)
-    int platformReservedPx = 0;
-    bool willShowPlatform = false;
-    if (symbolChar != '\0')
-    {
-        willShowPlatform = true;
-        platformReservedPx = 7; // 5px glyph + buffer
-    }
-    else if (config && config->showPlatform && dep.platform[0] != '\0')
-    {
-        willShowPlatform = true;
-        // Dynamic reservation based on platform length:
-        // 1 char: medium font (6px) + 1px buffer = 7px
-        // 2 chars: condensed font (8px) + 1px buffer = 9px
-        // 3 chars: condensed font (12px) + 1px buffer = 13px
-        int platformLen = strlen(dep.platform);
-        if (platformLen >= 3)
-        {
-            platformReservedPx = 13; // 3 condensed chars + buffer
-        }
-        else if (platformLen == 2)
-        {
-            platformReservedPx = 9; // 2 condensed chars + buffer
-        }
-        else
-        {
-            platformReservedPx = 7; // 1 medium char + buffer
-        }
-    }
-
-    // Destination - adaptive font based on available space
+    // Destination text
     display->setTextColor(COLOR_WHITE);
-
-    int destLen = strlen(destConverted);
-
-    // Calculate right-side ETA area width based on display mode
-    // Dual ETA: secondary in fontCondensed (4px/char, max 3 chars = 12px, right edge X=108)
-    //         + primary in fontMedium (6px/char, max 3 chars = 18px, right edge X=127) = 30px
-    // Single ETA: fontMedium only — wide (>=10 or <1): 3 chars = 17px, narrow (1-9): 2 chars = 11px
-    int etaAreaWidth;
-    if (dualEta)
-    {
-        etaAreaWidth = 30;
-    }
-    else
-    {
-        etaAreaWidth = (dep.eta >= 10 || dep.eta < 1) ? 17 : 11;
-    }
-
-    // When platform is shown in single-ETA mode, always reserve wide ETA space
-    // to keep platform alignment consistent across rows
-    int effectiveEtaArea = (!dualEta && platformReservedPx > 0) ? 17 : etaAreaWidth;
-    int spaceCalcEta = 128 - effectiveEtaArea;
-    int availableSpace = spaceCalcEta - destX - platformReservedPx;
-
-    // Font selection based on destination length and available space
-    const GFXfont *destFont;
-    int maxChars;
-
-    // Thresholds: fontMedium @ 6px/char, fontCondensed @ 4px/char
-    // Dual ETA needs more right-side space, so thresholds are lower
-    int mediumThreshold;
-    if (config->showMultipleTimes)
-        mediumThreshold = platformReservedPx > 0 ? 11 : 12;
-    else
-        mediumThreshold = platformReservedPx > 0 ? 12 : 14;
-    mediumThreshold -= dep.hasAC ? 1 : 0;
-
-    if (destLen <= mediumThreshold)
-    {
-        // Short destination - use regular font
-        destFont = fontMedium;
-        maxChars = availableSpace / 6; // 6px per char
-    }
-    else
-    {
-        // Long destination - use condensed font
-        destFont = fontCondensed;
-        maxChars = availableSpace / 4; // 4px per char, -1 for padding
-    }
-
-    // Safety cap: prevent buffer overflow
-    if (maxChars > 63)
-        maxChars = 63; // destTrunc buffer size - 1
-    if (maxChars < 1)
-        maxChars = 1; // Ensure at least 1 char
-
-    display->setFont(destFont);
-    display->setCursor(destX, y + 7);
+    display->setFont(layout.font);
+    display->setCursor(layout.destX, y + 7);
 
     // Check if scrolling is needed for this row (only if enabled in config)
-    bool needsScroll = (config && config->scrollEnabled) && (destLen > maxChars);
+    int destLen = strlen(destConverted);
+    bool needsScroll = (config && config->scrollEnabled) && (destLen > layout.maxChars);
     char destTrunc[64];
 
     if (needsScroll && row < 3)
     {
         // Set up scroll state for this row
         scrollState[row].needsScroll = true;
-        scrollState[row].maxOffset = destLen - maxChars;
+        scrollState[row].maxOffset = destLen - layout.maxChars;
 
         // Apply current scroll offset
         int scrollOffset = scrollState[row].offset;
@@ -320,7 +321,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         }
 
         // Copy substring starting at scroll offset
-        strncpy(destTrunc, destConverted + scrollOffset, maxChars);
+        strncpy(destTrunc, destConverted + scrollOffset, layout.maxChars);
     }
     else
     {
@@ -330,15 +331,15 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
             scrollState[row].needsScroll = false;
             scrollState[row].offset = 0;
         }
-        strncpy(destTrunc, destConverted, maxChars);
+        strncpy(destTrunc, destConverted, layout.maxChars);
     }
-    destTrunc[maxChars] = '\0';
+    destTrunc[layout.maxChars] = '\0';
     display->print(destTrunc);
 
     // Platform display (if enabled and present)
-    if (willShowPlatform)
+    if (layout.willShowPlatform)
     {
-        if (symbolChar != '\0')
+        if (layout.symbolChar != '\0')
         {
             // Render directional arrow using weather font
             display->setFont(fontWeather);
@@ -346,7 +347,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
 
             int16_t px1, py1;
             uint16_t pw, ph;
-            char symBuf[2] = {symbolChar, '\0'};
+            char symBuf[2] = {layout.symbolChar, '\0'};
             display->getTextBounds(symBuf, 0, 0, &px1, &py1, &pw, &ph);
             int platformX = platformAnchor - pw - 1 - px1;
 
@@ -393,7 +394,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     int16_t tx1, ty1;
     uint16_t tw, th;
 
-    if (dualEta)
+    if (layout.dualEta)
     {
         // Dual ETA mode: secondary (supplementary) on left, primary (next departure) on right
         // Secondary right edge at 114, primary right edge at 127
@@ -1007,94 +1008,17 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
     strlcpy(destConverted, dep.destination, sizeof(destConverted));
     utf8tocp(destConverted);
 
-    // Calculate destX (same logic as drawDeparture)
-    int destX = (config && config->showMultipleTimes && config->showPlatform) ? 20 : 22;
-    if (dep.hasAC)
-    {
-        destX += 6;
-    }
-
-    // Calculate platform reserved space (same logic as drawDeparture)
-    int platformReservedPx = 0;
-    char symbolChar = '\0';
-    if (config && config->showPlatform && config->platformSymbolMap[0] != '\0')
-    {
-        symbolChar = getPlatformSymbol(dep.platform, dep.sourceStopId, config->platformSymbolMap);
-    }
-    if (symbolChar != '\0')
-    {
-        platformReservedPx = 7;
-    }
-    else if (config && config->showPlatform && dep.platform[0] != '\0')
-    {
-        int platformLen = strlen(dep.platform);
-        if (platformLen >= 3)
-        {
-            platformReservedPx = 13;
-        }
-        else if (platformLen == 2)
-        {
-            platformReservedPx = 9;
-        }
-        else
-        {
-            platformReservedPx = 7;
-        }
-    }
-
-    // Calculate ETA area width and available space (mirrors drawDeparture logic)
-    bool dualEta = config && config->showMultipleTimes && dep.secondEta >= 0;
-    int etaAreaWidth;
-    if (dualEta)
-    {
-        etaAreaWidth = 30;
-    }
-    else
-    {
-        etaAreaWidth = (dep.eta >= 10 || dep.eta < 1) ? 17 : 11;
-    }
-    int effectiveEtaArea = (!dualEta && platformReservedPx > 0) ? 17 : etaAreaWidth;
-    int spaceCalcEta = 128 - effectiveEtaArea;
-    int availableSpace = spaceCalcEta - destX - platformReservedPx;
-
-    // Determine font and maxChars (same logic as drawDeparture)
-    int destLen = strlen(destConverted);
-    const GFXfont *destFont;
-    int maxChars;
-
-    int mediumThreshold;
-    if (dualEta)
-        mediumThreshold = platformReservedPx > 0 ? 10 : 12;
-    else
-        mediumThreshold = platformReservedPx > 0 ? 12 : 14;
-    mediumThreshold -= dep.hasAC ? 1 : 0;
-
-    if (destLen <= mediumThreshold)
-    {
-        destFont = fontMedium;
-        maxChars = availableSpace / 6;
-    }
-    else
-    {
-        destFont = fontCondensed;
-        maxChars = availableSpace / 4; // 4px per char
-    }
-
-    if (maxChars > 63)
-        maxChars = 63;
-    if (maxChars < 1)
-        maxChars = 1;
+    // Use shared layout calculation
+    DestLayout layout = calcDestLayout(dep);
 
     // Clear the destination area (from destX to just before platform/ETA)
-    // Clear 8 pixels: 7 for the row (skip topmost) + 1 below baseline for descenders (y, g, p, q, j)
-    // Font has no top overflows, so start at y+1 to preserve row above
-    int clearWidth = spaceCalcEta - destX - platformReservedPx;
-    display->fillRect(destX, y + 1, clearWidth, 8, COLOR_BLACK);
+    int clearWidth = layout.spaceCalcEta - layout.destX - layout.platformReservedPx;
+    display->fillRect(layout.destX, y + 1, clearWidth, 8, COLOR_BLACK);
 
     // Apply scroll offset and draw
-    display->setFont(destFont);
+    display->setFont(layout.font);
     display->setTextColor(COLOR_WHITE);
-    display->setCursor(destX, y + 7);
+    display->setCursor(layout.destX, y + 7);
 
     char destTrunc[64];
     int scrollOffset = scrollState[row].offset;
@@ -1102,8 +1026,8 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
     {
         scrollOffset = scrollState[row].maxOffset;
     }
-    strncpy(destTrunc, destConverted + scrollOffset, maxChars);
-    destTrunc[maxChars] = '\0';
+    strncpy(destTrunc, destConverted + scrollOffset, layout.maxChars);
+    destTrunc[layout.maxChars] = '\0';
     display->print(destTrunc);
 }
 

@@ -18,6 +18,18 @@ static const int SCROLL_PAUSE_START_MS = 2000;   // 2s pause at start
 static const int SCROLL_PAUSE_END_MS = 2000;     // 1s pause at end
 static const int SCROLL_MAX_CYCLES = 1;          // Max scroll cycles before stopping until next refresh
 
+// Destination layout calculation result (shared between drawDeparture and redrawDestination)
+struct DestLayout {
+    int destX;              // X position where destination text starts
+    int platformReservedPx; // Pixels reserved for platform display
+    char symbolChar;        // Platform symbol override character ('\0' if none)
+    bool willShowPlatform;  // Whether platform will be drawn
+    bool dualEta;           // Whether dual ETA mode is active for this departure
+    const GFXfont *font;    // Selected font for destination text
+    int maxChars;           // Maximum characters that fit in available space
+    int spaceCalcEta;       // Right boundary for destination area (128 - etaArea)
+};
+
 // Scroll state per departure row
 struct ScrollState {
     int offset;               // Current character offset (0 = show from start)
@@ -188,6 +200,7 @@ private:
     Departure renderedDeps[3];
 
     // Internal drawing functions
+    DestLayout calcDestLayout(const Departure& dep);
     void drawDeparture(int row, const Departure& dep);
     void redrawDestination(int row, const Departure& dep);
 
