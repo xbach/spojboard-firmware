@@ -157,12 +157,6 @@ document.addEventListener('DOMContentLoaded', function() {
             mqttSection.style.display = 'block';
         }
 
-        // Show/hide refresh interval based on city
-        const refreshDiv = document.getElementById('refreshInterval');
-        if (refreshDiv && refreshDiv.parentElement) {
-            // Refresh interval should be hidden for MQTT
-            refreshDiv.parentElement.style.display = (selectedCity === 'MQTT') ? 'none' : 'block';
-        }
     });
 });
 </script>

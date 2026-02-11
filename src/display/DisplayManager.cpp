@@ -188,7 +188,7 @@ DestLayout DisplayManager::calcDestLayout(const Departure &dep)
         // 1 char: medium font (6px) + 1px buffer = 7px
         // 2 chars: condensed font (8px) + 1px buffer = 9px
         // 3 chars: condensed font (12px) + 1px buffer = 13px
-        int platformLen = strlen(dep.platform);
+        int platformLen = utf8len(dep.platform);
         if (platformLen >= 3)
             layout.platformReservedPx = 13;
         else if (platformLen == 2)
@@ -217,15 +217,22 @@ DestLayout DisplayManager::calcDestLayout(const Departure &dep)
     int availableSpace = layout.spaceCalcEta - layout.destX - layout.platformReservedPx;
 
     // Font selection based on destination length and available space
-    int destLen = strlen(dep.destination);
+    int destLen = utf8len(dep.destination);
 
     // Thresholds: fontMedium @ 6px/char, fontCondensed @ 4px/char
-    // Dual ETA needs more right-side space, so thresholds are lower
+    // Tighter threshold when right side has more info (dual ETA, platform)
+    // Original:
+    // if (config && config->showMultipleTimes)
+    //     mediumThreshold = layout.platformReservedPx > 0 ? 11 : 12;
+    // else
+    //     mediumThreshold = layout.platformReservedPx > 0 ? 12 : 14;
     int mediumThreshold;
-    if (config && config->showMultipleTimes)
-        mediumThreshold = layout.platformReservedPx > 0 ? 11 : 12;
+    if (layout.willShowPlatform && config && config->showMultipleTimes)
+        mediumThreshold = 11;  // platform anchored at 97px: least space
+    else if (layout.willShowPlatform || layout.dualEta)
+        mediumThreshold = 12;  // platform at 111px, or dual ETA
     else
-        mediumThreshold = layout.platformReservedPx > 0 ? 12 : 14;
+        mediumThreshold = 14;  // primary ETA only
     mediumThreshold -= dep.hasAC ? 1 : 0;
 
     if (destLen <= mediumThreshold)

@@ -22,4 +22,7 @@ String utf8tocp(String s);
 // Be careful, the in-situ conversion will "destroy" the UTF-8 string s.
 void utf8tocp(char* s);
 
+// Count visible characters in a UTF-8 string (not bytes)
+size_t utf8len(const char* s);
+
 #endif

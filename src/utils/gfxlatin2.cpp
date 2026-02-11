@@ -256,6 +256,20 @@ String utf8tocp(String s)
 }
 
 
+// Count visible characters in a UTF-8 string (not bytes)
+// Skips continuation bytes (10xxxxxx) to count only character start bytes
+size_t utf8len(const char* s)
+{
+    size_t count = 0;
+    while (*s)
+    {
+        if ((*s & 0xC0) != 0x80)
+            count++;
+        s++;
+    }
+    return count;
+}
+
 // In place conversion of a UTF8 string to extended ASCII string (ASCII is shorter!)
 void utf8tocp(char* s)
 {
