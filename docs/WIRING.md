@@ -40,6 +40,8 @@ GND → GND
 
 **Connection:** HUB75 cable with breakout to dupont pins
 
+> **3.3V Logic Warning:** The ESP32-S3 outputs 3.3V signals, but HUB75 panels expect 5V logic. This works with many panels but is out of spec and may cause issues with some panel batches. For guaranteed reliability, add a 74AHCT245 level shifter between the ESP32-S3 and the panel's data/control lines. The MatrixPortal S3 (Option 1) includes these level shifters on-board.
+
 ✅ **Just use standard HUB75 wiring** - the firmware automatically handles the pin mapping differences!
 
 ### Rainbow Cable Wiring (Standard HUB75 Pinout)
@@ -162,3 +164,4 @@ A 2A supply provides 2.8× safety margin over measured peaks, while a 3A supply 
 - Ensure common ground between ESP32 and panel
 - Check for loose connections
 - Verify power supply can provide sufficient current (4A+ recommended)
+- If using generic ESP32-S3, consider adding a 74AHCT245 level shifter — marginal 3.3V signals can cause instability with some panels

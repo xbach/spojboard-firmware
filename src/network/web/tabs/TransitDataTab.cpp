@@ -26,9 +26,9 @@ static String buildPragueSection(const Config* config, bool isPrague)
     html += "<input type='text' id='pragueStopIds' name='prague_stops' value='";
     html += escapeHtml(config->pragueStopIds);
     html += "' placeholder='U693Z2P,U694Z2P'>";
-    html += "<div class='help-text'>Comma-separated GTFS stop IDs. Find IDs at <a "
-            "href='https://data.pid.cz/stops/json/stops.json' target='_blank' "
-            "style='color:#67e8f9;'>PID data portal</a></div>";
+    html += "<div class='help-text'>Comma-separated GTFS stop IDs. Find IDs in <a "
+            "href='https://spojboard.xbco.cz/docs/station-search/' target='_blank' "
+            "style='color:#67e8f9;'>SpojBoard Docs</a></div>";
 
     html += "</div>"; // End pragueSection
     return html;
@@ -51,9 +51,9 @@ static String buildBerlinSection(const Config* config, bool isBerlin)
     html += "<input type='text' id='berlinStopIds' name='berlin_stops' value='";
     html += escapeHtml(config->berlinStopIds);
     html += "' placeholder='900013102,900014101'>";
-    html += "<div class='help-text'>Comma-separated numeric stop IDs. Find IDs at <a "
-            "href='https://v6.bvg.transport.rest/' target='_blank' "
-            "style='color:#67e8f9;'>BVG REST API</a> (use /locations endpoint)</div>";
+    html += "<div class='help-text'>Comma-separated numeric stop IDs. Find IDs in <a "
+            "href='https://spojboard.xbco.cz/docs/station-search/' target='_blank' "
+            "style='color:#67e8f9;'>SpojBoard Docs</a></div>";
 
     html += "</div>"; // End berlinSection
     return html;

@@ -46,12 +46,14 @@ Standalone operation with web-based configuration, no external server required f
 
 SpojBoard supports two hardware variants. The firmware automatically detects and configures the correct pin mapping - just flash the right firmware for your board.
 
+**A note on logic levels:** HUB75 panels are 5V logic devices, but the ESP32-S3 outputs 3.3V. Many panels work at 3.3V by accident (the input threshold is close enough), but this is out of spec and not guaranteed across all panel batches. Level shifters (3.3V → 5V) ensure reliable operation with any panel.
+
 ### Supported Hardware
 
-| Variant | Board | Firmware File | Wiring |
-|---------|-------|---------------|--------|
-| **MatrixPortal S3** | Adafruit MatrixPortal ESP32-S3 | `spojboard-matrixportal_s3-r*.bin` | Plug & play |
-| **ESP32-S3 N8R2** | Generic ESP32-S3 DevKitC (8MB Flash, 2MB PSRAM) | `spojboard-esp32_s3_n8r2-r*.bin` | Manual wiring |
+| Variant | Board | Firmware File | Wiring | Level Shifting |
+|---------|-------|---------------|--------|----------------|
+| **MatrixPortal S3** | Adafruit MatrixPortal ESP32-S3 | `spojboard-matrixportal_s3-r*.bin` | Plug & play | Built-in (74AHCT245) |
+| **ESP32-S3 N8R2** | Generic ESP32-S3 DevKitC (8MB Flash, 2MB PSRAM) | `spojboard-esp32_s3_n8r2-r*.bin` | Manual wiring | Not included |
 
 ### Option 1: MatrixPortal S3 (Recommended)
 
@@ -59,6 +61,7 @@ SpojBoard supports two hardware variants. The firmware automatically detects and
 - **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total)
 - **Power**: 5V 2A minimum (3A recommended) via USB-C
 - **Wiring**: Built-in HUB75 connector - just plug in your panels
+- **Level shifting**: Includes 2× 74AHCT245 level shifters, works reliably with all HUB75 panels
 
 ### Option 2: Generic ESP32-S3 N8R2
 
@@ -66,6 +69,8 @@ SpojBoard supports two hardware variants. The firmware automatically detects and
 - **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total)
 - **Power**: 5V 2A minimum (3A recommended) via screw terminals on panels
 - **Wiring**: Standard HUB75 rainbow cable to GPIO pins
+
+> **Warning:** Direct ESP32-S3 → HUB75 wiring runs at 3.3V, which is below the panels' 5V logic spec. It works with many panels but is not guaranteed across all manufacturers/batches. For reliable operation, add a [74AHCT245 level shifter](https://www.adafruit.com/product/1787) between the ESP32 and panel. See [ESP32-HUB75-MatrixPanel-DMA #134](https://github.com/mrfaptastic/ESP32-HUB75-MatrixPanel-DMA/issues/134) for details.
 
 **→ See [Wiring Guide](docs/WIRING.md) for complete pinout and connection instructions.**
 

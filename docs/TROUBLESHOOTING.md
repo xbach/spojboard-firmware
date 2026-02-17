@@ -121,7 +121,7 @@ Common issues and solutions when using SpojBoard.
 - Check HUB75 cable connections (loose connections can cause color issues)
 - Verify RGB data pins are correctly connected
 - Try reseating all connections
-- Check if panel requires 3.3V or 5V signals (may need level shifters)
+- **Level shifting:** If using a generic ESP32-S3 (not MatrixPortal S3), the 3.3V signal levels may be too low for your panel. HUB75 panels are 5V logic devices and some batches won't work reliably at 3.3V. Add a 74AHCT245 level shifter, or switch to a MatrixPortal S3 which includes level shifters on-board
 
 ### Physical Display Issues
 

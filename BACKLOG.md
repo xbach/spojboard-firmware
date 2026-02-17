@@ -24,6 +24,13 @@ This file tracks planned features, improvements, and technical debt for the Spoj
   - [ ] Update web UI with toggle option
   - [ ] Update `DisplayManager` to support 4-row departure mode
 
+### Onboarding Wizard
+- [ ] Guided setup wizard on first boot
+  - [ ] Step-by-step flow: WiFi credentials -> city/API selection -> stop IDs -> display settings
+  - [ ] Replace raw AP mode config page for first-time users
+  - [ ] Detect first boot via NVS flag (no prior config saved)
+  - [ ] Fall back to normal AP config for subsequent reconfigurations
+
 ### Station Search
 - [ ] Implement station ID search via API
   - [ ] Search by station name (user input)
