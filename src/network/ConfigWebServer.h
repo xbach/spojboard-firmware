@@ -28,6 +28,9 @@ class ConfigWebServer
     typedef void (*DemoStartCallback)(const Departure* demoDepartures, int demoCount);
     typedef void (*DemoStopCallback)();
     typedef void (*RestModeCallback)(bool enabled);
+    typedef void (*TickerStartCallback)();
+    typedef void (*TickerStopCallback)();
+    typedef void (*TickerModeCallback)(bool enabled);
 
     ConfigWebServer();
     ~ConfigWebServer();
@@ -56,7 +59,10 @@ class ConfigWebServer
                       RebootCallback onReboot,
                       DemoStartCallback onDemoStart = nullptr,
                       DemoStopCallback onDemoStop = nullptr,
-                      RestModeCallback onRestMode = nullptr);
+                      RestModeCallback onRestMode = nullptr,
+                      TickerStartCallback onTickerStart = nullptr,
+                      TickerStopCallback onTickerStop = nullptr,
+                      TickerModeCallback onTickerMode = nullptr);
 
     /**
      * Set display manager for OTA progress updates
@@ -79,6 +85,7 @@ class ConfigWebServer
      * @param demoModeActive Demo mode status
      * @param restModeActive Rest mode status
      * @param restModeManual True if rest mode was manually activated via REST API
+     * @param tickerModeActive Ticker mode status
      */
     void updateState(const Config* config,
                      bool wifiConnected,
@@ -92,7 +99,8 @@ class ConfigWebServer
                      const char* stopName,
                      bool demoModeActive,
                      bool restModeActive,
-                     bool restModeManual);
+                     bool restModeManual,
+                     bool tickerModeActive = false);
 
     /**
      * Get web server instance for direct access
@@ -122,6 +130,7 @@ class ConfigWebServer
     bool demoModeActive;
     bool restModeActive;
     bool restModeManual;
+    bool tickerModeActive;
 
     // Callbacks
     ConfigSaveCallback onSaveCallback;
@@ -130,6 +139,9 @@ class ConfigWebServer
     DemoStartCallback onDemoStartCallback;
     DemoStopCallback onDemoStopCallback;
     RestModeCallback onRestModeCallback;
+    TickerStartCallback onTickerStartCallback;
+    TickerStopCallback onTickerStopCallback;
+    TickerModeCallback onTickerModeCallback;
 
     // HTTP handlers
     void handleRoot();
@@ -146,6 +158,10 @@ class ConfigWebServer
     void handleStartDemo(); // POST: start demo mode with sample data
     void handleStopDemo(); // POST: stop demo mode and resume normal operation
     void handleRestMode(); // POST: control rest mode via REST API
+    void handleTicker(); // GET: show ticker configuration page
+    void handleStartTicker(); // POST: save settings and start ticker mode
+    void handleStopTicker(); // POST: stop ticker mode
+    void handleTickerMode(); // POST: REST API toggle for ticker mode
     void handleDepartures(); // GET: show cached departure data page
     void handleDeparturesData(); // GET: return cached departure data as JSON (AJAX)
     void handleNotFound();

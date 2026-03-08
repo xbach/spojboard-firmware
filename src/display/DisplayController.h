@@ -3,6 +3,7 @@
 
 #include "DisplayManager.h"
 #include "../api/DepartureData.h"
+#include "../api/TickerAPI.h"
 #include "../config/AppConfig.h"
 #include <WiFi.h>
 
@@ -47,6 +48,8 @@ public:
      * @param demoModeActive Demo mode active
      * @param restModeActive Rest mode active (display off)
      * @param departuresLoading Awaiting first fetch (shows loading instead of no departures)
+     * @param tickerModeActive Ticker mode active (candlestick chart)
+     * @param tickerData Ticker data for chart rendering
      */
     void render(const Departure* departures, int departureCount, int numToDisplay,
                 bool wifiConnected, bool apModeActive,
@@ -54,7 +57,9 @@ public:
                 bool apiError, const char* apiErrorMsg,
                 const char* stopName, bool apiKeyConfigured,
                 bool demoModeActive, bool restModeActive,
-                bool departuresLoading);
+                bool departuresLoading,
+                bool tickerModeActive = false,
+                const TickerData* tickerData = nullptr);
 
 private:
     DisplayManager& displayManager;

@@ -4,6 +4,7 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include "../config/AppConfig.h"
 #include "../api/DepartureData.h"
+#include "../api/TickerAPI.h"
 #include "DisplayColors.h"
 
 // Font references
@@ -172,6 +173,13 @@ public:
      * @param password AP password
      */
     void drawAPMode(const char* ssid, const char* password);
+
+    /**
+     * Draw candlestick chart for ticker mode
+     * Renders OHLC candles in rows 0-2 with price display, plus status bar
+     * @param ticker Ticker data with candles and price info
+     */
+    void drawTicker(const TickerData& ticker);
 
 private:
     MatrixPanel_I2S_DMA* display;

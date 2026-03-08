@@ -12,6 +12,7 @@
 #include "api/BvgAPI.h"
 #include "api/MqttAPI.h"
 #include "api/WeatherAPI.h"
+#include "api/TickerAPI.h"
 #include "display/DisplayManager.h"
 #include "display/DisplayController.h"
 #include "network/WiFiManager.h"
@@ -33,6 +34,7 @@ BvgAPI bvgAPI; // Berlin transit API
 MqttAPI mqttAPI; // MQTT transit API
 TransitAPI* transitAPI = nullptr; // Pointer to active API (selected at runtime)
 WeatherAPI weatherAPI; // Weather forecast API
+TickerAPI tickerAPI;   // Twelve Data ticker API
 
 // ============================================================================
 // Configuration Storage (structure defined in config/AppConfig.h)
@@ -67,6 +69,8 @@ struct DisplayUpdateRequest {
     bool restMode;
     bool departuresLoading;
     WeatherData weather;
+    bool tickerMode;
+    TickerData ticker;
     bool needsUpdate;
 } displayRequest = {.needsUpdate = false};
 
@@ -80,10 +84,12 @@ SemaphoreHandle_t apiDataMutex = NULL;
 struct APIFetchRequest {
     bool fetchDeparturesNow;
     bool fetchWeatherNow;
+    bool fetchTickerNow;
     unsigned long lastDeparturesFetch;
     unsigned long lastWeatherFetch;
+    unsigned long lastTickerFetch;
     bool timezoneInitialized; // Set to true after initTimeSync() - prevents fetches with wrong timezone
-} apiFetchRequest = {.fetchDeparturesNow = false, .fetchWeatherNow = false, .lastDeparturesFetch = 0, .lastWeatherFetch = 0, .timezoneInitialized = false};
+} apiFetchRequest = {.fetchDeparturesNow = false, .fetchWeatherNow = false, .fetchTickerNow = false, .lastDeparturesFetch = 0, .lastWeatherFetch = 0, .lastTickerFetch = 0, .timezoneInitialized = false};
 
 // ============================================================================
 // Departure Data (structure defined in api/DepartureData.h)
@@ -106,6 +112,8 @@ bool restModeManual = false; // True if rest mode was activated via REST API (sk
 bool awaitingDepartures = true; // True until first API fetch completes (shows "Loading" instead of "No Departures")
 int lastRestCheckMinute = -1; // Last minute when rest check triggered (0-59)
 WeatherData weatherData = {}; // Global weather state
+bool tickerModeActive = false;  // Ticker mode flag (candlestick chart)
+TickerData tickerData = {};     // Global ticker state (protected by apiDataMutex)
 
 // Network layer is now in network/ modules:
 // - WiFiManager: WiFi connection and AP mode
@@ -359,6 +367,15 @@ void onDemoStop()
         logTimestamp();
         debugPrintln("Demo stopped - returning to rest mode (display off)");
     }
+    else if (tickerModeActive)
+    {
+        // Resume ticker mode (was active before demo)
+        apiFetchRequest.fetchTickerNow = true;
+        signalDisplayUpdate();
+
+        logTimestamp();
+        debugPrintln("Demo stopped - returning to ticker mode");
+    }
     else
     {
         // Resume normal operation (rest mode was not active before demo)
@@ -391,16 +408,87 @@ void onRestMode(bool enabled)
         // Exit rest mode
         restModeActive = false;
         restModeManual = false; // Clear manual flag
-        awaitingDepartures = true; // Show loading state until fresh data arrives
         displayManager.setBrightness(config.brightness); // Restore brightness from config
 
+        if (!tickerModeActive)
+        {
+            awaitingDepartures = true; // Show loading state until fresh data arrives
+            apiFetchRequest.fetchDeparturesNow = true;
+        }
+        else
+        {
+            apiFetchRequest.fetchTickerNow = true; // Resume ticker fetch
+        }
+
         // Signal API task for immediate refresh
-        apiFetchRequest.fetchDeparturesNow = true;
-        apiFetchRequest.fetchWeatherNow = true;
+        apiFetchRequest.fetchWeatherNow = true; // Always (status bar)
         signalDisplayUpdate();
 
         logTimestamp();
         debugPrintln("RestMode: Deactivated via REST API - resuming normal operation");
+    }
+}
+
+// ============================================================================
+// Ticker Mode Callbacks
+// ============================================================================
+
+void onTickerStart()
+{
+    tickerModeActive = true;
+    tickerData.valid = false; // Show "Loading Ticker..."
+    apiFetchRequest.fetchTickerNow = true;
+    signalDisplayUpdate();
+
+    logTimestamp();
+    debugPrintln("Ticker mode activated");
+}
+
+void onTickerStop()
+{
+    tickerModeActive = false;
+    config.tickerEnabled = false;
+    saveConfig(config);
+
+    awaitingDepartures = true; // Show "Loading Departures..."
+    displayManager.setBrightness(config.brightness);
+    apiFetchRequest.fetchDeparturesNow = true;
+    apiFetchRequest.fetchWeatherNow = true;
+    signalDisplayUpdate();
+
+    logTimestamp();
+    debugPrintln("Ticker mode deactivated - resuming departures");
+}
+
+void onTickerMode(bool enabled)
+{
+    if (enabled)
+    {
+        // Check if ticker is configured
+        if (config.tickerApiKey[0] == '\0')
+        {
+            logTimestamp();
+            debugPrintln("Ticker: Cannot enable - no API key configured");
+            return;
+        }
+
+        tickerModeActive = true;
+        tickerData.valid = false;
+        apiFetchRequest.fetchTickerNow = true;
+
+        if (!config.tickerEnabled)
+        {
+            config.tickerEnabled = true;
+            saveConfig(config);
+        }
+
+        signalDisplayUpdate();
+        logTimestamp();
+        debugPrintln("Ticker mode enabled via REST API");
+    }
+    else
+    {
+        onTickerStop();
     }
 }
 
@@ -417,6 +505,7 @@ void apiFetchTask(void* parameter)
         unsigned long now = millis();
         bool shouldFetchDepartures = false;
         bool shouldFetchWeather = false;
+        bool shouldFetchTicker = false;
 
         // Check if immediate fetch is requested (from config save, refresh button, etc.)
         if (apiFetchRequest.fetchDeparturesNow)
@@ -435,12 +524,20 @@ void apiFetchTask(void* parameter)
             debugPrintln("APIFetchTask: Immediate weather fetch requested");
         }
 
+        if (apiFetchRequest.fetchTickerNow)
+        {
+            apiFetchRequest.fetchTickerNow = false;
+            shouldFetchTicker = true;
+            logTimestamp();
+            debugPrintln("APIFetchTask: Immediate ticker fetch requested");
+        }
+
         // Check periodic fetch intervals (only if not in demo/rest mode and WiFi connected)
         // CRITICAL: Also require timezone to be initialized to prevent timestamp parsing with wrong timezone
         if (!demoModeActive && !restModeActive && wifiManager.isConnected() && apiFetchRequest.timezoneInitialized)
         {
-            // Departures fetch interval
-            if (isCityConfigured())
+            // Departures fetch interval (blocked during ticker mode)
+            if (!tickerModeActive && isCityConfigured())
             {
                 unsigned long departuresInterval = (unsigned long)config.refreshInterval * 1000;
                 if (now - apiFetchRequest.lastDeparturesFetch >= departuresInterval ||
@@ -450,7 +547,7 @@ void apiFetchTask(void* parameter)
                 }
             }
 
-            // Weather fetch interval
+            // Weather fetch interval (allowed during ticker - status bar visible)
             if (config.weatherEnabled && config.weatherLatitude != 0.0 && config.weatherLongitude != 0.0)
             {
                 unsigned long weatherInterval = (unsigned long)config.weatherRefreshInterval * 60000;
@@ -458,6 +555,17 @@ void apiFetchTask(void* parameter)
                     apiFetchRequest.lastWeatherFetch == 0)
                 {
                     shouldFetchWeather = true;
+                }
+            }
+
+            // Ticker fetch interval (only when ticker active)
+            if (tickerModeActive && config.tickerApiKey[0] != '\0')
+            {
+                unsigned long tickerInterval = (unsigned long)config.tickerRefreshInterval * 1000;
+                if (now - apiFetchRequest.lastTickerFetch >= tickerInterval ||
+                    apiFetchRequest.lastTickerFetch == 0)
+                {
+                    shouldFetchTicker = true;
                 }
             }
         }
@@ -611,6 +719,54 @@ void apiFetchTask(void* parameter)
             }
         }
 
+        // Fetch ticker data (blocking HTTP call)
+        if (shouldFetchTicker)
+        {
+            apiFetchRequest.lastTickerFetch = now;
+
+            logTimestamp();
+            debugPrintln("APIFetchTask: Fetching ticker (blocking)...");
+
+            // Call Twelve Data API (blocking operation)
+            TickerData newTickerData = tickerAPI.fetchTicker(
+                config.tickerSymbol, config.tickerInterval, config.tickerApiKey);
+
+            // Update global ticker state with mutex protection
+            if (xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(100)))
+            {
+                // Keep last valid data on error
+                if (newTickerData.valid || !tickerData.valid)
+                {
+                    tickerData = newTickerData;
+                }
+                else if (newTickerData.hasError)
+                {
+                    tickerData.hasError = true; // Flag error but keep old candles
+                }
+                xSemaphoreGive(apiDataMutex);
+
+                // Signal display update
+                signalDisplayUpdate();
+
+                logTimestamp();
+                if (newTickerData.valid)
+                {
+                    char msg[64];
+                    snprintf(msg, sizeof(msg), "APIFetchTask: Ticker updated: %d candles", newTickerData.candleCount);
+                    debugPrintln(msg);
+                }
+                else
+                {
+                    debugPrintln("APIFetchTask: Ticker fetch failed");
+                }
+            }
+            else
+            {
+                logTimestamp();
+                debugPrintln("APIFetchTask: Failed to acquire mutex for ticker update");
+            }
+        }
+
         // Sleep for 100ms between checks (prevents busy-waiting, allows web server to run)
         vTaskDelay(pdMS_TO_TICKS(100));
     }
@@ -646,6 +802,8 @@ void displayRenderTask(void* parameter)
             bool localRestMode;
             bool localDeparturesLoading;
             WeatherData localWeather;
+            bool localTickerMode;
+            TickerData localTickerData;
 
             // Take mutex to safely copy display request
             if (xSemaphoreTake(displayMutex, pdMS_TO_TICKS(100)))
@@ -673,6 +831,8 @@ void displayRenderTask(void* parameter)
                 localRestMode = displayRequest.restMode;
                 localDeparturesLoading = displayRequest.departuresLoading;
                 localWeather = displayRequest.weather;
+                localTickerMode = displayRequest.tickerMode;
+                localTickerData = displayRequest.ticker;
 
                 displayRequest.needsUpdate = false;
                 xSemaphoreGive(displayMutex);
@@ -705,7 +865,9 @@ void displayRenderTask(void* parameter)
                                     localCityConfigured,
                                     localDemoMode,
                                     localRestMode,
-                                    localDeparturesLoading);
+                                    localDeparturesLoading,
+                                    localTickerMode,
+                                    &localTickerData);
 
             logTimestamp();
             debugPrintln("DisplayTask: Render complete");
@@ -738,6 +900,8 @@ void signalDisplayUpdate()
         displayRequest.restMode = restModeActive;
         displayRequest.departuresLoading = awaitingDepartures;
         displayRequest.weather = weatherData;
+        displayRequest.tickerMode = tickerModeActive;
+        displayRequest.ticker = tickerData;
         displayRequest.needsUpdate = true;
 
         xSemaphoreGive(displayMutex);
@@ -933,7 +1097,8 @@ void setup()
     }
 
     // Initialize web server with callbacks
-    webServer.setCallbacks(onConfigSave, onRefresh, onReboot, onDemoStart, onDemoStop, onRestMode);
+    webServer.setCallbacks(onConfigSave, onRefresh, onReboot, onDemoStart, onDemoStop, onRestMode,
+                           onTickerStart, onTickerStop, onTickerMode);
     webServer.setDisplayManager(&displayManager); // For OTA progress updates
     if (!webServer.begin())
     {
@@ -989,6 +1154,15 @@ void setup()
             logTimestamp();
             debugPrintln("Setup: Signaled API task for initial weather fetch");
         }
+
+        // Boot activation: restore ticker mode if persistently enabled
+        if (config.tickerEnabled && config.tickerApiKey[0] != '\0')
+        {
+            tickerModeActive = true;
+            apiFetchRequest.fetchTickerNow = true;
+            logTimestamp();
+            debugPrintln("Setup: Ticker mode restored from persistent config");
+        }
     }
 
     signalDisplayUpdate();
@@ -1029,7 +1203,8 @@ void loop()
                           stopName,
                           demoModeActive,
                           restModeActive,
-                          restModeManual);
+                          restModeManual,
+                          tickerModeActive);
 
     // Skip WiFi monitoring and API calls in AP mode
     if (wifiManager.isAPMode())
@@ -1105,12 +1280,20 @@ void loop()
                 {
                     // Exit rest mode (scheduled period ended)
                     restModeActive = false;
-                    awaitingDepartures = true; // Show loading state until fresh data arrives
                     displayManager.setBrightness(config.brightness); // Restore brightness from config
 
+                    if (!tickerModeActive)
+                    {
+                        awaitingDepartures = true; // Show loading state until fresh data arrives
+                        apiFetchRequest.fetchDeparturesNow = true;
+                    }
+                    else
+                    {
+                        apiFetchRequest.fetchTickerNow = true; // Resume ticker fetch
+                    }
+
                     // Signal API task for immediate refresh
-                    apiFetchRequest.fetchDeparturesNow = true;
-                    apiFetchRequest.fetchWeatherNow = true;
+                    apiFetchRequest.fetchWeatherNow = true; // Always (status bar)
                     signalDisplayUpdate();
                     logTimestamp();
                     debugPrintln("RestMode: Deactivated (scheduled) - resuming normal operation");
@@ -1119,9 +1302,9 @@ void loop()
         }
     }
 
-    // Skip ETA recalculation in demo mode or rest mode
+    // Skip ETA recalculation in demo mode, rest mode, or ticker mode
     // (API fetching now handled by dedicated apiFetchTask on Core 1)
-    if (!demoModeActive && !restModeActive)
+    if (!demoModeActive && !restModeActive && !tickerModeActive)
     {
         // Real-time ETA recalculation every 10 seconds (only when connected and have departures)
         if (wifiManager.isConnected() && departureCount > 0)

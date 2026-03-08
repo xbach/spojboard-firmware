@@ -1039,6 +1039,179 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
 }
 
 // ============================================================================
+// Ticker Mode: Candlestick Chart
+// ============================================================================
+
+void DisplayManager::drawTicker(const TickerData& ticker)
+{
+    if (isDrawing || !display)
+        return;
+
+    isDrawing = true;
+    display->clearScreen();
+    delay(1);
+
+    // Colors for candles
+    uint16_t colorGreen = display->color565(0, 200, 0);
+    uint16_t colorRed = display->color565(200, 0, 0);
+
+    // Chart area: rows 0-2 = 24 pixels tall (y: 0-23)
+    const int chartHeight = 24;
+    const int chartTop = 0;
+
+    // Format price text to measure its width
+    char priceText[16];
+    if (ticker.currentPrice >= 1000.0f)
+    {
+        int intPrice = (int)ticker.currentPrice;
+        // Format with comma separator (e.g., "59,137")
+        if (intPrice >= 1000000)
+            snprintf(priceText, sizeof(priceText), "%d,%03d,%03d", intPrice / 1000000, (intPrice / 1000) % 1000, intPrice % 1000);
+        else if (intPrice >= 1000)
+            snprintf(priceText, sizeof(priceText), "%d,%03d", intPrice / 1000, intPrice % 1000);
+        else
+            snprintf(priceText, sizeof(priceText), "%d", intPrice);
+    }
+    else if (ticker.currentPrice >= 1.0f)
+    {
+        snprintf(priceText, sizeof(priceText), "%.2f", ticker.currentPrice);
+    }
+    else
+    {
+        snprintf(priceText, sizeof(priceText), "%.4f", ticker.currentPrice);
+    }
+
+    // Trend arrow: rendered separately in weather font ('2' = up, '4' = down)
+    bool trendUp = (ticker.currentPrice >= ticker.previousClose);
+    char arrowChar = trendUp ? '2' : '4';
+    const int arrowWidth = 5;   // Weather font arrow is 5px wide
+    const int arrowPadLeft = 1; // Weather font arrows have no left padding, add 1px
+
+    // Measure price text width using condensed font
+    display->setFont(fontCondensed);
+    int16_t px1, py1;
+    uint16_t pw, ph;
+    display->getTextBounds(priceText, 0, 0, &px1, &py1, &pw, &ph);
+
+    // Total price+arrow width
+    int priceWithArrowWidth = (int)pw + arrowPadLeft + arrowWidth;
+
+    // Measure symbol text width using small font
+    display->setFont(fontSmall);
+    int16_t sx1, sy1;
+    uint16_t sw, sh;
+    char symbolTrunc[10];
+    strlcpy(symbolTrunc, ticker.symbol, sizeof(symbolTrunc));
+    display->getTextBounds(symbolTrunc, 0, 0, &sx1, &sy1, &sw, &sh);
+
+    // Right-side text area = widest of price+arrow or symbol, plus 2px gap from chart
+    int textWidth = (priceWithArrowWidth > (int)sw) ? priceWithArrowWidth : (int)sw;
+    int priceAreaWidth = textWidth + 3; // 2px gap + 1px padding from right edge
+    int chartWidth = 128 - priceAreaWidth;
+
+    // Number of candles that fit (4px per candle: 3px body + 1px gap)
+    int candlesVisible = chartWidth / 4;
+    if (candlesVisible > ticker.candleCount)
+        candlesVisible = ticker.candleCount;
+    if (candlesVisible < 1)
+        candlesVisible = 1;
+
+    // Offset into candle array (show rightmost/newest candles)
+    int startCandle = ticker.candleCount - candlesVisible;
+    if (startCandle < 0)
+        startCandle = 0;
+
+    // Find price range for Y-axis scaling
+    float minLow = ticker.candles[startCandle].low;
+    float maxHigh = ticker.candles[startCandle].high;
+    for (int i = startCandle; i < startCandle + candlesVisible; i++)
+    {
+        if (ticker.candles[i].low < minLow)
+            minLow = ticker.candles[i].low;
+        if (ticker.candles[i].high > maxHigh)
+            maxHigh = ticker.candles[i].high;
+    }
+
+    float priceRange = maxHigh - minLow;
+    if (priceRange < 0.0001f)
+        priceRange = 0.0001f; // Prevent division by zero
+
+    // Draw each candle
+    for (int i = 0; i < candlesVisible; i++)
+    {
+        const TickerCandle& c = ticker.candles[startCandle + i];
+        int x = i * 4; // 4px per candle slot (3px body + 1px gap)
+
+        bool bullish = (c.close >= c.open);
+        uint16_t candleColor = bullish ? colorGreen : colorRed;
+
+        // Map prices to pixel Y coordinates (inverted: high price = low Y)
+        int yHigh = chartTop + (int)((maxHigh - c.high) / priceRange * (chartHeight - 1));
+        int yLow = chartTop + (int)((maxHigh - c.low) / priceRange * (chartHeight - 1));
+        int yOpen = chartTop + (int)((maxHigh - c.open) / priceRange * (chartHeight - 1));
+        int yClose = chartTop + (int)((maxHigh - c.close) / priceRange * (chartHeight - 1));
+
+        // Clamp to chart area
+        yHigh = constrain(yHigh, chartTop, chartTop + chartHeight - 1);
+        yLow = constrain(yLow, chartTop, chartTop + chartHeight - 1);
+        yOpen = constrain(yOpen, chartTop, chartTop + chartHeight - 1);
+        yClose = constrain(yClose, chartTop, chartTop + chartHeight - 1);
+
+        // Draw wick (1px wide center line from high to low)
+        int wickX = x + 1; // Center of 3px body
+        display->drawFastVLine(wickX, yHigh, yLow - yHigh + 1, candleColor);
+
+        // Draw body (3px wide from open to close)
+        int bodyTop = bullish ? yClose : yOpen;
+        int bodyBot = bullish ? yOpen : yClose;
+        int bodyHeight = bodyBot - bodyTop + 1;
+        if (bodyHeight < 1)
+            bodyHeight = 1; // Doji: minimum 1px
+
+        display->fillRect(x, bodyTop, 3, bodyHeight, candleColor);
+    }
+
+    // Draw text right-aligned: anchor from right edge, calculate X positions backward
+    int rightEdge = 127; // Rightmost pixel
+
+    // Price + arrow layout: [price text][1px pad][arrow 5px] right-aligned
+    int arrowX = rightEdge - arrowWidth + 1;
+    int priceX = arrowX - arrowPadLeft - (int)pw - px1;
+    int priceY = chartTop + chartHeight / 2 + 3; // Approximate vertical center baseline
+
+    uint16_t priceColor = trendUp ? colorGreen : colorRed;
+
+    // Draw price text
+    display->setFont(fontCondensed);
+    display->setTextColor(priceColor);
+    display->setCursor(priceX, priceY);
+    display->print(priceText);
+
+    // Draw trend arrow in weather font
+    char arrowStr[2] = {arrowChar, '\0'};
+    display->setFont(fontWeather);
+    display->setTextColor(priceColor);
+    display->setCursor(arrowX, priceY);
+    display->print(arrowStr);
+
+    // Draw symbol name above price in small font (also right-aligned)
+    int symbolX = rightEdge - (int)sw - sx1 + 1;
+    int symbolY = priceY - 9; // Above price
+    if (symbolY < 6)
+        symbolY = 6;
+    display->setFont(fontSmall);
+    display->setTextColor(COLOR_WHITE);
+    display->setCursor(symbolX, symbolY);
+    display->print(symbolTrunc);
+
+    // Draw status bar (row 3)
+    drawDateTime();
+    delay(1);
+
+    isDrawing = false;
+}
+
+// ============================================================================
 // Weather Helper Functions
 // ============================================================================
 

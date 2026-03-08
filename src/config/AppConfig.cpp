@@ -77,6 +77,13 @@ void loadConfig(Config& config)
     config.weatherLongitude = preferences.getFloat("weatherLon", 14.4378); // Default: Prague
     config.weatherRefreshInterval = constrain(preferences.getInt("weatherRefresh", 15), 5, 120);
 
+    // Load ticker mode configuration
+    config.tickerEnabled = preferences.getBool("tickerOn", false);
+    strlcpy(config.tickerSymbol, preferences.getString("tickerSymbol", "BTC/USD").c_str(), sizeof(config.tickerSymbol));
+    strlcpy(config.tickerInterval, preferences.getString("tickerIntvl", "1day").c_str(), sizeof(config.tickerInterval));
+    strlcpy(config.tickerApiKey, preferences.getString("tickerApiKey", "").c_str(), sizeof(config.tickerApiKey));
+    config.tickerRefreshInterval = constrain(preferences.getInt("tickerRefresh", 120), 120, 600);
+
     config.configured = preferences.getBool("configured", false);
 
     preferences.end();
@@ -162,6 +169,13 @@ void saveConfig(const Config& config)
     preferences.putFloat("weatherLat", config.weatherLatitude);
     preferences.putFloat("weatherLon", config.weatherLongitude);
     preferences.putInt("weatherRefresh", config.weatherRefreshInterval);
+
+    // Save ticker mode configuration
+    preferences.putBool("tickerOn", config.tickerEnabled);
+    preferences.putString("tickerSymbol", config.tickerSymbol);
+    preferences.putString("tickerIntvl", config.tickerInterval);
+    preferences.putString("tickerApiKey", config.tickerApiKey);
+    preferences.putInt("tickerRefresh", config.tickerRefreshInterval);
 
     preferences.putBool("configured", true);
 

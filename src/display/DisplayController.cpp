@@ -12,7 +12,9 @@ void DisplayController::render(const Departure* departures, int departureCount, 
                                bool apiError, const char* apiErrorMsg,
                                const char* stopName, bool apiKeyConfigured,
                                bool demoModeActive, bool restModeActive,
-                               bool departuresLoading)
+                               bool departuresLoading,
+                               bool tickerModeActive,
+                               const TickerData* tickerData)
 {
     // ========================================================================
     // State Machine: Determine what to display based on priority
@@ -35,7 +37,23 @@ void DisplayController::render(const Departure* departures, int departureCount, 
         return;
     }
 
-    // Priority 3: AP mode (show setup credentials)
+    // Priority 3: Ticker mode (candlestick chart)
+    if (tickerModeActive)
+    {
+        if (tickerData && tickerData->valid)
+        {
+            displayManager.drawTicker(*tickerData);
+        }
+        else
+        {
+            const char* sym = (tickerData && tickerData->symbol[0]) ? tickerData->symbol : "";
+            displayManager.drawStatus("Loading Ticker...", sym, COLOR_YELLOW);
+            displayManager.drawDateTime();
+        }
+        return;
+    }
+
+    // Priority 4: AP mode (show setup credentials)
     if (apModeActive)
     {
         displayManager.drawAPMode(apSSID, apPassword);

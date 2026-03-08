@@ -5,6 +5,7 @@
 #include "web/WebTemplates.h"
 #include "web/DashboardPage.h"
 #include "web/DemoPage.h"
+#include "web/TickerPage.h"
 #include "web/DeparturesPage.h"
 #include "web/UpdatePage.h"
 #include "web/ApiHandlers.h"
@@ -22,9 +23,10 @@ ConfigWebServer::ConfigWebServer()
       wifiConnected(false), apModeActive(false),
       apSSID(""), apPassword(""), apClientCount(0),
       apiError(false), apiErrorMsg(""), departureCount(0), stopName(""),
-      demoModeActive(false), restModeActive(false), restModeManual(false),
+      demoModeActive(false), restModeActive(false), restModeManual(false), tickerModeActive(false),
       onSaveCallback(nullptr), onRefreshCallback(nullptr), onRebootCallback(nullptr),
-      onDemoStartCallback(nullptr), onDemoStopCallback(nullptr), onRestModeCallback(nullptr)
+      onDemoStartCallback(nullptr), onDemoStopCallback(nullptr), onRestModeCallback(nullptr),
+      onTickerStartCallback(nullptr), onTickerStopCallback(nullptr), onTickerModeCallback(nullptr)
 {
     otaManager = new OTAUpdateManager();
     githubOTA = new GitHubOTA();
@@ -86,6 +88,14 @@ bool ConfigWebServer::begin()
                { handleStopDemo(); });
     server->on("/rest-mode", HTTP_POST, [this]()
                { handleRestMode(); });
+    server->on("/ticker", HTTP_GET, [this]()
+               { handleTicker(); });
+    server->on("/start-ticker", HTTP_POST, [this]()
+               { handleStartTicker(); });
+    server->on("/stop-ticker", HTTP_POST, [this]()
+               { handleStopTicker(); });
+    server->on("/ticker-mode", HTTP_POST, [this]()
+               { handleTickerMode(); });
     server->on("/departures", HTTP_GET, [this]()
                { handleDepartures(); });
     server->on("/departures-data", HTTP_GET, [this]()
@@ -130,7 +140,9 @@ void ConfigWebServer::handleClient()
 
 void ConfigWebServer::setCallbacks(ConfigSaveCallback onSave, RefreshCallback onRefresh, RebootCallback onReboot,
                                   DemoStartCallback onDemoStart, DemoStopCallback onDemoStop,
-                                  RestModeCallback onRestMode)
+                                  RestModeCallback onRestMode,
+                                  TickerStartCallback onTickerStart, TickerStopCallback onTickerStop,
+                                  TickerModeCallback onTickerMode)
 {
     onSaveCallback = onSave;
     onRefreshCallback = onRefresh;
@@ -138,6 +150,9 @@ void ConfigWebServer::setCallbacks(ConfigSaveCallback onSave, RefreshCallback on
     onDemoStartCallback = onDemoStart;
     onDemoStopCallback = onDemoStop;
     onRestModeCallback = onRestMode;
+    onTickerStartCallback = onTickerStart;
+    onTickerStopCallback = onTickerStop;
+    onTickerModeCallback = onTickerMode;
 }
 
 void ConfigWebServer::setDisplayManager(DisplayManager *displayMgr)
@@ -150,7 +165,8 @@ void ConfigWebServer::updateState(const Config *config,
                                   const char *ssid, const char *password, int clientCount,
                                   bool error, const char *errorMsg,
                                   int depCount, const char *stop,
-                                  bool demoMode, bool restMode, bool restManual)
+                                  bool demoMode, bool restMode, bool restManual,
+                                  bool tickerMode)
 {
     currentConfig = config;
     wifiConnected = connected;
@@ -165,6 +181,7 @@ void ConfigWebServer::updateState(const Config *config,
     demoModeActive = demoMode;
     restModeActive = restMode;
     restModeManual = restManual;
+    tickerModeActive = tickerMode;
 }
 
 void ConfigWebServer::handleRoot()
@@ -1158,6 +1175,151 @@ void ConfigWebServer::handleRestMode()
     Serial.println(enabled ? "enabled via REST API" : "disabled via REST API");
 
     String response = "{\"success\":true,\"restMode\":";
+    response += enabled ? "true" : "false";
+    response += "}";
+    server->send(200, "application/json", response);
+}
+
+// ============================================================================
+// Ticker Mode Handlers
+// ============================================================================
+
+void ConfigWebServer::handleTicker()
+{
+    if (currentConfig == nullptr)
+    {
+        server->send(500, "text/plain", "Server not initialized");
+        return;
+    }
+
+    server->send(200, "text/html", buildTickerPage(
+        tickerModeActive,
+        currentConfig->tickerSymbol,
+        currentConfig->tickerInterval,
+        currentConfig->tickerRefreshInterval,
+        currentConfig->tickerApiKey[0] != '\0'
+    ));
+}
+
+void ConfigWebServer::handleStartTicker()
+{
+    if (currentConfig == nullptr)
+    {
+        server->send(500, "application/json", "{\"success\":false,\"error\":\"Server not initialized\"}");
+        return;
+    }
+
+    // Parse form data and save to config
+    Config newConfig = *currentConfig;
+
+    if (server->hasArg("ticker_symbol"))
+    {
+        strlcpy(newConfig.tickerSymbol, server->arg("ticker_symbol").c_str(), sizeof(newConfig.tickerSymbol));
+    }
+
+    if (server->hasArg("ticker_interval"))
+    {
+        String interval = server->arg("ticker_interval");
+        if (interval == "1h" || interval == "4h" || interval == "1day")
+        {
+            strlcpy(newConfig.tickerInterval, interval.c_str(), sizeof(newConfig.tickerInterval));
+        }
+    }
+
+    if (server->hasArg("ticker_api_key") && server->arg("ticker_api_key").length() > 0)
+    {
+        strlcpy(newConfig.tickerApiKey, server->arg("ticker_api_key").c_str(), sizeof(newConfig.tickerApiKey));
+    }
+
+    if (server->hasArg("ticker_refresh"))
+    {
+        newConfig.tickerRefreshInterval = server->arg("ticker_refresh").toInt();
+        if (newConfig.tickerRefreshInterval < 120) newConfig.tickerRefreshInterval = 120;
+        if (newConfig.tickerRefreshInterval > 600) newConfig.tickerRefreshInterval = 600;
+    }
+
+    // Validate API key is present
+    if (newConfig.tickerApiKey[0] == '\0')
+    {
+        server->send(400, "application/json", "{\"success\":false,\"error\":\"API key is required\"}");
+        return;
+    }
+
+    // Enable and persist
+    newConfig.tickerEnabled = true;
+    newConfig.configured = true;
+
+    // Update global config
+    // Note: onSaveCallback would restart if WiFi changed, so we save directly here
+    *const_cast<Config*>(currentConfig) = newConfig;
+    saveConfig(newConfig);
+
+    // Activate ticker via callback
+    if (onTickerStartCallback != nullptr)
+    {
+        onTickerStartCallback();
+    }
+
+    logTimestamp();
+    Serial.print("Ticker started: ");
+    Serial.println(newConfig.tickerSymbol);
+
+    server->send(200, "application/json", "{\"success\":true,\"message\":\"Ticker mode activated\"}");
+}
+
+void ConfigWebServer::handleStopTicker()
+{
+    if (onTickerStopCallback != nullptr)
+    {
+        onTickerStopCallback();
+    }
+
+    logTimestamp();
+    Serial.println("Ticker mode stopped");
+
+    server->sendHeader("Location", "/");
+    server->send(302, "text/plain", "");
+}
+
+void ConfigWebServer::handleTickerMode()
+{
+    // Block in AP mode
+    if (apModeActive)
+    {
+        server->send(403, "application/json", "{\"success\":false,\"error\":\"Ticker mode not available in AP mode\"}");
+        return;
+    }
+
+    // Parse JSON request body: {"enabled": true/false}
+    String body = server->arg("plain");
+
+    bool enabled = false;
+    int enabledStart = body.indexOf("\"enabled\":");
+    if (enabledStart >= 0)
+    {
+        enabledStart += 10;
+        while (enabledStart < (int)body.length() && (body[enabledStart] == ' ' || body[enabledStart] == '\t'))
+        {
+            enabledStart++;
+        }
+        enabled = body.substring(enabledStart, enabledStart + 4) == "true";
+    }
+    else
+    {
+        server->send(400, "application/json", "{\"success\":false,\"error\":\"Missing 'enabled' field\"}");
+        return;
+    }
+
+    if (onTickerModeCallback != nullptr)
+    {
+        onTickerModeCallback(enabled);
+    }
+
+    logTimestamp();
+    Serial.print("Ticker mode ");
+    Serial.println(enabled ? "enabled via REST API" : "disabled via REST API");
+
+    String response = "{\"success\":true,\"tickerMode\":";
     response += enabled ? "true" : "false";
     response += "}";
     server->send(200, "application/json", response);

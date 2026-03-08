@@ -154,6 +154,13 @@ struct Config
     float weatherLongitude;     // GPS longitude (e.g., 14.4378 for Prague)
     int weatherRefreshInterval; // Minutes between weather fetches (default: 15)
 
+    // Ticker mode configuration (easter egg — candlestick chart display)
+    bool tickerEnabled;            // Persistent enable — auto-activates on boot
+    char tickerSymbol[16];         // Twelve Data symbol (e.g., "BTC/USD", "AAPL")
+    char tickerInterval[8];        // Candle interval: "1h", "4h", "1day"
+    char tickerApiKey[64];         // Twelve Data API key
+    int tickerRefreshInterval;     // Seconds between fetches (120-600)
+
     bool configured;
 };
 
