@@ -5,7 +5,7 @@
 
 void initTimeSync()
 {
-    configTime(GMT_OFFSET_SEC, DAYLIGHT_OFFSET_SEC, NTP_SERVER);
+    configTzTime(POSIX_TZ, NTP_SERVER);
 }
 
 bool syncTime(int maxAttempts, int delayMs)

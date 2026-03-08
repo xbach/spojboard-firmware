@@ -10,9 +10,9 @@
 // NTP Server
 #define NTP_SERVER "pool.ntp.org"
 
-// Timezone: CET/CEST (Prague)
-#define GMT_OFFSET_SEC 3600 // CET = UTC+1
-#define DAYLIGHT_OFFSET_SEC 3600 // CEST = UTC+2
+// Timezone: CET/CEST with European DST rules
+// M3.5.0/2 = last Sunday of March at 02:00, M10.5.0/3 = last Sunday of October at 03:00
+#define POSIX_TZ "CET-1CEST,M3.5.0/2,M10.5.0/3"
 
 // ============================================================================
 // Time Synchronization Functions
