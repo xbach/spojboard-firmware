@@ -253,39 +253,20 @@ SpojBoard includes three custom fonts optimized for LED matrix display:
 
 ### DepartureMono_Condensed5pt8b
 - **Size**: 5pt condensed
-- **Use case**: Automatically used for destinations >16 characters
+- **Use case**: Long destinations, secondary ETAs, absolute departure times (>60min)
 - **Character width**: ~3-4 pixels (narrower than regular)
 - **Line height**: 8 pixels
-- **Capacity**: Up to 23 characters on 128px width
 - **File**: [src/fonts/DepartureMonoCondensed5pt8b.h](../src/fonts/DepartureMonoCondensed5pt8b.h)
 
 ### Font Selection Logic
 
-The display automatically chooses the appropriate font based on destination length:
+The display automatically chooses the appropriate font based on destination length and available space. Font selection is handled by `calcDestLayout()` in `DisplayManager.cpp` using a threshold-based system:
 
-```cpp
-// From DisplayManager.cpp:114-132
-int destLen = strlen(destConverted);
-int normalMaxChars = dep.hasAC ? 14 : 15;  // AC indicator takes space
-
-// Adjust for ETA width BEFORE font selection (2-digit and 3-digit numbers)
-normalMaxChars -= (dep.eta >= 100 ? 2 : (dep.eta >= 10 ? 1 : 0));
-
-if (destLen > normalMaxChars) {
-    // Long destination - use condensed font
-    destFont = fontCondensed;
-    maxChars = 23;
-} else {
-    // Short destination - use regular font
-    destFont = fontMedium;
-    maxChars = normalMaxChars;
-}
-
-// Font selection is based on adjusted normalMaxChars that already accounts for:
-// - AC indicator (reduces by 1 character)
-// - ETA width (2-digit: -1 char, 3-digit: -2 chars)
-// Condensed font always gets 23 characters max (no further ETA reduction)
-```
+- A `mediumThreshold` (11-14 chars) is computed based on active display features (dual ETA, platform, absolute time)
+- Destinations at or below the threshold use the regular (medium) font at ~6px/char
+- Longer destinations switch to the condensed font at ~4px/char
+- `maxChars` is computed from the actual available pixel space after subtracting route box, ETA area, platform reservation, and AC indicator
+- The AC indicator reduces the threshold by 1 character
 
 ## Character Set Coverage
 

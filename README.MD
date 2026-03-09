@@ -30,7 +30,7 @@ Standalone operation with web-based configuration, no external server required f
 - **Web Configuration**: Easy setup via tabbed web interface with city selector and per-tab save
 - **Persistent Settings**: Configuration stored in ESP32 flash memory, survives reboots
 - **Extended Character Support**: Custom 8-bit ISO-8859-2 fonts with automatic UTF-8 conversion (ž, š, č, ř, ň, ť, ď, ß, etc.)
-- **Adaptive Font Rendering**: Automatically switches to condensed font for long destination names (>16 chars), fitting up to 23 characters on screen
+- **Adaptive Font Rendering**: Automatically switches to condensed font for long destination names based on available space (accounting for ETA, platform, and dual ETA layout)
 - **Optional Scrolling**: Enable scrolling for long destination names that exceed display width (disabled by default)
 - **Headsign Shortening**: Automatic shortening of long Czech words (e.g., "Nádraží" → "Nádr.", "nádraží" → "nádr.") to maximize display space
 - **Trip Filtering**: Configurable minimum departure time (default 3 minutes) to hide departures that are too soon to catch
@@ -204,7 +204,7 @@ When "Show multiple departure times" is enabled, each row shows the next two dep
 │ 15.02. Saturday  ☀ 18°  14:35   │  Row 4
 └────────────────────────────────────┘
 ```
-Both ETAs are independently color-coded (red < 2min, yellow 2-5min, white > 5min). If no matching second departure exists, only the first ETA is shown.
+Both ETAs are independently color-coded (red < 2min, yellow 2-5min, white > 5min). If no matching second departure exists, only the first ETA is shown. When a departure is more than 60 minutes away, the absolute departure time (e.g., "14:30") is shown instead of minutes, and dual ETA is suppressed for that row.
 
 **Weather in Status Bar** (when enabled):
 - Weather icon and temperature displayed between day name and time
@@ -215,7 +215,7 @@ Both ETAs are independently color-coded (red < 2min, yellow 2-5min, white > 5min
 - Line numbers displayed in their route color on uniform 18-pixel black background boxes (fits 1-3 characters)
 - Route numbers are horizontally centered within their boxes for consistent alignment
 - All destinations start at the same X position regardless of route length
-- Adaptive font rendering: automatically switches to condensed font for destinations longer than 16 characters
+- Adaptive font rendering: automatically switches to condensed font for long destinations based on available space
 - Destination text dynamically truncated based on ETA display width and font choice to prevent overlap
 - Status bar: numeric date (DD.MM.) + full localized day name (English/Czech/German) + optional weather + time
 
@@ -261,7 +261,7 @@ These colors are used by default and can be customized via the web interface:
 - **Red**: < 2 minutes
 - **Orange**: Delayed
 
-When dual ETA mode is enabled, both times are independently color-coded and use condensed font.
+When dual ETA mode is enabled, both times are independently color-coded. The secondary ETA uses condensed font. Departures more than 60 minutes away display the absolute time (e.g., "14:30") instead of minutes.
 
 ## Weather Display
 

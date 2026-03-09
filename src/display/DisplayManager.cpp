@@ -252,6 +252,9 @@ DestLayout DisplayManager::calcDestLayout(const Departure &dep)
         layout.font = fontCondensed;
         layout.maxChars = availableSpace / 4 - 1; // 4px per char, -1 for padding
     }
+    // Reclaim 1 condensed char in the tightest layout (dual ETA + platform, no AC)
+    if (layout.dualEta && layout.willShowPlatform && !dep.hasAC)
+      layout.maxChars += 1;
 
     // Safety cap: prevent buffer overflow
     if (layout.maxChars > 63)
@@ -440,7 +443,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         char eta2Text[8];
         if (dep.secondEta < 1)
             snprintf(eta2Text, sizeof(eta2Text), "<1'");
-        else if (dep.secondEta > 100)
+        else if (dep.secondEta >= 100)
             snprintf(eta2Text, sizeof(eta2Text), ">1h");
         else
             snprintf(eta2Text, sizeof(eta2Text), "%d'", dep.secondEta);
