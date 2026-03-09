@@ -1019,7 +1019,7 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
 
     // Clear the destination area (from destX to just before platform/ETA)
     int clearWidth = layout.spaceCalcEta - layout.destX - layout.platformReservedPx;
-    display->fillRect(layout.destX, y + 1, clearWidth, 8, COLOR_BLACK);
+    display->fillRect(layout.destX, y, clearWidth, 8, COLOR_BLACK);
 
     // Apply scroll offset and draw
     display->setFont(layout.font);
