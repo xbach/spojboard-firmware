@@ -1,5 +1,6 @@
 #include "DisplayTab.h"
 #include "../WebUtils.h"
+#include "../../../config/AppConfig.h"
 
 // Helper: Build line colors table
 static String buildLineColorsTable(const Config* config)
@@ -8,7 +9,7 @@ static String buildLineColorsTable(const Config* config)
 
     html += "<div class='form-group'>";
     html += "<div class='form-group-title'>Line Colors</div>";
-    html += "<div class='help-text' style='margin-bottom:10px;'>use * as position wildcards: 9* matches 90-99, 4** matches 400-499. exact matches take priority over patterns. unmapped lines use defaults.</div>";
+    html += "<div class='help-text' style='margin-bottom:10px;'>* = single-char wildcard, ? = optional wildcard (after *). examples: 9* matches 90-99, S*? matches S1-S99. priority: exact &gt; fixed-length (*) &gt; flexible (?).</div>";
 
     // Parse existing line color map
     String lineColorMap = String(config->lineColorMap);
@@ -107,10 +108,13 @@ static String buildLineColorsTable(const Config* config)
     html += "</tbody>";
     html += "</table>";
 
-    html += "<button type='button' class='secondary' onclick='addLineColorRow()'>+ Add Line Color</button>";
+    html += "<button type='button' class='secondary' onclick='addLineColorRow()'>+ Add Line Color</button> ";
+    html += "<button type='button' class='secondary' onclick='restoreDefaultLineColors()'>Restore Defaults</button>";
 
-    // Hidden input to store serialized data
-    html += "<input type='hidden' id='lineColorMapData' name='line_color_map' value=''>";
+    // Hidden input to store serialized data; data-default carries the compiled-in default for JS restore
+    html += "<input type='hidden' id='lineColorMapData' name='line_color_map' value='' data-default='";
+    html += DEFAULT_LINE_COLOR_MAP;
+    html += "'>";
 
     html += "</div>"; // End form-group
 

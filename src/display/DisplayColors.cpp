@@ -33,40 +33,6 @@ void initColors(MatrixPanel_I2S_DMA* display)
 }
 
 // ============================================================================
-// Line Color Helper
-// ============================================================================
-
-uint16_t getLineColor(const char* line)
-{
-    // Metro lines
-    if (strcmp(line, "A") == 0)
-        return COLOR_GREEN;
-    if (strcmp(line, "B") == 0)
-        return COLOR_YELLOW;
-    if (strcmp(line, "C") == 0)
-        return COLOR_RED;
-
-    // Tram lines
-    if ((line[0] >= '1' && line[0] <= '9' && strlen(line) == 1) || (line[0] == '1' && strlen(line) == 2) ||
-        (line[0] == '2' && strlen(line) == 2))
-        return COLOR_WHITE; // Trams 1-29
-    // Bus & T-Bus lines
-    if ((line[0] == '5' && strlen(line) == 2) || (line[0] == '1' && strlen(line) == 3) ||
-        (line[0] == '2' && strlen(line) == 3))
-        return COLOR_PURPLE; // Buses 100-299, T-Bus 50-59
-
-    // S-trains
-    if (line[0] == 'S')
-        return COLOR_BLUE;
-
-    // Night lines
-    if (line[0] == '9' && strlen(line) <= 3 && strlen(line) >= 2)
-        return COLOR_CYAN; // Night lines 91-99, 900-999
-
-    return COLOR_YELLOW; // Default
-}
-
-// ============================================================================
 // Color Name Parsing
 // ============================================================================
 
@@ -100,128 +66,172 @@ uint16_t parseColorName(const char* colorName)
 // Configurable Line Colors with Pattern Matching
 // ============================================================================
 
+// Parse a pattern string into prefix length, required wildcards (*), and optional wildcards (?)
+// Returns false if pattern is invalid
+static bool parsePattern(const char* pattern, size_t patternLen, size_t& prefixLen, int& asteriskCount,
+                         int& questionCount)
+{
+    asteriskCount = 0;
+    questionCount = 0;
+    prefixLen = 0;
+
+    // Scan from end: first count '?' chars, then '*' chars, rest is prefix
+    int i = patternLen - 1;
+
+    // Count trailing '?' (optional positions)
+    while (i >= 0 && pattern[i] == '?')
+    {
+        questionCount++;
+        i--;
+    }
+
+    // Count '*' before the '?' block (required positions)
+    while (i >= 0 && pattern[i] == '*')
+    {
+        asteriskCount++;
+        i--;
+    }
+
+    prefixLen = (i >= 0) ? (size_t)(i + 1) : 0;
+
+    // Must have at least one '*'
+    if (asteriskCount == 0)
+        return false;
+
+    // No wildcards allowed in prefix
+    for (size_t j = 0; j < prefixLen; j++)
+    {
+        if (pattern[j] == '*' || pattern[j] == '?')
+            return false;
+    }
+
+    return true;
+}
+
+// Check if a line matches a parsed pattern
+static bool matchesPattern(const char* line, size_t lineLen, const char* prefix, size_t prefixLen, int asteriskCount,
+                           int questionCount)
+{
+    size_t minLen = prefixLen + asteriskCount;
+    size_t maxLen = prefixLen + asteriskCount + questionCount;
+
+    if (lineLen < minLen || lineLen > maxLen)
+        return false;
+
+    // Check prefix match
+    if (prefixLen > 0 && strncasecmp(line, prefix, prefixLen) != 0)
+        return false;
+
+    return true;
+}
+
 uint16_t getLineColorWithConfig(const char* line, const char* configMap)
 {
     if (!line)
         return COLOR_WHITE;
 
-    // Check user configuration first
-    if (configMap && strlen(configMap) > 0)
+    if (!configMap || strlen(configMap) == 0)
+        return COLOR_WHITE;
+
+    size_t lineLen = strlen(line);
+    char mapCopy[256];
+
+    // Pass 1: Exact matches
+    strlcpy(mapCopy, configMap, sizeof(mapCopy));
+    char* token = strtok(mapCopy, ",");
+    while (token != nullptr)
     {
-        // Make a mutable copy for strtok
-        char mapCopy[256];
-        strlcpy(mapCopy, configMap, sizeof(mapCopy));
-
-        // Two-pass approach: exact matches first, then patterns
-        // Pass 1: Check for exact match
-        char* token = strtok(mapCopy, ",");
-        while (token != nullptr)
+        char* equals = strchr(token, '=');
+        if (equals)
         {
-            char* equals = strchr(token, '=');
-            if (equals)
+            *equals = '\0';
+            const char* configLine = token;
+            const char* colorName = equals + 1;
+
+            size_t configLineLen = strlen(configLine);
+            bool hasWildcard = false;
+            for (size_t i = 0; i < configLineLen; i++)
             {
-                *equals = '\0'; // Split into line and color
-                const char* configLine = token;
-                const char* colorName = equals + 1;
-
-                // Skip patterns in first pass
-                size_t configLineLen = strlen(configLine);
-                bool isPattern = (configLineLen > 0 && configLine[configLineLen - 1] == '*');
-
-                if (!isPattern)
+                if (configLine[i] == '*' || configLine[i] == '?')
                 {
-                    // Exact match comparison (case-insensitive)
-                    if (strcasecmp(line, configLine) == 0)
+                    hasWildcard = true;
+                    break;
+                }
+            }
+
+            if (!hasWildcard && strcasecmp(line, configLine) == 0)
+            {
+                uint16_t color = parseColorName(colorName);
+                if (color != 0)
+                    return color;
+            }
+        }
+        token = strtok(nullptr, ",");
+    }
+
+    // Pass 2: Fixed-length patterns (* only, no ?)
+    strlcpy(mapCopy, configMap, sizeof(mapCopy));
+    token = strtok(mapCopy, ",");
+    while (token != nullptr)
+    {
+        char* equals = strchr(token, '=');
+        if (equals)
+        {
+            *equals = '\0';
+            const char* configLine = token;
+            const char* colorName = equals + 1;
+
+            size_t configLineLen = strlen(configLine);
+            size_t prefixLen;
+            int asteriskCount, questionCount;
+
+            if (configLineLen > 0 && parsePattern(configLine, configLineLen, prefixLen, asteriskCount, questionCount))
+            {
+                if (questionCount == 0) // Fixed-length only in this pass
+                {
+                    if (matchesPattern(line, lineLen, configLine, prefixLen, asteriskCount, questionCount))
                     {
                         uint16_t color = parseColorName(colorName);
                         if (color != 0)
-                        {
-                            return color; // Found exact match
-                        }
+                            return color;
                     }
                 }
             }
-            token = strtok(nullptr, ",");
         }
-
-        // Pass 2: Check pattern matches (copy again for second strtok pass)
-        strlcpy(mapCopy, configMap, sizeof(mapCopy));
-        token = strtok(mapCopy, ",");
-        while (token != nullptr)
-        {
-            char* equals = strchr(token, '=');
-            if (equals)
-            {
-                *equals = '\0';
-                const char* configLine = token;
-                const char* colorName = equals + 1;
-
-                // Only process patterns in second pass
-                size_t configLineLen = strlen(configLine);
-                if (configLineLen > 0 && configLine[configLineLen - 1] == '*')
-                {
-                    // Count asterisks and find prefix length
-                    // Pattern format: PREFIX*** where * count determines wildcard positions
-                    // Examples: 9* = 2-char lines starting with 9 (91-99)
-                    //           95* = 3-char lines starting with 95 (950-959)
-                    //           4** = 3-char lines starting with 4 (400-499)
-                    int asteriskCount = 0;
-                    size_t prefixLen = 0;
-                    bool invalidPattern = false;
-
-                    // Scan from end to find continuous asterisks
-                    for (int i = configLineLen - 1; i >= 0; i--)
-                    {
-                        if (configLine[i] == '*')
-                        {
-                            asteriskCount++;
-                        }
-                        else
-                        {
-                            // Found non-asterisk, rest should be prefix
-                            prefixLen = i + 1;
-                            break;
-                        }
-                    }
-
-                    // Validate pattern: must have prefix (no leading asterisks)
-                    if (prefixLen == 0)
-                    {
-                        invalidPattern = true; // Pattern like "***" is invalid
-                    }
-
-                    // Check if there are asterisks in the middle (not allowed)
-                    for (size_t i = 0; i < prefixLen; i++)
-                    {
-                        if (configLine[i] == '*')
-                        {
-                            invalidPattern = true; // Pattern like "9*5*" is invalid
-                            break;
-                        }
-                    }
-
-                    if (!invalidPattern && asteriskCount > 0)
-                    {
-                        // Expected total length = prefix + number of wildcards
-                        size_t expectedLen = prefixLen + asteriskCount;
-                        size_t lineLen = strlen(line);
-
-                        // Match if: correct length AND starts with prefix
-                        if (lineLen == expectedLen && strncasecmp(line, configLine, prefixLen) == 0)
-                        {
-                            uint16_t color = parseColorName(colorName);
-                            if (color != 0)
-                            {
-                                return color; // Found pattern match
-                            }
-                        }
-                    }
-                }
-            }
-            token = strtok(nullptr, ",");
-        }
+        token = strtok(nullptr, ",");
     }
 
-    // Fall back to existing hardcoded defaults
-    return getLineColor(line);
+    // Pass 3: Flexible patterns (with ?)
+    strlcpy(mapCopy, configMap, sizeof(mapCopy));
+    token = strtok(mapCopy, ",");
+    while (token != nullptr)
+    {
+        char* equals = strchr(token, '=');
+        if (equals)
+        {
+            *equals = '\0';
+            const char* configLine = token;
+            const char* colorName = equals + 1;
+
+            size_t configLineLen = strlen(configLine);
+            size_t prefixLen;
+            int asteriskCount, questionCount;
+
+            if (configLineLen > 0 && parsePattern(configLine, configLineLen, prefixLen, asteriskCount, questionCount))
+            {
+                if (questionCount > 0) // Flexible patterns only in this pass
+                {
+                    if (matchesPattern(line, lineLen, configLine, prefixLen, asteriskCount, questionCount))
+                    {
+                        uint16_t color = parseColorName(colorName);
+                        if (color != 0)
+                            return color;
+                    }
+                }
+            }
+        }
+        token = strtok(nullptr, ",");
+    }
+
+    return COLOR_WHITE; // Absolute fallback
 }

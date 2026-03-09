@@ -37,6 +37,11 @@
 #define GITHUB_REPO_NAME "spojboard-firmware"
 
 // ============================================================================
+// Default Line Color Map (Prague transit)
+// ============================================================================
+#define DEFAULT_LINE_COLOR_MAP "A=GREEN,B=YELLOW,C=RED,*=WHITE,1*=WHITE,2*=WHITE,5*=PURPLE,1**=PURPLE,2**=PURPLE,S*?=BLUE,9*?=CYAN,*???=YELLOW"
+
+// ============================================================================
 // Hardware Configuration (HUB75 Display)
 // ============================================================================
 #define PANEL_WIDTH 64

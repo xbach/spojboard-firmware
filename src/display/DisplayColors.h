@@ -30,14 +30,6 @@ extern uint16_t COLOR_CYAN;
 void initColors(MatrixPanel_I2S_DMA* display);
 
 /**
- * Get color for transit line number
- * Returns appropriate color based on line type (Metro, Tram, S-train, Night)
- * @param line Line number/code (e.g., "A", "31", "S9", "91")
- * @return RGB565 color code
- */
-uint16_t getLineColor(const char* line);
-
-/**
  * Parse color name to RGB565 value
  * @param colorName Color name (RED, GREEN, BLUE, YELLOW, ORANGE, PURPLE, CYAN, WHITE)
  * @return RGB565 color value, or 0 if invalid
@@ -45,20 +37,20 @@ uint16_t getLineColor(const char* line);
 uint16_t parseColorName(const char* colorName);
 
 /**
- * Get line color with user configuration override
- * Checks config first (exact match, then pattern match), falls back to hardcoded defaults
+ * Get line color from configuration map
+ * Three-pass matching: exact match -> fixed-length patterns (* only) -> flexible patterns (with ?)
  *
- * Pattern format: PREFIX*** where asterisk count determines wildcard positions
- * - 9* matches 2-digit lines starting with 9 (91-99)
- * - 95* matches 3-digit lines starting with 95 (950-959)
- * - 4** matches 3-digit lines starting with 4 (400-499)
- * - C*** matches 4-digit lines starting with C (C000-C999)
+ * Wildcards (* = required position, ? = optional position after *):
+ * - * matches any single char (* alone = any 1-char line)
+ * - 9* matches exactly 2-char lines starting with 9
+ * - S*? matches 2 or 3-char lines starting with S
+ * - *??? matches any line of 1-4 chars (practical catch-all)
  *
- * Invalid patterns: leading asterisks (***), non-trailing asterisks (9*1)
+ * Rules: ? must follow * or ?, no chars after ?, no wildcards in prefix
  *
  * @param line Line number/code
- * @param configMap User configuration string (format: "A=GREEN,B=YELLOW,9*=CYAN,95*=BLUE,...")
- * @return RGB565 color value
+ * @param configMap Configuration string (format: "A=GREEN,B=YELLOW,9*=CYAN,S*?=BLUE,...")
+ * @return RGB565 color value (COLOR_WHITE if nothing matches)
  */
 uint16_t getLineColorWithConfig(const char* line, const char* configMap);
 

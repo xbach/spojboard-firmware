@@ -148,7 +148,7 @@ The built-in web server provides a tabbed configuration interface with per-tab s
   - Berlin: Stop IDs
   - MQTT: Broker, topics, field mappings - see [MQTT Guide](docs/MQTT.md)
   - Refresh interval, minimum departure time, number of departures
-- **Display Tab** (🖥): Brightness, custom line colors with wildcard patterns, dual ETA toggle, scrolling
+- **Display Tab** (🖥): Brightness, custom line colors with wildcard patterns and restore-to-defaults, dual ETA toggle, scrolling
 - **Optional Tab** (⭐): Weather display, rest mode periods, debug mode (STA mode only)
 - **System Tab** (⚙): System info, firmware updates, actions (STA mode only)
 - **Action Bar**: Force refresh, demo mode, rest mode toggle (context-aware per mode)
@@ -233,26 +233,26 @@ Both ETAs are independently color-coded (red < 2min, yellow 2-5min, white > 5min
 
 ### Line Numbers (Default Colors)
 
-These colors are used by default and can be customized via the web interface:
+These are the default colors (pre-configured, fully customizable via web interface):
 
 - **Green**: Metro A
-- **Yellow**: Metro B, Default fallback for all unmapped lines
+- **Yellow**: Default fallback for unmapped lines (`*???=YELLOW`)
 - **Red**: Metro C
-- **White**: Trams 1-29 (e.g., 2, 5, 7, 10, 12, 15, 17, 22)
-- **Purple**: 2-digit T-buses 50-59 & 3-digit buses 100-299 (e.g., 59, 100, 102, 200)
-- **Blue**: S-trains (S1, S2, S3, etc.)
-- **Cyan**: Night lines 91-99, 900-999
+- **White**: Single-char lines (`*=WHITE`), trams 10-29 (`1*=WHITE`, `2*=WHITE`)
+- **Purple**: T-buses 50-59 (`5*=PURPLE`), buses 100-299 (`1**=PURPLE`, `2**=PURPLE`)
+- **Blue**: S-trains (`S*?=BLUE` — matches S1, S41, etc.)
+- **Cyan**: Night lines (`9*?=CYAN` — matches 91-99, 900-999)
 
 **Customizing Line Colors:**
-- Configure specific colors for individual lines (e.g., "A=RED")
-- Use position-based wildcard patterns with asterisks as position placeholders:
-  - "9*" matches 2-digit lines (91-99)
-  - "95*" matches 3-digit lines (950-959)
-  - "4**" matches 3-digit lines (400-499)
-  - "C***" matches 4-digit lines (C000-C999)
-- Exact matches take priority over patterns
-- Invalid patterns (leading asterisks "***", non-trailing asterisks "9*1") are ignored
-- Unmapped lines use the hardcoded defaults above
+- Configure specific colors for individual lines (e.g., `A=RED`)
+- Use wildcards: `*` = required single-char position, `?` = optional position (must follow `*`):
+  - `9*` matches exactly 2-char lines starting with 9 (91-99)
+  - `S*?` matches 2 or 3-char lines starting with S (S1, S41)
+  - `*???` matches any line of 1-4 chars (practical catch-all)
+  - `4**` matches exactly 3-char lines starting with 4 (400-499)
+- Three-pass priority: exact matches → fixed-length patterns (`*` only) → flexible patterns (with `?`)
+- Invalid patterns (wildcards in prefix like `9*1`, `?` before `*`) are ignored
+- Use "Restore Defaults" button in web UI to reset to built-in Prague transit defaults
 - Available colors: RED, GREEN, BLUE, YELLOW, ORANGE, PURPLE, CYAN, WHITE
 
 ### ETA Colors

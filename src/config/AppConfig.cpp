@@ -61,7 +61,11 @@ void loadConfig(Config& config)
     config.numDepartures = constrain(preferences.getInt("numDeps", 3), 1, 3);
     config.minDepartureTime = constrain(preferences.getInt("minDepTime", 3), 0, 30);
     config.brightness = constrain(preferences.getInt("brightness", 90), 0, 255);
-    strlcpy(config.lineColorMap, preferences.getString("lineColorMap", "").c_str(), sizeof(config.lineColorMap));
+    strlcpy(config.lineColorMap, preferences.getString("lineColorMap", DEFAULT_LINE_COLOR_MAP).c_str(), sizeof(config.lineColorMap));
+    if (strlen(config.lineColorMap) == 0)
+    {
+        strlcpy(config.lineColorMap, DEFAULT_LINE_COLOR_MAP, sizeof(config.lineColorMap));
+    }
     strlcpy(config.platformSymbolMap, preferences.getString("pltSymMap", "").c_str(), sizeof(config.platformSymbolMap));
     strlcpy(config.city, preferences.getString("city", "Prague").c_str(), sizeof(config.city));  // Default: Prague for backward compatibility
     strlcpy(config.language, preferences.getString("language", "en").c_str(), sizeof(config.language));  // Default: English

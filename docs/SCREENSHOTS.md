@@ -47,7 +47,7 @@ Web-based configuration interface showing:
 
 Additional configuration options including:
 - Display brightness slider (0-255)
-- Custom line colors with wildcard pattern support (e.g., "9*=CYAN" for all night lines)
+- Custom line colors with wildcard pattern support (e.g., "9*=CYAN", "S*?=BLUE") and restore-to-defaults button
 - Action buttons for refresh, firmware update, and reboot
 - GitHub-based OTA update checker
 - Factory reset option

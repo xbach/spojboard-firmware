@@ -318,6 +318,31 @@ function deleteLineColorRow(btn) {
     }
 }
 
+function restoreDefaultLineColors() {
+    var hidden = document.getElementById('lineColorMapData');
+    if (!hidden) return;
+    var defaultMap = hidden.getAttribute('data-default') || '';
+    var tbody = document.getElementById('lineColorsTableBody');
+    if (!tbody) return;
+    while (tbody.firstChild) tbody.removeChild(tbody.firstChild);
+    if (!defaultMap) return;
+    var colors = ['RED','GREEN','BLUE','YELLOW','ORANGE','PURPLE','CYAN','WHITE'];
+    defaultMap.split(',').forEach(function(pair) {
+        var parts = pair.split('=');
+        if (parts.length !== 2) return;
+        var line = parts[0].trim();
+        var color = parts[1].trim();
+        var row = tbody.insertRow();
+        var td1 = row.insertCell(); var inp = document.createElement('input');
+        inp.type = 'text'; inp.className = 'line-input'; inp.value = line; inp.placeholder = 'Line number'; td1.appendChild(inp);
+        var td2 = row.insertCell(); var sel = document.createElement('select'); sel.className = 'color-select';
+        colors.forEach(function(c) { var o = document.createElement('option'); o.value = c; o.textContent = c; if (c === color) o.selected = true; sel.appendChild(o); });
+        td2.appendChild(sel);
+        var td3 = row.insertCell(); td3.className = 'center'; var btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'delete-btn'; btn.textContent = '\u2715'; btn.onclick = function() { deleteLineColorRow(btn); }; td3.appendChild(btn);
+    });
+}
+
 function serializeLineColors() {
     const tbody = document.getElementById('lineColorsTableBody');
     if (!tbody) return '';
