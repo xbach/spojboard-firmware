@@ -13,7 +13,7 @@ void initLogger(const Config* cfg)
 void logTimestamp()
 {
     char timestamp[24];
-    sprintf(timestamp, "[%010lu] ", millis());
+    snprintf(timestamp, sizeof(timestamp), "[%010lu] ", millis());
     Serial.print(timestamp);
 
     // Mirror to telnet if debug enabled AND telnet is active

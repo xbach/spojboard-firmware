@@ -93,7 +93,7 @@ WeatherData WeatherAPI::fetchWeather(float latitude, float longitude)
         return result;
     }
 
-    // Parse JSON response
+    // Parse JSON response (getString handles chunked transfer encoding)
     String payload = http.getString();
     http.end();
 

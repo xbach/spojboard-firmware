@@ -71,7 +71,7 @@ void DisplayController::render(const Departure* departures, int departureCount, 
     if (!apiKeyConfigured)
     {
         char ipStr[32];
-        sprintf(ipStr, "http://%s", WiFi.localIP().toString().c_str());
+        snprintf(ipStr, sizeof(ipStr), "http://%s", WiFi.localIP().toString().c_str());
         displayManager.drawStatus("Setup Required", ipStr, COLOR_CYAN);
         return;
     }
@@ -81,7 +81,7 @@ void DisplayController::render(const Departure* departures, int departureCount, 
     {
         // Show IP address so user can access web UI to fix config
         char ipStr[32];
-        sprintf(ipStr, "Fix at: %s", WiFi.localIP().toString().c_str());
+        snprintf(ipStr, sizeof(ipStr), "Fix at: %s", WiFi.localIP().toString().c_str());
         displayManager.drawStatus("API Error", ipStr, COLOR_RED);
         displayManager.drawDateTime(); // Still show time bar
         return;

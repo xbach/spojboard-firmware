@@ -13,7 +13,7 @@ MqttAPI* MqttAPI::instanceForCallback = nullptr;
 // Constructor / Destructor
 // ============================================================================
 
-MqttAPI::MqttAPI() : statusCallback(nullptr), responseReceived(false), responseTimeout(0)
+MqttAPI::MqttAPI() : statusCallback(nullptr), responseReceived(false), responseLength(0), responseTimeout(0)
 {
     mqttClient = new PubSubClient(wifiClient);
     mqttClient->setBufferSize(MQTT_BUFFER_SIZE); // CRITICAL: Must be called before connect
@@ -107,7 +107,8 @@ TransitAPI::APIResult MqttAPI::fetchDepartures(const Config& config)
 
     // Reset response state
     responseReceived = false;
-    responsePayload = "";
+    responseLength = 0;
+    responseBuffer[0] = '\0';
 
     // Publish request message
     logTimestamp();
@@ -277,7 +278,11 @@ void MqttAPI::handleMessage(char* topic, byte* payload, unsigned int length)
     debugPrint(length);
     debugPrintln(" bytes)");
 
-    responsePayload = String((char*)payload, length);
+    // Copy to pre-allocated buffer (no heap allocation in callback)
+    unsigned int copyLen = (length < MQTT_BUFFER_SIZE - 1) ? length : MQTT_BUFFER_SIZE - 1;
+    memcpy(responseBuffer, payload, copyLen);
+    responseBuffer[copyLen] = '\0';
+    responseLength = copyLen;
     responseReceived = true;
 }
 
@@ -302,9 +307,9 @@ bool MqttAPI::parseResponse(const Config& config, Departure* tempDepartures, int
 {
     tempCount = 0;
 
-    // Parse JSON
+    // Parse JSON from pre-allocated buffer
     DynamicJsonDocument doc(JSON_BUFFER_SIZE);
-    DeserializationError error = deserializeJson(doc, responsePayload);
+    DeserializationError error = deserializeJson(doc, responseBuffer, responseLength);
 
     if (error)
     {

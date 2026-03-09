@@ -109,7 +109,7 @@ TickerData TickerAPI::fetchTicker(const char* symbol, const char* interval, cons
         return result;
     }
 
-    // Parse JSON response
+    // Parse JSON response (getString handles chunked transfer encoding)
     String payload = http.getString();
     http.end();
 

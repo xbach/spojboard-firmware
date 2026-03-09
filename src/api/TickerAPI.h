@@ -45,7 +45,7 @@ public:
     TickerData fetchTicker(const char* symbol, const char* interval, const char* apiKey);
 
 private:
-    static constexpr int JSON_BUFFER_SIZE = 6144; // 6KB buffer for 30 candles
+    static constexpr int JSON_BUFFER_SIZE = 8192; // 8KB buffer — stream parsing copies all strings (no zero-copy)
     static constexpr int HTTP_TIMEOUT_MS = 10000;  // 10 second timeout
     static constexpr int MAX_RETRIES = 3;
 };

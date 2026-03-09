@@ -328,7 +328,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         }
 
         // Copy substring starting at scroll offset
-        strncpy(destTrunc, destConverted + scrollOffset, layout.maxChars);
+        strlcpy(destTrunc, destConverted + scrollOffset, layout.maxChars + 1);
     }
     else
     {
@@ -338,9 +338,8 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
             scrollState[row].needsScroll = false;
             scrollState[row].offset = 0;
         }
-        strncpy(destTrunc, destConverted, layout.maxChars);
+        strlcpy(destTrunc, destConverted, layout.maxChars + 1);
     }
-    destTrunc[layout.maxChars] = '\0';
     display->print(destTrunc);
 
     // Platform display (if enabled and present)
@@ -617,7 +616,7 @@ void DisplayManager::drawOTAProgress(size_t progress, size_t total)
     display->setFont(fontMedium);
     display->setTextColor(COLOR_WHITE);
     char percentStr[8];
-    sprintf(percentStr, "%d%%", percentage);
+    snprintf(percentStr, sizeof(percentStr), "%d%%", percentage);
 
     // Center the percentage text at the bottom
     int16_t x1, y1;
@@ -819,7 +818,7 @@ void DisplayManager::updateDisplay(const Departure *departures, int departureCou
     if (!apiKeyConfigured)
     {
         char ipStr[32];
-        sprintf(ipStr, "http://%s", WiFi.localIP().toString().c_str());
+        snprintf(ipStr, sizeof(ipStr), "http://%s", WiFi.localIP().toString().c_str());
         drawStatus("Setup Required", ipStr, COLOR_CYAN);
         isDrawing = false;
         return;
@@ -1033,8 +1032,7 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
     {
         scrollOffset = scrollState[row].maxOffset;
     }
-    strncpy(destTrunc, destConverted + scrollOffset, layout.maxChars);
-    destTrunc[layout.maxChars] = '\0';
+    strlcpy(destTrunc, destConverted + scrollOffset, layout.maxChars + 1);
     display->print(destTrunc);
 }
 

@@ -125,7 +125,7 @@ bool BvgAPI::querySingleStop(const char* stopId,
     debugPrint("BVG API: Querying stop ");
     debugPrintln(stopId);
     logTimestamp();
-    char debugMsg[128];
+    char debugMsg[384];
     snprintf(debugMsg,
              sizeof(debugMsg),
              "BVG API: URL: %s (now=%ld, when=%ld, offset=%d min)",

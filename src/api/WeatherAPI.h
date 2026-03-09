@@ -41,7 +41,7 @@ public:
     WeatherData fetchWeather(float latitude, float longitude);
 
 private:
-    static constexpr int JSON_BUFFER_SIZE = 2048;  // 2KB buffer for Open-Meteo response
+    static constexpr int JSON_BUFFER_SIZE = 4096;  // 4KB buffer — stream parsing copies all strings (no zero-copy)
     static constexpr int HTTP_TIMEOUT_MS = 8000;   // 8 second timeout
     static constexpr int MAX_RETRIES = 2;          // Fewer retries than transit APIs
 };

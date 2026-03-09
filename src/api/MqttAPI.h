@@ -45,21 +45,22 @@ class MqttAPI : public TransitAPI
     virtual APIResult fetchDepartures(const Config& config) override;
 
   private:
-    WiFiClient wifiClient;
-    PubSubClient* mqttClient;
-    APIStatusCallback statusCallback;
-
-    // Response handling
-    bool responseReceived;
-    String responsePayload;
-    unsigned long responseTimeout;
-
-    // Constants
+    // Constants (must be declared before members that use them)
     static constexpr int JSON_BUFFER_SIZE = 8192; // 8KB for JSON parsing
     static constexpr int MQTT_BUFFER_SIZE = 8192; // 8KB for MQTT messages
     static constexpr int RESPONSE_TIMEOUT_MS = 10000; // 10 seconds
     static constexpr int CONNECT_TIMEOUT_MS = 5000; // 5 seconds
     static constexpr int MAX_TEMP_DEPARTURES = DEPS_PER_STOP * 12; // 144 departures
+
+    WiFiClient wifiClient;
+    PubSubClient* mqttClient;
+    APIStatusCallback statusCallback;
+
+    // Response handling
+    volatile bool responseReceived;
+    char responseBuffer[MQTT_BUFFER_SIZE]; // Pre-allocated buffer (avoids heap alloc in callback)
+    unsigned int responseLength;
+    unsigned long responseTimeout;
 
     /**
      * Connect to MQTT broker with optional authentication

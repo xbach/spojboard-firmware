@@ -82,13 +82,13 @@ SemaphoreHandle_t apiDataMutex = NULL;
 
 // API fetch request flags (signals from loop to API task)
 struct APIFetchRequest {
-    bool fetchDeparturesNow;
-    bool fetchWeatherNow;
-    bool fetchTickerNow;
+    volatile bool fetchDeparturesNow;
+    volatile bool fetchWeatherNow;
+    volatile bool fetchTickerNow;
     unsigned long lastDeparturesFetch;
     unsigned long lastWeatherFetch;
     unsigned long lastTickerFetch;
-    bool timezoneInitialized; // Set to true after initTimeSync() - prevents fetches with wrong timezone
+    volatile bool timezoneInitialized; // Set to true after initTimeSync() - prevents fetches with wrong timezone
 } apiFetchRequest = {.fetchDeparturesNow = false, .fetchWeatherNow = false, .fetchTickerNow = false, .lastDeparturesFetch = 0, .lastWeatherFetch = 0, .lastTickerFetch = 0, .timezoneInitialized = false};
 
 // ============================================================================
@@ -106,13 +106,13 @@ bool needsDisplayUpdate = false;
 bool apiError = false;
 char apiErrorMsg[64] = "";
 char stopName[64] = "";
-bool demoModeActive = false; // Demo mode flag - stops API polling and display updates
-bool restModeActive = false; // Rest mode flag - pauses API polling and turns off display
-bool restModeManual = false; // True if rest mode was activated via REST API (skip periodic check)
-bool awaitingDepartures = true; // True until first API fetch completes (shows "Loading" instead of "No Departures")
+volatile bool demoModeActive = false; // Demo mode flag - stops API polling and display updates
+volatile bool restModeActive = false; // Rest mode flag - pauses API polling and turns off display
+volatile bool restModeManual = false; // True if rest mode was activated via REST API (skip periodic check)
+volatile bool awaitingDepartures = true; // True until first API fetch completes (shows "Loading" instead of "No Departures")
 int lastRestCheckMinute = -1; // Last minute when rest check triggered (0-59)
 WeatherData weatherData = {}; // Global weather state
-bool tickerModeActive = false;  // Ticker mode flag (candlestick chart)
+volatile bool tickerModeActive = false;  // Ticker mode flag (candlestick chart)
 TickerData tickerData = {};     // Global ticker state (protected by apiDataMutex)
 
 // Network layer is now in network/ modules:
@@ -881,12 +881,37 @@ void displayRenderTask(void* parameter)
 // Helper function to signal display update (thread-safe)
 void signalDisplayUpdate()
 {
+    // Snapshot API-protected data first (departures, weather, ticker)
+    Departure localDeps[MAX_DEPARTURES];
+    int localDepCount = 0;
+    WeatherData localWeather = {};
+    TickerData localTicker = {};
+
+    if (xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(50)))
+    {
+        memcpy(localDeps, departures, sizeof(Departure) * departureCount);
+        localDepCount = departureCount;
+        localWeather = weatherData;
+        localTicker = tickerData;
+        xSemaphoreGive(apiDataMutex);
+    }
+    else
+    {
+        logTimestamp();
+        debugPrintln("signalDisplayUpdate: apiDataMutex timeout, update skipped");
+        return;
+    }
+
     if (xSemaphoreTake(displayMutex, pdMS_TO_TICKS(50)))
     {
-        // Copy current state to display request
-        memcpy(displayRequest.departures, departures,
-               sizeof(Departure) * departureCount);
-        displayRequest.departureCount = departureCount;
+        // Copy API data snapshot
+        memcpy(displayRequest.departures, localDeps,
+               sizeof(Departure) * localDepCount);
+        displayRequest.departureCount = localDepCount;
+        displayRequest.weather = localWeather;
+        displayRequest.ticker = localTicker;
+
+        // Copy non-API state (safe to read from loop context)
         displayRequest.numDepartures = config.numDepartures;
         displayRequest.wifiConnected = wifiManager.isConnected();
         displayRequest.apMode = wifiManager.isAPMode();
@@ -899,9 +924,7 @@ void signalDisplayUpdate()
         displayRequest.demoMode = demoModeActive;
         displayRequest.restMode = restModeActive;
         displayRequest.departuresLoading = awaitingDepartures;
-        displayRequest.weather = weatherData;
         displayRequest.tickerMode = tickerModeActive;
-        displayRequest.ticker = tickerData;
         displayRequest.needsUpdate = true;
 
         xSemaphoreGive(displayMutex);
@@ -912,7 +935,7 @@ void signalDisplayUpdate()
     else
     {
         logTimestamp();
-        debugPrintln("signalDisplayUpdate: Mutex timeout, update skipped");
+        debugPrintln("signalDisplayUpdate: displayMutex timeout, update skipped");
     }
 }
 
@@ -1008,7 +1031,7 @@ void setup()
     BaseType_t taskCreated = xTaskCreatePinnedToCore(
         displayRenderTask,      // Task function
         "DisplayRender",        // Task name (for debugging)
-        10240,                  // Stack size (10KB - display operations + platform symbol matching)
+        12288,                  // Stack size (12KB - display ops + TickerData + departure copies)
         NULL,                   // Task parameters
         2,                      // Priority (2 = above idle, below critical network tasks)
         &displayTaskHandle,     // Task handle
@@ -1076,7 +1099,7 @@ void setup()
     {
         // WiFi connected successfully
         char ipStr[32];
-        sprintf(ipStr, "IP: %s", WiFi.localIP().toString().c_str());
+        snprintf(ipStr, sizeof(ipStr), "IP: %s", WiFi.localIP().toString().c_str());
         displayManager.drawStatus("WiFi Connected!", ipStr, COLOR_GREEN);
         delay(1500);
 

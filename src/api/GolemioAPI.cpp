@@ -367,8 +367,7 @@ void GolemioAPI::parseDepartureObject(JsonObject depJson,
         if (platformCode && strlen(platformCode) > 0)
         {
             // Truncate to 3 characters if longer
-            strncpy(tempDepartures[tempCount].platform, platformCode, 3);
-            tempDepartures[tempCount].platform[3] = '\0';
+            strlcpy(tempDepartures[tempCount].platform, platformCode, 4);
 
             if (config.debugMode && strlen(platformCode) > 3)
             {
