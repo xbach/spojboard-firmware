@@ -157,10 +157,12 @@ static char getPlatformSymbol(const char* platform, const char* stopId, const ch
 DestLayout DisplayManager::calcDestLayout(const Departure &dep)
 {
     DestLayout layout;
+    bool multiTimes = config && config->showMultipleTimes;
+    bool platformEnabled = config && config->showPlatform;
 
     // Starting X position for destination text
     // Tighter gap when both dual ETA and platform are enabled to reclaim destination space
-    layout.destX = (config && config->showMultipleTimes && config->showPlatform) ? 20 : 22;
+    layout.destX = (multiTimes && platformEnabled) ? 20 : 22;
     if (dep.hasAC)
     {
         layout.destX += 6;
@@ -168,7 +170,7 @@ DestLayout DisplayManager::calcDestLayout(const Departure &dep)
 
     // Check for platform symbol override
     layout.symbolChar = '\0';
-    if (config && config->showPlatform && config->platformSymbolMap[0] != '\0')
+    if (platformEnabled && config->platformSymbolMap[0] != '\0')
     {
         layout.symbolChar = getPlatformSymbol(dep.platform, dep.sourceStopId, config->platformSymbolMap);
     }
@@ -181,7 +183,7 @@ DestLayout DisplayManager::calcDestLayout(const Departure &dep)
         layout.willShowPlatform = true;
         layout.platformReservedPx = 7; // 5px glyph + buffer
     }
-    else if (config && config->showPlatform && dep.platform[0] != '\0')
+    else if (platformEnabled && dep.platform[0] != '\0')
     {
         layout.willShowPlatform = true;
         // Dynamic reservation based on platform length:
@@ -197,22 +199,32 @@ DestLayout DisplayManager::calcDestLayout(const Departure &dep)
             layout.platformReservedPx = 7;
     }
 
-    // Determine if this row should use dual ETA layout
-    layout.dualEta = config && config->showMultipleTimes && dep.secondEta >= 0;
+    // Show absolute departure time (HH:MM) instead of ETA when > 60 minutes away
+    layout.showAbsoluteTime = (dep.eta > 60);
+
+    // When showMultipleTimes is off, add 2px breathing room between platform and ETA area
+    if (layout.willShowPlatform && !multiTimes)
+        layout.platformReservedPx += 2;
+
+    // Determine if this row should use dual ETA layout (suppress when showing absolute time)
+    layout.dualEta = multiTimes && dep.secondEta >= 0 && !layout.showAbsoluteTime;
 
     // Calculate right-side ETA area width based on display mode
-    // Dual ETA: secondary in fontCondensed (4px/char, max 3 chars = 12px, right edge X=108)
-    //         + primary in fontMedium (6px/char, max 3 chars = 18px, right edge X=127) = 30px
+    // Dual ETA: secondary in fontCondensed (12px, right edge X=108)
+    //         + primary in fontMedium (18px, right edge X=127) = 30px
+    // Absolute time: "HH:MM" in fontCondensed (17px rendered + 1px clearance = 18px)
     // Single ETA: fontMedium only — wide (>=10 or <1): 3 chars = 17px, narrow (1-9): 2 chars = 11px
     int etaAreaWidth;
     if (layout.dualEta)
         etaAreaWidth = 30;
+    else if (layout.showAbsoluteTime)
+        etaAreaWidth = multiTimes ? 30 : 18;
     else
         etaAreaWidth = (dep.eta >= 10 || dep.eta < 1) ? 17 : 11;
 
     // When showMultipleTimes is on globally, always reserve dual-ETA width
     // so destination boundary matches the platform anchor position
-    int effectiveEtaArea = (config && config->showMultipleTimes && layout.platformReservedPx > 0) ? 30 : etaAreaWidth;
+    int effectiveEtaArea = (multiTimes && layout.platformReservedPx > 0) ? 30 : etaAreaWidth;
     layout.spaceCalcEta = 128 - effectiveEtaArea;
     int availableSpace = layout.spaceCalcEta - layout.destX - layout.platformReservedPx;
 
@@ -220,17 +232,12 @@ DestLayout DisplayManager::calcDestLayout(const Departure &dep)
     int destLen = utf8len(dep.destination);
 
     // Thresholds: fontMedium @ 6px/char, fontCondensed @ 4px/char
-    // Tighter threshold when right side has more info (dual ETA, platform)
-    // Original:
-    // if (config && config->showMultipleTimes)
-    //     mediumThreshold = layout.platformReservedPx > 0 ? 11 : 12;
-    // else
-    //     mediumThreshold = layout.platformReservedPx > 0 ? 12 : 14;
+    // Tighter threshold when right side has more info (dual ETA, platform, absolute time)
     int mediumThreshold;
-    if (layout.willShowPlatform && config && config->showMultipleTimes)
+    if (layout.willShowPlatform && multiTimes)
         mediumThreshold = 11;  // platform anchored at 97px: least space
-    else if (layout.willShowPlatform || layout.dualEta)
-        mediumThreshold = 12;  // platform at 111px, or dual ETA
+    else if (layout.willShowPlatform || layout.dualEta || (layout.showAbsoluteTime && multiTimes))
+        mediumThreshold = 12;  // platform at 109px, or dual ETA, or absolute time with 30px reservation
     else
         mediumThreshold = 14;  // primary ETA only
     mediumThreshold -= dep.hasAC ? 1 : 0;
@@ -349,7 +356,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         {
             // Render directional arrow using weather font
             display->setFont(fontWeather);
-            int platformAnchor = config && config->showMultipleTimes ? 97 : 111;
+            int platformAnchor = config && config->showMultipleTimes ? 97 : 109;
 
             int16_t px1, py1;
             uint16_t pw, ph;
@@ -386,7 +393,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
 
             // Position: right-align to ETA position anchor
             // Dual ETA: anchor at 98px (shifted left for mixed-font ETAs), normal: 111px
-            int platformAnchor = config && config->showMultipleTimes ? 97 : 111;
+            int platformAnchor = config && config->showMultipleTimes ? 97 : 109;
             int platformX = platformAnchor - pw - 1 - px1;
 
             display->setTextColor(COLOR_CYAN); // Match AC indicator
@@ -395,83 +402,74 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         }
     }
 
-    // ETA display — right-aligned to panel edge
-    // Format ETA into buffer, measure with getTextBounds, position right edge at anchor
-    int16_t tx1, ty1;
-    uint16_t tw, th;
+    // ETA urgency color based on minutes until departure
+    auto etaColor = [&](int eta) -> uint16_t {
+        if (dep.isDelayed && dep.delayMinutes > 0)
+            return COLOR_ORANGE;
+        if (eta < 2)
+            return COLOR_RED;
+        if (eta < 5)
+            return COLOR_YELLOW;
+        return COLOR_WHITE;
+    };
+
+    // Right-align text to an anchor X position, measure and draw
+    auto drawRightAligned = [&](const char *text, int anchorX) {
+        int16_t tx1, ty1;
+        uint16_t tw, th;
+        display->getTextBounds(text, 0, 0, &tx1, &ty1, &tw, &th);
+        display->setCursor(anchorX - tw - tx1, y + 7);
+        display->print(text);
+    };
+
+    // Format ETA minutes into buffer
+    auto formatEtaMinutes = [](char *buf, size_t sz, int eta) {
+        if (eta < 1)
+            snprintf(buf, sz, "<1'");
+        else
+            snprintf(buf, sz, "%d'", eta);
+    };
+
+    char etaText[8];
 
     if (layout.dualEta)
     {
-        // Dual ETA mode: secondary (supplementary) on left, primary (next departure) on right
-        // Secondary right edge at 114, primary right edge at 127
-
-        // Secondary ETA — fontCondensed (supplementary), fixed dim gray
-        // Right edge at X=108, leaving 19px for primary ETA (medium font needs ~18px)
+        // Secondary ETA — fontCondensed, dim gray, right edge at X=109
         display->setFont(fontCondensed);
 
         char eta2Text[8];
         if (dep.secondEta < 1)
             snprintf(eta2Text, sizeof(eta2Text), "<1'");
-        else if (dep.secondEta >= 100)
+        else if (dep.secondEta > 100)
             snprintf(eta2Text, sizeof(eta2Text), ">1h");
         else
             snprintf(eta2Text, sizeof(eta2Text), "%d'", dep.secondEta);
 
         display->setTextColor(display->color565(90, 90, 90));
+        drawRightAligned(eta2Text, 109);
 
-        display->getTextBounds(eta2Text, 0, 0, &tx1, &ty1, &tw, &th);
-        display->setCursor(109 - tw - tx1, y + 7);
-        display->print(eta2Text);
-
-        // Primary ETA — fontMedium, urgency-colored, rightmost position
+        // Primary ETA — fontMedium, urgency-colored, right edge at X=127
         display->setFont(fontMedium);
-
-        char etaText[8];
-        if (dep.eta < 1)
-            snprintf(etaText, sizeof(etaText), "<1'");
-        else if (dep.eta >= 100)
-            snprintf(etaText, sizeof(etaText), ">1h");
-        else
-            snprintf(etaText, sizeof(etaText), "%d'", dep.eta);
-
-        if (dep.isDelayed && dep.delayMinutes > 0)
-            display->setTextColor(COLOR_ORANGE);
-        else if (dep.eta < 2)
-            display->setTextColor(COLOR_RED);
-        else if (dep.eta < 5)
-            display->setTextColor(COLOR_YELLOW);
-        else
-            display->setTextColor(COLOR_WHITE);
-
-        display->getTextBounds(etaText, 0, 0, &tx1, &ty1, &tw, &th);
-        display->setCursor(127 - tw - tx1, y + 7);
-        display->print(etaText);
+        formatEtaMinutes(etaText, sizeof(etaText), dep.eta);
+        display->setTextColor(etaColor(dep.eta));
+        drawRightAligned(etaText, 127);
+    }
+    else if (layout.showAbsoluteTime)
+    {
+        // Absolute departure time — fontCondensed, white, right edge at X=127
+        display->setFont(fontCondensed);
+        struct tm *t = localtime(&dep.departureTime);
+        snprintf(etaText, sizeof(etaText), "%d:%02d", t->tm_hour, t->tm_min);
+        display->setTextColor(COLOR_WHITE);
+        drawRightAligned(etaText, 127);
     }
     else
     {
-        // Single ETA mode: right-aligned to 127
+        // Single ETA — fontMedium, urgency-colored, right edge at X=127
         display->setFont(fontMedium);
-
-        char etaText[8];
-        if (dep.eta < 1)
-            snprintf(etaText, sizeof(etaText), "<1'");
-        else if (dep.eta >= 100)
-            snprintf(etaText, sizeof(etaText), ">1h");
-        else
-            snprintf(etaText, sizeof(etaText), "%d'", dep.eta);
-
-        if (dep.isDelayed && dep.delayMinutes > 0)
-            display->setTextColor(COLOR_ORANGE);
-        else if (dep.eta < 2)
-            display->setTextColor(COLOR_RED);
-        else if (dep.eta < 5)
-            display->setTextColor(COLOR_YELLOW);
-        else
-            display->setTextColor(COLOR_WHITE);
-
-        display->getTextBounds(etaText, 0, 0, &tx1, &ty1, &tw, &th);
-        display->setCursor(127 - tw - tx1, y + 7);
-        display->print(etaText);
+        formatEtaMinutes(etaText, sizeof(etaText), dep.eta);
+        display->setTextColor(etaColor(dep.eta));
+        drawRightAligned(etaText, 127);
     }
 }
 

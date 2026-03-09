@@ -26,6 +26,7 @@ struct DestLayout {
     char symbolChar;        // Platform symbol override character ('\0' if none)
     bool willShowPlatform;  // Whether platform will be drawn
     bool dualEta;           // Whether dual ETA mode is active for this departure
+    bool showAbsoluteTime;  // Whether to show departure time instead of ETA (eta > 60min)
     const GFXfont *font;    // Selected font for destination text
     int maxChars;           // Maximum characters that fit in available space
     int spaceCalcEta;       // Right boundary for destination area (128 - etaArea)
