@@ -462,7 +462,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         // Absolute departure time — fontCondensed, white, right edge at X=127
         display->setFont(fontCondensed);
         struct tm *t = localtime(&dep.departureTime);
-        snprintf(etaText, sizeof(etaText), "%d:%02d", t->tm_hour, t->tm_min);
+        snprintf(etaText, sizeof(etaText), "%02d:%02d", t->tm_hour, t->tm_min);
         display->setTextColor(COLOR_WHITE);
         drawRightAligned(etaText, 127);
     }
