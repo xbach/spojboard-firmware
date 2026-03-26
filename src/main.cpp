@@ -69,6 +69,7 @@ struct DisplayUpdateRequest {
     bool restMode;
     bool departuresLoading;
     WeatherData weather;
+    char infoText[TransitAPI::MAX_INFOTEXT_LEN];
     bool tickerMode;
     TickerData ticker;
     bool needsUpdate;
@@ -112,6 +113,7 @@ volatile bool restModeManual = false; // True if rest mode was activated via RES
 volatile bool awaitingDepartures = true; // True until first API fetch completes (shows "Loading" instead of "No Departures")
 int lastRestCheckMinute = -1; // Last minute when rest check triggered (0-59)
 WeatherData weatherData = {}; // Global weather state
+char infoText[TransitAPI::MAX_INFOTEXT_LEN] = ""; // Global infotext (protected by apiDataMutex)
 volatile bool tickerModeActive = false;  // Ticker mode flag (candlestick chart)
 TickerData tickerData = {};     // Global ticker state (protected by apiDataMutex)
 
@@ -657,6 +659,7 @@ void apiFetchTask(void* parameter)
                     departures[i] = result.departures[i];
                 }
                 strlcpy(stopName, result.stopName, sizeof(stopName));
+                strlcpy(infoText, result.infoText, sizeof(infoText));
                 apiError = result.hasError;
                 if (result.hasError)
                 {
@@ -802,6 +805,7 @@ void displayRenderTask(void* parameter)
             bool localRestMode;
             bool localDeparturesLoading;
             WeatherData localWeather;
+            char localInfoText[TransitAPI::MAX_INFOTEXT_LEN];
             bool localTickerMode;
             TickerData localTickerData;
 
@@ -831,6 +835,7 @@ void displayRenderTask(void* parameter)
                 localRestMode = displayRequest.restMode;
                 localDeparturesLoading = displayRequest.departuresLoading;
                 localWeather = displayRequest.weather;
+                strlcpy(localInfoText, displayRequest.infoText, sizeof(localInfoText));
                 localTickerMode = displayRequest.tickerMode;
                 localTickerData = displayRequest.ticker;
 
@@ -848,6 +853,7 @@ void displayRenderTask(void* parameter)
             // Render display with local copy (no mutex needed during render)
             // Use local weather snapshot instead of global pointer (thread-safe)
             displayManager.setWeatherData(&localWeather);
+            displayManager.setInfoText(localInfoText);
 
             logTimestamp();
             debugPrintln("DisplayTask: Rendering on Core 1");
@@ -881,11 +887,12 @@ void displayRenderTask(void* parameter)
 // Helper function to signal display update (thread-safe)
 void signalDisplayUpdate()
 {
-    // Snapshot API-protected data first (departures, weather, ticker)
+    // Snapshot API-protected data first (departures, weather, ticker, infotexts)
     Departure localDeps[MAX_DEPARTURES];
     int localDepCount = 0;
     WeatherData localWeather = {};
     TickerData localTicker = {};
+    char localInfoText[TransitAPI::MAX_INFOTEXT_LEN] = "";
 
     if (xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(50)))
     {
@@ -893,6 +900,7 @@ void signalDisplayUpdate()
         localDepCount = departureCount;
         localWeather = weatherData;
         localTicker = tickerData;
+        strlcpy(localInfoText, infoText, sizeof(localInfoText));
         xSemaphoreGive(apiDataMutex);
     }
     else
@@ -910,6 +918,7 @@ void signalDisplayUpdate()
         displayRequest.departureCount = localDepCount;
         displayRequest.weather = localWeather;
         displayRequest.ticker = localTicker;
+        strlcpy(displayRequest.infoText, localInfoText, sizeof(displayRequest.infoText));
 
         // Copy non-API state (safe to read from loop context)
         displayRequest.numDepartures = config.numDepartures;
@@ -1358,6 +1367,16 @@ void loop()
         {
             lastScrollCheck = millis();
             displayManager.updateScroll();
+        }
+    }
+
+    // Infotext alternation update (runs frequently, ~50ms)
+    {
+        static unsigned long lastInfoTextCheck = 0;
+        if (millis() - lastInfoTextCheck >= 50)
+        {
+            lastInfoTextCheck = millis();
+            displayManager.updateInfoText();
         }
     }
 
