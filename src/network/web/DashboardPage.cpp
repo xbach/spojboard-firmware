@@ -51,18 +51,22 @@ void sendDashboardPage(
         sendChunk(server, structure);
     }
 
-    // Chunk 2: Connection + Transit Data tabs (~8KB)
+    // Chunk 2: Connection tab (+ Transit Data in STA mode)
     {
         String tabs1 = buildConnectionTab(config, apModeActive);
-        tabs1 += buildTransitDataTab(config);
+        if (!apModeActive)
+        {
+            tabs1 += buildTransitDataTab(config);
+        }
         sendChunk(server, tabs1);
     }
 
-    // Chunk 3: Display tab + Optional tab + submit button (~8KB)
+    // Chunk 3: Display/Optional tabs + submit button (Display only in STA mode)
     {
-        String tabs2 = buildDisplayTab(config);
+        String tabs2 = "";
         if (!apModeActive)
         {
+            tabs2 += buildDisplayTab(config);
             tabs2 += buildOptionalTab(config);
         }
         tabs2 += "<div class='form-actions'>";

@@ -34,8 +34,7 @@ String buildHeader(bool apModeActive, bool restModeActive, bool restModeManual)
     }
     else
     {
-        // Only demo button in AP mode
-        html += "<button class=\"action-btn\" onclick=\"window.location.href='/demo'\" title=\"Display Demo\">▶</button>";
+        // No action buttons in AP mode — demo, ticker, rest mode require WiFi
     }
 
     html += "</div>"; // action-bar
@@ -55,20 +54,20 @@ String buildTabBar(bool apModeActive)
     html += "<span class=\"tab-label\">Connection</span>";
     html += "</button>";
 
-    // Tab 2: Transit Data (always visible)
-    html += "<button class=\"tab\" data-tab=\"transit\">";
-    html += "<span class=\"tab-icon\">🚇</span>";
-    html += "<span class=\"tab-label\">Transit Data</span>";
-    html += "</button>";
-
-    // Tab 3: Display (always visible)
-    html += "<button class=\"tab\" data-tab=\"display\">";
-    html += "<span class=\"tab-icon\">🖥</span>";
-    html += "<span class=\"tab-label\">Display</span>";
-    html += "</button>";
-
     if (!apModeActive)
     {
+        // Tab 2: Transit Data (STA mode only)
+        html += "<button class=\"tab\" data-tab=\"transit\">";
+        html += "<span class=\"tab-icon\">🚇</span>";
+        html += "<span class=\"tab-label\">Transit Data</span>";
+        html += "</button>";
+
+        // Tab 3: Display (STA mode only)
+        html += "<button class=\"tab\" data-tab=\"display\">";
+        html += "<span class=\"tab-icon\">🖥</span>";
+        html += "<span class=\"tab-label\">Display</span>";
+        html += "</button>";
+
         // Tab 4: Optional Features (STA mode only)
         html += "<button class=\"tab\" data-tab=\"optional\">";
         html += "<span class=\"tab-icon\">⭐</span>";
