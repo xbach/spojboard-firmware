@@ -40,6 +40,7 @@ Standalone operation with web-based configuration, no external server required f
 - **Firmware Updates**: GitHub-based OTA updates with user confirmation - check for new releases directly from the web interface
 - **Optional Telnet Logging**: Remote debugging via telnet (port 23) when debug mode is enabled - mirrors all logs over WiFi
 - **Weather Display**: Optional weather info in status bar showing temperature and condition icon from Open-Meteo API (free, no API key required)
+- **Infotext Display**: Service alerts scroll through the status bar as a ticker, with datetime elements revealing char-by-char as the text passes. Manual infotext injection via web UI or REST API
 - **Rest Mode**: Scheduled display power saving - configure time periods when the display turns off automatically
 
 ## Hardware
@@ -217,7 +218,7 @@ Both ETAs are independently color-coded (red < 2min, yellow 2-5min, white > 5min
 - All destinations start at the same X position regardless of route length
 - Adaptive font rendering: automatically switches to condensed font for long destinations based on available space
 - Destination text dynamically truncated based on ETA display width and font choice to prevent overlap
-- Status bar: numeric date (DD.MM.) + full localized day name (English/Czech/German) + optional weather + time
+- Status bar: numeric date (DD.MM.) + full localized day name (English/Czech/German) + optional weather + time. When service alerts (infotexts) are available, they scroll through as a ticker — datetime elements stay visible and reveal char-by-char as the text passes
 
 ### AP Setup Mode
 ```
