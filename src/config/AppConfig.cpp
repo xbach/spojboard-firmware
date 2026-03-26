@@ -246,11 +246,3 @@ bool verifyHardware()
     return true;
 }
 
-int getStoredHardwareVariant()
-{
-    Preferences preferences;
-    preferences.begin("transport", true); // Read-only
-    int variant = preferences.getInt("hw_variant", -1);
-    preferences.end();
-    return variant;
-}

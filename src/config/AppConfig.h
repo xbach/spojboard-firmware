@@ -199,10 +199,4 @@ void clearConfig();
  */
 bool verifyHardware();
 
-/**
- * Get stored hardware variant from NVS
- * @return Hardware variant ID (1=MatrixPortal-S3, 2=ESP32-S3-N8R2), or -1 if not set
- */
-int getStoredHardwareVariant();
-
 #endif // APPCONFIG_H
