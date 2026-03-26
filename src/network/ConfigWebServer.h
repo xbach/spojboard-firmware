@@ -164,6 +164,10 @@ class ConfigWebServer
     void handleTickerMode(); // POST: REST API toggle for ticker mode
     void handleDepartures(); // GET: show cached departure data page
     void handleDeparturesData(); // GET: return cached departure data as JSON (AJAX)
+    void handleInfoText(); // GET: show infotext test page
+    void handleSetInfoText(); // POST: set custom infotext on display
+    void handleClearInfoText(); // POST: clear custom infotext
+    void handleCurrentInfoText(); // GET: current infotext state
     void handleNotFound();
 
     // Config parsing helpers — one per tab for per-tab save dispatch

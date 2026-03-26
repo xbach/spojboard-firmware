@@ -250,6 +250,72 @@ async function startDemo(event) {
 </script>
 )rawliteral";
 
+// Infotext test page JavaScript
+const char SCRIPT_INFOTEXT[] PROGMEM = R"rawliteral(
+<script>
+function updateStatus(active, text, manual) {
+    var el = document.getElementById('infoTextStatus');
+    var clearBtn = document.getElementById('clearBtn');
+    el.textContent = '';
+    if (active) {
+        var div = document.createElement('div');
+        div.className = 'status ok';
+        var source = manual ? 'Manual' : 'API';
+        div.textContent = source + ': ' + text;
+        el.appendChild(div);
+        clearBtn.style.display = '';
+    } else {
+        var p = document.createElement('p');
+        p.style.cssText = 'color:#999; margin:0;';
+        p.textContent = 'No infotext active.';
+        el.appendChild(p);
+        clearBtn.style.display = 'none';
+    }
+}
+async function refreshStatus() {
+    try {
+        var response = await fetch('/current-infotext');
+        var data = await response.json();
+        updateStatus(data.active, data.text, data.manual);
+    } catch (error) {
+        document.getElementById('infoTextStatus').textContent = 'Error: ' + error.message;
+    }
+}
+async function setInfoText(event) {
+    event.preventDefault();
+    var text = document.getElementById('infoText').value;
+    try {
+        var response = await fetch('/set-infotext', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ text: text })
+        });
+        var data = await response.json();
+        if (data.success) {
+            refreshStatus();
+        } else {
+            document.getElementById('infoTextStatus').textContent = 'Failed: ' + data.error;
+        }
+    } catch (error) {
+        document.getElementById('infoTextStatus').textContent = 'Error: ' + error.message;
+    }
+}
+async function clearInfoText() {
+    try {
+        var response = await fetch('/clear-infotext', { method: 'POST' });
+        var data = await response.json();
+        if (data.success) {
+            refreshStatus();
+            document.getElementById('infoText').value = '';
+        }
+    } catch (error) {
+        document.getElementById('infoTextStatus').textContent = 'Error: ' + error.message;
+    }
+}
+document.addEventListener('DOMContentLoaded', refreshStatus);
+</script>
+)rawliteral";
+
 // OTA upload progress JavaScript
 const char SCRIPT_OTA_UPLOAD[] PROGMEM = R"rawliteral(
 <script>

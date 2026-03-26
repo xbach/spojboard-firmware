@@ -5,6 +5,7 @@
 #include "web/WebTemplates.h"
 #include "web/DashboardPage.h"
 #include "web/DemoPage.h"
+#include "web/InfoTextPage.h"
 #include "web/TickerPage.h"
 #include "web/DeparturesPage.h"
 #include "web/UpdatePage.h"
@@ -100,6 +101,14 @@ bool ConfigWebServer::begin()
                { handleDepartures(); });
     server->on("/departures-data", HTTP_GET, [this]()
                { handleDeparturesData(); });
+    server->on("/infotext", HTTP_GET, [this]()
+               { handleInfoText(); });
+    server->on("/set-infotext", HTTP_POST, [this]()
+               { handleSetInfoText(); });
+    server->on("/clear-infotext", HTTP_POST, [this]()
+               { handleClearInfoText(); });
+    server->on("/current-infotext", HTTP_GET, [this]()
+               { handleCurrentInfoText(); });
     server->onNotFound([this]()
                        { handleNotFound(); });
 
@@ -1131,6 +1140,87 @@ void ConfigWebServer::handleStopDemo()
 
     server->sendHeader("Location", "/");
     server->send(302, "text/plain", "");
+}
+
+void ConfigWebServer::handleInfoText()
+{
+    server->send(200, "text/html", buildInfoTextPage());
+}
+
+void ConfigWebServer::handleSetInfoText()
+{
+    String body = server->arg("plain");
+
+    // Extract "text":"<value>" from JSON
+    int textStart = body.indexOf("\"text\":\"");
+    if (textStart < 0)
+    {
+        server->send(400, "application/json", "{\"success\":false,\"error\":\"Missing text field\"}");
+        return;
+    }
+    textStart += 8; // skip "text":"
+    int textEnd = body.indexOf("\"", textStart);
+    if (textEnd < 0)
+    {
+        server->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
+        return;
+    }
+
+    String text = body.substring(textStart, textEnd);
+
+    if (displayManager != nullptr)
+    {
+        displayManager->setInfoTextManual(text.c_str());
+    }
+
+    logTimestamp();
+    Serial.print("Infotext set: ");
+    Serial.println(text);
+
+    server->send(200, "application/json", "{\"success\":true}");
+}
+
+void ConfigWebServer::handleClearInfoText()
+{
+    if (displayManager != nullptr)
+    {
+        displayManager->clearInfoText();
+    }
+
+    logTimestamp();
+    Serial.println("Infotext cleared");
+
+    server->send(200, "application/json", "{\"success\":true}");
+}
+
+void ConfigWebServer::handleCurrentInfoText()
+{
+    char response[600];
+    if (displayManager != nullptr && displayManager->isInfoTextActive())
+    {
+        // Escape quotes in the raw text for JSON safety
+        const char* raw = displayManager->getInfoTextRaw();
+        char escaped[512];
+        int j = 0;
+        for (int i = 0; raw[i] && j < (int)sizeof(escaped) - 2; i++)
+        {
+            if (raw[i] == '"' || raw[i] == '\\')
+                escaped[j++] = '\\';
+            escaped[j++] = raw[i];
+        }
+        escaped[j] = '\0';
+
+        snprintf(response, sizeof(response),
+                 "{\"active\":true,\"manual\":%s,\"text\":\"%s\"}",
+                 displayManager->isInfoTextManual() ? "true" : "false",
+                 escaped);
+    }
+    else
+    {
+        snprintf(response, sizeof(response),
+                 "{\"active\":false,\"manual\":false,\"text\":\"\"}");
+    }
+    server->send(200, "application/json", response);
 }
 
 void ConfigWebServer::handleRestMode()
