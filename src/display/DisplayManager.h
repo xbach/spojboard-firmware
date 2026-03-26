@@ -4,7 +4,9 @@
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
 #include "../config/AppConfig.h"
 #include "../api/DepartureData.h"
+#include "../api/TransitAPI.h"
 #include "../api/TickerAPI.h"
+#include "../api/WeatherAPI.h"
 #include "DisplayColors.h"
 
 // Font references
@@ -18,6 +20,10 @@ static const int SCROLL_INTERVAL_MS = 300;       // 500ms between scroll steps
 static const int SCROLL_PAUSE_START_MS = 2000;   // 2s pause at start
 static const int SCROLL_PAUSE_END_MS = 2000;     // 1s pause at end
 static const int SCROLL_MAX_CYCLES = 1;          // Max scroll cycles before stopping until next refresh
+
+// Infotext alternation timing
+static const int INFOTEXT_SCROLL_INTERVAL_MS = 100;  // Pixel scroll step interval for infotext
+static const int INFOTEXT_MIN_DATETIME_MS = 3000;    // Minimum datetime display time
 
 // Destination layout calculation result (shared between drawDeparture and redrawDestination)
 struct DestLayout {
@@ -67,28 +73,6 @@ public:
     void setBrightness(int brightness);
 
     /**
-     * Update display with current state
-     * @param departures Array of departures to display
-     * @param departureCount Number of valid departures
-     * @param numToDisplay Number of departures to show (1-3)
-     * @param wifiConnected WiFi connection status
-     * @param apModeActive AP mode status
-     * @param apSSID AP network name (if in AP mode)
-     * @param apPassword AP password (if in AP mode)
-     * @param apiError API error status
-     * @param apiErrorMsg API error message
-     * @param stopName Current stop name
-     * @param apiKeyConfigured Whether API key is configured
-     * @param demoModeActive Whether demo mode is active (has highest priority, overrides ALL status screens)
-     */
-    void updateDisplay(const Departure* departures, int departureCount, int numToDisplay,
-                      bool wifiConnected, bool apModeActive,
-                      const char* apSSID, const char* apPassword,
-                      bool apiError, const char* apiErrorMsg,
-                      const char* stopName, bool apiKeyConfigured,
-                      bool demoModeActive = false);
-
-    /**
      * Draw status message (for temporary status during setup)
      * @param line1 First line of text
      * @param line2 Second line of text
@@ -118,7 +102,30 @@ public:
      * Set weather data pointer for display rendering
      * @param data Pointer to WeatherData struct
      */
-    void setWeatherData(const struct WeatherData* data) { weatherData = data; }
+    void setWeatherData(const struct WeatherData* data) { if (data) weatherData = *data; }
+
+    /**
+     * Set infotext string for status bar alternation (from API data)
+     * Ignored if manual override is active
+     * @param text Concatenated infotexts (empty string = no infotexts)
+     */
+    void setInfoText(const char* text);
+
+    /**
+     * Set manual infotext override (from web UI / test page)
+     * Blocks API updates until clearInfoText() is called
+     * @param text Text to display (empty string = clear)
+     */
+    void setInfoTextManual(const char* text);
+
+    /**
+     * Clear infotext and manual override flag
+     */
+    void clearInfoText();
+
+    const char* getInfoTextRaw() const { return infoTextRaw; }
+    bool isInfoTextManual() const { return infoTextManual; }
+    bool isInfoTextActive() const { return infoTextActive; }
 
     /**
      * Draw demo mode display (repurposed from drawFontTest)
@@ -137,14 +144,16 @@ public:
     bool updateScroll();
 
     /**
+     * Update infotext scroll/alternation state
+     * Should be called frequently from main loop (~50ms)
+     * @return true if status bar needs redraw
+     */
+    bool updateInfoText();
+
+    /**
      * Reset all scroll states (call when departure data changes)
      */
     void resetScroll();
-
-    /**
-     * Clear display screen and flip buffer (for rest mode)
-     */
-    void clearScreen();
 
     // ========================================================================
     // Pure Rendering Methods (for DisplayController)
@@ -166,7 +175,14 @@ public:
     /**
      * Draw date/time status bar (bottom row)
      */
-    void drawDateTime();
+    void drawClipped(const char* str, int x, int y, const GFXfont* font,
+                     uint16_t color, int exclLeft, int exclRight);
+    void drawDateTime(int exclLeft = -1, int exclRight = -1);
+
+    /**
+     * Draw status bar: infotext (if active and showing) or datetime
+     */
+    void drawStatusBar();
 
     /**
      * Draw AP mode screen with WiFi credentials
@@ -193,7 +209,17 @@ private:
     const GFXfont* fontWeather;  // Weather icon font
 
     // Weather data pointer
-    const struct WeatherData* weatherData;
+    struct WeatherData weatherData;
+
+    // Infotext state (service alerts in status bar)
+    char infoTextBuf[TransitAPI::MAX_INFOTEXT_LEN]; // Current infotext (converted to display encoding)
+    char infoTextRaw[TransitAPI::MAX_INFOTEXT_LEN]; // Raw UTF-8 for change detection
+    bool infoTextManual;                             // Manual override — ignore API updates
+    bool infoTextActive;                              // Whether we have infotext to show
+    bool showingInfoText;                             // Currently showing infotext (vs datetime)
+    unsigned long infoTextPhaseStart;                 // When current phase (datetime/infotext) started
+    ScrollState infoTextScroll;                       // Scroll state for infotext in status bar
+    int infoTextWidthPx;                              // Text width in pixels for pixel-based scrolling
 
     // Scroll state for each departure row (max 3 rows)
     ScrollState scrollState[3];
@@ -212,6 +238,8 @@ private:
     DestLayout calcDestLayout(const Departure& dep);
     void drawDeparture(int row, const Departure& dep);
     void redrawDestination(int row, const Departure& dep);
+    void drawInfoText();    // Draw scrolling infotext in status bar
+    void applyInfoText(const char* text); // Apply infotext immediately (internal)
 
     // Weather helper functions
     char mapWeatherCodeToIcon(int wmoCode);

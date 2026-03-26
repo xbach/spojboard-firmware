@@ -21,8 +21,20 @@ DisplayManager::DisplayManager()
     fontSmall = &DepartureMono_Regular4pt8b;
     fontMedium = &DepartureMono_Regular5pt8b;
     fontCondensed = &DepartureMono_Condensed5pt8b;
-    fontWeather = &DepartureWeather_Regular4pt8b; // TODO: Change to &DepartureWeather4pt8b when font is created
-    weatherData = nullptr;
+    fontWeather = &DepartureWeather_Regular4pt8b;
+    memset(&weatherData, 0, sizeof(weatherData));
+
+    // Initialize infotext state
+    infoTextBuf[0] = '\0';
+    infoTextRaw[0] = '\0';
+    infoTextManual = false;
+    infoTextActive = false;
+    showingInfoText = false;
+    infoTextPhaseStart = 0;
+    infoTextWidthPx = 0;
+    memset(&infoTextScroll, 0, sizeof(infoTextScroll));
+    infoTextScroll.paused = true;
+    infoTextScroll.atStart = true;
 
     // Initialize scroll state for all rows
     for (int i = 0; i < 3; i++)
@@ -34,6 +46,93 @@ DisplayManager::DisplayManager()
         scrollState[i].atStart = true; // At beginning
         scrollState[i].lastUpdate = 0;
         scrollState[i].cycleCount = 0;
+    }
+}
+
+void DisplayManager::setInfoText(const char* text)
+{
+    // Manual override active — ignore API updates
+    if (infoTextManual)
+        return;
+
+    // Compare against raw UTF-8 (infoTextBuf has been through utf8tocp, can't compare)
+    bool changed = (strcmp(infoTextRaw, text ? text : "") != 0);
+    if (!changed)
+        return; // Same text — will show again when datetime interval expires
+
+    // If currently scrolling infotext, drop the update — don't interrupt
+    if (infoTextActive && showingInfoText)
+        return;
+
+    // Not scrolling + different text → apply immediately
+    applyInfoText(text);
+}
+
+void DisplayManager::setInfoTextManual(const char* text)
+{
+    if (text && text[0] != '\0')
+    {
+        infoTextManual = true;
+        applyInfoText(text);
+    }
+    else
+    {
+        clearInfoText();
+    }
+}
+
+void DisplayManager::clearInfoText()
+{
+    infoTextManual = false;
+    applyInfoText("");
+}
+
+void DisplayManager::applyInfoText(const char* text)
+{
+    bool wasActive = infoTextActive;
+
+    // Store raw for future comparison
+    strlcpy(infoTextRaw, text ? text : "", sizeof(infoTextRaw));
+
+    if (text && text[0] != '\0')
+    {
+        strlcpy(infoTextBuf, text, sizeof(infoTextBuf));
+        utf8tocp(infoTextBuf);
+        infoTextActive = true;
+
+        // Calculate text width in pixels by summing glyph xAdvance directly
+        // (more reliable than getTextBounds for extended character sets)
+        int width = 0;
+        uint8_t first = pgm_read_byte(&fontCondensed->first);
+        uint8_t last  = pgm_read_byte(&fontCondensed->last);
+        for (int i = 0; infoTextBuf[i]; i++)
+        {
+            uint8_t c = (uint8_t)infoTextBuf[i];
+            if (c >= first && c <= last)
+                width += pgm_read_byte(&fontCondensed->glyph[c - first].xAdvance);
+        }
+        infoTextWidthPx = width;
+
+        infoTextScroll.offset = 0;
+        infoTextScroll.maxOffset = infoTextWidthPx + 128; // Full scroll: off-right to off-left
+        infoTextScroll.needsScroll = true;
+        infoTextScroll.paused = false;     // No initial pause — start scrolling immediately
+        infoTextScroll.atStart = true;
+        infoTextScroll.lastUpdate = millis();
+        infoTextScroll.cycleCount = 0;
+    }
+    else
+    {
+        infoTextBuf[0] = '\0';
+        infoTextRaw[0] = '\0';
+        infoTextActive = false;
+    }
+
+    // Reset alternation if infotext just appeared or disappeared
+    if (wasActive != infoTextActive)
+    {
+        showingInfoText = false;
+        infoTextPhaseStart = millis();
     }
 }
 
@@ -476,83 +575,199 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     }
 }
 
-void DisplayManager::drawDateTime()
+void DisplayManager::drawClipped(const char* str, int x, int y, const GFXfont* font,
+                                 uint16_t color, int exclLeft, int exclRight)
+{
+    display->setFont(font);
+    display->setTextColor(color);
+
+    uint8_t first = pgm_read_byte(&font->first);
+    uint8_t last  = pgm_read_byte(&font->last);
+    int cursorX = x;
+
+    for (int i = 0; str[i]; i++)
+    {
+        uint8_t c = (uint8_t)str[i];
+        int advance = 0;
+        if (c >= first && c <= last)
+            advance = pgm_read_byte(&font->glyph[c - first].xAdvance);
+
+        // Draw char only if fully outside exclusion zone
+        if (exclLeft < 0 || (cursorX + advance) <= exclLeft || cursorX >= exclRight)
+        {
+            display->setCursor(cursorX, y);
+            display->print(str[i]);
+        }
+
+        cursorX += advance;
+    }
+}
+
+void DisplayManager::drawDateTime(int exclLeft, int exclRight)
 {
     int y = 24; // Bottom row
+
+    // Clear full 8px status bar area (needed when switching from taller infotext font)
+    // When exclusion zone is active, caller handles clearing
+    if (exclLeft < 0)
+        display->fillRect(0, y, 128, 8, COLOR_BLACK);
 
     struct tm timeinfo;
     if (!getCurrentTime(&timeinfo))
     {
-        display->setTextColor(COLOR_RED);
-        display->setFont(fontSmall);
-        display->setCursor(2, y + 7);
-        display->print("Time Sync...");
+        if (exclLeft < 0) // Only show sync message when drawing full datetime
+        {
+            display->setTextColor(COLOR_RED);
+            display->setFont(fontSmall);
+            display->setCursor(2, y + 7);
+            display->print("Time Sync...");
+        }
         return;
     }
-
-    display->setFont(fontSmall);
-    display->setTextColor(COLOR_WHITE);
 
     // Get language setting (default to "en" if config not set)
     const char *lang = (config && config->language[0]) ? config->language : "en";
 
-    // Date first (numeric format: DD.MM.) - fixed width
+    // Date
     char dateStr[8];
     snprintf(dateStr, sizeof(dateStr), "%02d.%02d.", timeinfo.tm_mday, timeinfo.tm_mon + 1);
-    display->setCursor(2, y + 7);
-    display->print(dateStr);
+    drawClipped(dateStr, 2, y + 7, fontSmall, COLOR_WHITE, exclLeft, exclRight);
 
-    // Day of week (full name, localized) - variable width
-    char dayStr[16]; // Buffer for "Donnerstag" (10 chars + accents)
+    // Day of week
+    char dayStr[16];
     const char *localDay = getLocalizedDayFull(timeinfo.tm_wday, lang);
     snprintf(dayStr, sizeof(dayStr), "%s", localDay);
     utf8tocp(dayStr);
-    display->setCursor(29, y + 7); // After date (6 chars × 4px = 24px + 2px margin)
-    display->print(dayStr);
+    drawClipped(dayStr, 29, y + 7, fontSmall, COLOR_WHITE, exclLeft, exclRight);
 
-    // Weather (only if enabled and valid data)
-    if (config && config->weatherEnabled && weatherData && !weatherData->hasError)
+    // Weather icon + temperature
+    if (config && config->weatherEnabled && !weatherData.hasError)
     {
         time_t now;
         time(&now);
 
-        // Only show if data is fresh (< 30 min old)
-        if (difftime(now, weatherData->timestamp) < 1800)
+        if (difftime(now, weatherData.timestamp) < 1800)
         {
-            // Switch to weather font
-            display->setFont(fontWeather); // DepartureWeather4pt8b
+            char iconCode = mapWeatherCodeToIcon(weatherData.weatherCode);
+            uint16_t iconColor = getWeatherColor(weatherData.weatherCode);
+            char iconStr[2] = {iconCode, '\0'};
+            drawClipped(iconStr, 75, y + 7, fontWeather, iconColor, exclLeft, exclRight);
 
-            // Get icon character and color for this weather code
-            char iconCode = mapWeatherCodeToIcon(weatherData->weatherCode);
-            uint16_t iconColor = getWeatherColor(weatherData->weatherCode);
-
-            // Draw icon at X=75 (shifted +10px from original X=65)
-            display->setTextColor(iconColor);
-            display->setCursor(75, y + 7);
-            display->print(iconCode); // Letter 'a'-'t' renders as weather icon
-
-            // Draw temperature left-aligned after weather icon
-            display->setFont(fontSmall);
-            display->setTextColor(getTemperatureColor(weatherData->temperature));
             char tempStr[8];
-            snprintf(tempStr, sizeof(tempStr), "%d\xB0", weatherData->temperature);
-
-            display->setCursor(86, y + 7);
-            display->print(tempStr); // Temperature with degree symbol
-
-            // Switch back to small font for time display
-            display->setFont(fontSmall);
-            display->setTextColor(COLOR_WHITE);
+            snprintf(tempStr, sizeof(tempStr), "%d\xB0", weatherData.temperature);
+            drawClipped(tempStr, 86, y + 7, fontSmall,
+                        getTemperatureColor(weatherData.temperature), exclLeft, exclRight);
         }
     }
 
     // Time
-    display->setFont(fontSmall);
-    display->setTextColor(COLOR_WHITE);
     char timeStr[6];
     strftime(timeStr, 6, "%H:%M", &timeinfo);
-    display->setCursor(102, y + 7);
-    display->print(timeStr);
+    drawClipped(timeStr, 102, y + 7, fontSmall, COLOR_WHITE, exclLeft, exclRight);
+}
+
+void DisplayManager::drawStatusBar()
+{
+    if (infoTextActive && showingInfoText)
+    {
+        drawInfoText();
+    }
+    else
+    {
+        drawDateTime();
+    }
+}
+
+void DisplayManager::drawInfoText()
+{
+    int y = 24; // Bottom row (same as drawDateTime)
+    static const int INFOTEXT_CLEAR_PAD_PX = 0;
+
+    // Pixel-based scroll: text enters from right edge, exits left
+    int x = 128 - infoTextScroll.offset;
+
+    // Calculate the infotext band (text + padding on each side)
+    int clearX = x - INFOTEXT_CLEAR_PAD_PX;
+    if (clearX < 0)
+        clearX = 0;
+    int trailX = x + infoTextWidthPx + INFOTEXT_CLEAR_PAD_PX;
+    if (trailX > 128)
+        trailX = 128;
+
+    // Draw order: clear bar, draw infotext, then datetime around it
+    // This avoids DMA tearing — infotext is never momentarily erased
+    display->fillRect(0, y, 128, 8, COLOR_BLACK);
+
+    display->setFont(fontCondensed);
+    display->setTextColor(COLOR_YELLOW);
+    display->setCursor(x, y + 7);
+    display->print(infoTextBuf);
+
+    // Draw datetime elements only outside the infotext band
+    // Each element either draws fully or not at all — no half-cut characters
+    drawDateTime(clearX, trailX);
+}
+
+bool DisplayManager::updateInfoText()
+{
+    if (!infoTextActive)
+        return false;
+
+    unsigned long now = millis();
+    unsigned long elapsed = now - infoTextPhaseStart;
+
+    // Calculate datetime display duration = half of infotext total scroll time
+    unsigned long infoTotalMs = (unsigned long)infoTextScroll.maxOffset * INFOTEXT_SCROLL_INTERVAL_MS;
+    unsigned long dateTimeShowMs = infoTotalMs / 2;
+    if (dateTimeShowMs < INFOTEXT_MIN_DATETIME_MS)
+        dateTimeShowMs = INFOTEXT_MIN_DATETIME_MS;
+
+    if (!showingInfoText)
+    {
+        // Currently showing datetime — switch to infotext after dynamic timeout
+        if (elapsed >= dateTimeShowMs)
+        {
+            showingInfoText = true;
+            infoTextPhaseStart = now;
+
+            // Reset scroll for fresh cycle — no pause, start scrolling immediately
+            infoTextScroll.offset = 0;
+            infoTextScroll.paused = false;
+            infoTextScroll.atStart = true;
+            infoTextScroll.lastUpdate = now;
+            infoTextScroll.cycleCount = 0;
+
+            drawInfoText();
+            return true;
+        }
+        return false;
+    }
+
+    // Scrolling logic (pixel-step, continuous scroll-through)
+    unsigned long scrollElapsed = now - infoTextScroll.lastUpdate;
+
+    // Advance scroll
+    if (scrollElapsed >= INFOTEXT_SCROLL_INTERVAL_MS)
+    {
+        infoTextScroll.lastUpdate = now;
+        infoTextScroll.offset++;
+
+        if (infoTextScroll.offset >= infoTextScroll.maxOffset)
+        {
+            // Scroll complete — switch to datetime immediately
+            showingInfoText = false;
+            infoTextPhaseStart = now;
+            infoTextScroll.offset = 0;
+            infoTextScroll.cycleCount++;
+            drawDateTime();
+            return true;
+        }
+
+        drawInfoText();
+        return true;
+    }
+
+    return false;
 }
 
 void DisplayManager::drawStatus(const char *line1, const char *line2, uint16_t color)
@@ -633,6 +848,7 @@ void DisplayManager::drawOTAProgress(size_t progress, size_t total)
 
 void DisplayManager::drawAPMode(const char *ssid, const char *password)
 {
+    display->clearScreen();
     display->setFont(fontSmall);
 
     // Title
@@ -720,7 +936,7 @@ void DisplayManager::drawDepartures(const Departure *departures, int departureCo
         row++;
     }
 
-    drawDateTime();
+    drawStatusBar();
     delay(1);
 
     isDrawing = false;
@@ -742,123 +958,6 @@ void DisplayManager::clearDisplay()
 // Legacy Method (deprecated - use DisplayController instead)
 // ============================================================================
 
-void DisplayManager::updateDisplay(const Departure *departures, int departureCount, int numToDisplay,
-                                   bool wifiConnected, bool apModeActive,
-                                   const char *apSSID, const char *apPassword,
-                                   bool apiError, const char *apiErrorMsg,
-                                   const char *stopName, bool apiKeyConfigured,
-                                   bool demoModeActive)
-{
-    // DEPRECATED: This method kept for backward compatibility during refactoring
-    // New code should use DisplayController::render() instead
-    //
-    // This method now just calls drawDepartures() - state logic moved to DisplayController
-
-    if (isDrawing)
-        return;
-
-    // Check if departure data has changed - reset scroll if so
-    bool dataChanged = (departures != currentDepartures) ||
-                       (departureCount != currentDepartureCount) ||
-                       (numToDisplay != currentNumToDisplay);
-
-    // Store current departures reference for scroll updates
-    currentDepartures = departures;
-    currentDepartureCount = departureCount;
-    currentNumToDisplay = numToDisplay;
-
-    // Reset scroll state when data changes
-    if (dataChanged)
-    {
-        resetScroll();
-    }
-
-    isDrawing = true;
-    display->clearScreen();
-    delay(1);
-
-    // Demo mode has highest priority - bypass all status screens
-    // and show demo departures regardless of WiFi/API/config state
-    if (demoModeActive)
-    {
-        // Draw demo departures directly
-        int rowsToDraw = (departureCount < numToDisplay) ? departureCount : numToDisplay;
-        if (rowsToDraw > 3)
-            rowsToDraw = 3; // Maximum 3 rows on display
-
-        for (int i = 0; i < rowsToDraw; i++)
-        {
-            renderedDeps[i] = departures[i];
-            drawDeparture(i, departures[i]);
-            delay(1);
-        }
-
-        drawDateTime();
-        delay(1);
-
-        isDrawing = false;
-        return;
-    }
-
-    // AP Mode - Show credentials
-    if (apModeActive)
-    {
-        drawAPMode(apSSID, apPassword);
-        isDrawing = false;
-        return;
-    }
-
-    if (!wifiConnected)
-    {
-        // We don't have access to config here, so just show generic message
-        drawStatus("WiFi Connecting...", "", COLOR_YELLOW);
-        isDrawing = false;
-        return;
-    }
-
-    if (!apiKeyConfigured)
-    {
-        char ipStr[32];
-        snprintf(ipStr, sizeof(ipStr), "http://%s", WiFi.localIP().toString().c_str());
-        drawStatus("Setup Required", ipStr, COLOR_CYAN);
-        isDrawing = false;
-        return;
-    }
-
-    if (apiError)
-    {
-        drawStatus("API Error", apiErrorMsg, COLOR_RED);
-        drawDateTime();
-        isDrawing = false;
-        return;
-    }
-
-    if (departureCount == 0)
-    {
-        drawStatus("No Departures", stopName[0] ? stopName : "Waiting...", COLOR_YELLOW);
-        drawDateTime();
-        isDrawing = false;
-        return;
-    }
-
-    // Draw departures (top 3 rows, or fewer if numToDisplay is less)
-    int rowsToDraw = (departureCount < numToDisplay) ? departureCount : numToDisplay;
-    if (rowsToDraw > 3)
-        rowsToDraw = 3; // Maximum 3 rows on display
-
-    for (int i = 0; i < rowsToDraw; i++)
-    {
-        renderedDeps[i] = departures[i];
-        drawDeparture(i, departures[i]);
-        delay(1);
-    }
-
-    drawDateTime();
-    delay(1);
-
-    isDrawing = false;
-}
-
 void DisplayManager::drawDemo(const Departure *departures, int departureCount, const char *stopName)
 {
     if (isDrawing)
@@ -877,8 +976,7 @@ void DisplayManager::drawDemo(const Departure *departures, int departureCount, c
         delay(1);
     }
 
-    // Draw date/time status bar
-    drawDateTime();
+    drawStatusBar();
     delay(1);
 
     isDrawing = false;
@@ -897,19 +995,6 @@ void DisplayManager::resetScroll()
         scrollState[i].cycleCount = 0;
     }
     lastScrollTick = millis();
-}
-
-void DisplayManager::clearScreen()
-{
-    if (display == nullptr || isDrawing)
-    {
-        return;
-    }
-
-    isDrawing = true;
-    display->clearScreen();
-    display->flipDMABuffer();
-    isDrawing = false;
 }
 
 bool DisplayManager::updateScroll()
@@ -1204,7 +1289,7 @@ void DisplayManager::drawTicker(const TickerData& ticker)
     display->print(symbolTrunc);
 
     // Draw status bar (row 3)
-    drawDateTime();
+    drawStatusBar();
     delay(1);
 
     isDrawing = false;

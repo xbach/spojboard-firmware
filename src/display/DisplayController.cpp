@@ -48,7 +48,7 @@ void DisplayController::render(const Departure* departures, int departureCount, 
         {
             const char* sym = (tickerData && tickerData->symbol[0]) ? tickerData->symbol : "";
             displayManager.drawStatus("Loading Ticker...", sym, COLOR_YELLOW);
-            displayManager.drawDateTime();
+            displayManager.drawStatusBar();
         }
         return;
     }
@@ -83,7 +83,7 @@ void DisplayController::render(const Departure* departures, int departureCount, 
         char ipStr[32];
         snprintf(ipStr, sizeof(ipStr), "Fix at: %s", WiFi.localIP().toString().c_str());
         displayManager.drawStatus("API Error", ipStr, COLOR_RED);
-        displayManager.drawDateTime(); // Still show time bar
+        displayManager.drawStatusBar(); // Still show time bar
         return;
     }
 
@@ -98,7 +98,7 @@ void DisplayController::render(const Departure* departures, int departureCount, 
         {
             displayManager.drawStatus("No Departures", "", COLOR_YELLOW);
         }
-        displayManager.drawDateTime();
+        displayManager.drawStatusBar();
         return;
     }
 
