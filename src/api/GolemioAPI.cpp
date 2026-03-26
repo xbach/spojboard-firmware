@@ -20,6 +20,7 @@ TransitAPI::APIResult GolemioAPI::fetchDepartures(const Config& config)
     result.hasError = false;
     result.stopName[0] = '\0';
     result.errorMsg[0] = '\0';
+    result.infoText[0] = '\0';
 
     // Validate inputs (use Prague-specific fields)
     if (strlen(config.pragueApiKey) == 0 || strlen(config.pragueStopIds) == 0)
@@ -57,7 +58,7 @@ TransitAPI::APIResult GolemioAPI::fetchDepartures(const Config& config)
             continue;
         }
 
-        querySingleStop(stopId, config, tempDepartures, tempCount, result.stopName, firstStop);
+        querySingleStop(stopId, config, tempDepartures, tempCount, result.stopName, firstStop, result.infoText);
 
         delay(1000);
 
@@ -109,7 +110,8 @@ bool GolemioAPI::querySingleStop(const char* stopId,
                                  Departure* tempDepartures,
                                  int& tempCount,
                                  char* stopName,
-                                 bool& isFirstStop)
+                                 bool& isFirstStop,
+                                 char* infoText)
 {
     char queryMsg[96];
     snprintf(queryMsg, sizeof(queryMsg), "API: Querying stop %s", stopId);
@@ -253,6 +255,23 @@ bool GolemioAPI::querySingleStop(const char* stopId,
                     break;
 
                 parseDepartureObject(dep, config, tempDepartures, tempCount, stopId);
+            }
+        }
+
+        // Parse infotexts (service alerts) - append to existing with " /// " separator
+        if (doc.containsKey("infotexts"))
+        {
+            JsonArray texts = doc["infotexts"];
+            for (const char* text : texts)
+            {
+                if (text && strlen(text) > 0)
+                {
+                    if (infoText[0] != '\0')
+                    {
+                        strlcat(infoText, " /// ", MAX_INFOTEXT_LEN);
+                    }
+                    strlcat(infoText, text, MAX_INFOTEXT_LEN);
+                }
             }
         }
 

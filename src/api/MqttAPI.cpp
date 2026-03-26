@@ -51,7 +51,7 @@ void MqttAPI::setStatusCallback(APIStatusCallback callback)
 
 TransitAPI::APIResult MqttAPI::fetchDepartures(const Config& config)
 {
-    APIResult result;
+    APIResult result = {};
     result.departureCount = 0;
     result.hasError = false;
     strlcpy(result.stopName, "MQTT", sizeof(result.stopName));

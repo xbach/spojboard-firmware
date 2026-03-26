@@ -53,7 +53,8 @@ class GolemioAPI : public TransitAPI
                          Departure* tempDepartures,
                          int& tempCount,
                          char* stopName,
-                         bool& isFirstStop);
+                         bool& isFirstStop,
+                         char* infoText);
 
     /**
      * Parse departure JSON object and add to temp array

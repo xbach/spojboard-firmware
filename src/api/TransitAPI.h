@@ -15,6 +15,9 @@
 class TransitAPI
 {
   public:
+    // Maximum length for concatenated infotexts (multiple joined with " /// ")
+    static constexpr int MAX_INFOTEXT_LEN = 512;
+
     struct APIResult
     {
         Departure departures[MAX_DEPARTURES];
@@ -22,6 +25,7 @@ class TransitAPI
         char stopName[64];
         bool hasError;
         char errorMsg[64];
+        char infoText[MAX_INFOTEXT_LEN]; // Concatenated service alerts/infotexts
     };
 
     typedef void (*APIStatusCallback)(const char* message);
