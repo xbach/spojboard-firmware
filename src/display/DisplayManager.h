@@ -49,6 +49,17 @@ struct ScrollState {
     int cycleCount;           // Number of completed scroll cycles
 };
 
+// Display layout parameters (derived from panel configuration)
+struct DisplayLayout {
+    int displayWidth;       // Total display width in pixels (always 128)
+    int displayHeight;      // Total display height in pixels (32 or 64)
+    int rowHeight;          // Height of each row in pixels (always 8)
+    int maxDepartureRows;   // Maximum departure rows: (displayHeight / rowHeight) - 1
+    int statusBarY;         // Y coordinate of status bar top edge
+    int statusBarBaseline;  // Y baseline for status bar text
+    int panelCount;         // Number of physical panels (2 or 4)
+};
+
 // ============================================================================
 // Display Manager Class
 // ============================================================================
@@ -202,6 +213,7 @@ private:
     MatrixPanel_I2S_DMA* display;
     bool isDrawing;
     const Config* config;
+    DisplayLayout layout;
 
     const GFXfont* fontSmall;
     const GFXfont* fontMedium;
@@ -221,8 +233,8 @@ private:
     ScrollState infoTextScroll;                       // Scroll state for infotext in status bar
     int infoTextWidthPx;                              // Text width in pixels for pixel-based scrolling
 
-    // Scroll state for each departure row (max 3 rows)
-    ScrollState scrollState[3];
+    // Scroll state for each departure row (max MAX_POSSIBLE_DISPLAY_ROWS rows)
+    ScrollState scrollState[MAX_POSSIBLE_DISPLAY_ROWS];
     unsigned long lastScrollTick;
 
     // Current departures reference (for scroll redraws)
@@ -232,7 +244,7 @@ private:
 
     // Rendered departures buffer (maps row index to actual departure shown)
     // Used by scroll system - may differ from currentDepartures[row] due to dedup
-    Departure renderedDeps[3];
+    Departure renderedDeps[MAX_POSSIBLE_DISPLAY_ROWS];
 
     // Internal drawing functions
     DestLayout calcDestLayout(const Departure& dep);

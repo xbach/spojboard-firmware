@@ -47,6 +47,7 @@
 #define PANEL_WIDTH 64
 #define PANEL_HEIGHT 32
 #define PANELS_NUMBER 2 // 128x32 total
+#define MAX_POSSIBLE_DISPLAY_ROWS 7 // Maximum departure rows for largest supported display (128x64)
 
 // ============================================================================
 // Pin Mapping - Hardware Variant Specific

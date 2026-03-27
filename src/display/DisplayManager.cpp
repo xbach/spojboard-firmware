@@ -24,6 +24,15 @@ DisplayManager::DisplayManager()
     fontWeather = &DepartureWeather_Regular4pt8b;
     memset(&weatherData, 0, sizeof(weatherData));
 
+    // Initialize default layout (128x32, updated in begin())
+    layout.displayWidth = 128;
+    layout.displayHeight = 32;
+    layout.rowHeight = 8;
+    layout.maxDepartureRows = 3;
+    layout.statusBarY = 24;
+    layout.statusBarBaseline = 31;
+    layout.panelCount = 2;
+
     // Initialize infotext state
     infoTextBuf[0] = '\0';
     infoTextRaw[0] = '\0';
@@ -37,7 +46,7 @@ DisplayManager::DisplayManager()
     infoTextScroll.atStart = true;
 
     // Initialize scroll state for all rows
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < MAX_POSSIBLE_DISPLAY_ROWS; i++)
     {
         scrollState[i].offset = 0;
         scrollState[i].maxOffset = 0;
