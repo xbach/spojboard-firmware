@@ -375,7 +375,7 @@ DestLayout DisplayManager::calcDestLayout(const Departure &dep)
 
 void DisplayManager::drawDeparture(int row, const Departure &dep)
 {
-    int y = row * 8; // Each row is 8 pixels
+    int y = row * this->layout.rowHeight; // Each row is rowHeight pixels
 
     // Convert line number and destination to ISO-8859-2 (in-place)
     char lineConverted[8];
@@ -386,12 +386,12 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     utf8tocp(destConverted);
 
     // Calculate destination layout (font, maxChars, platform reservation, etc.)
-    DestLayout layout = calcDestLayout(dep);
+    DestLayout destLayout = calcDestLayout(dep);
 
     // Draw line number background - always black (fixed width for all routes)
     uint16_t lineColor = getLineColorWithConfig(dep.line, config ? config->lineColorMap : "");
     int bgWidth = 18; // Fixed width to fit up to 4 characters
-    display->fillRect(1, y + 1, bgWidth, 7, COLOR_BLACK);
+    display->fillRect(1, y + 1, bgWidth, this->layout.rowHeight - 1, COLOR_BLACK);
 
     // Line number text - colored text on black background
     display->setTextColor(lineColor);
@@ -409,8 +409,8 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     display->getTextBounds(lineConverted, 0, 0, &x1, &y1, &w, &h);
     // Account for font's left bearing offset (x1) when centering
     int textX = 1 + (bgWidth - w) / 2 - x1;
-    // Align baseline with destination (y + 7)
-    display->setCursor(textX, y + 7);
+    // Align baseline with destination (y + rowHeight - 1)
+    display->setCursor(textX, y + this->layout.rowHeight - 1);
     display->print(lineConverted);
 
     // AC indicator (asterisk before destination)
@@ -418,25 +418,25 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     {
         int acX = (config && config->showMultipleTimes && config->showPlatform) ? 20 : 22;
         display->setTextColor(COLOR_CYAN);
-        display->setCursor(acX, y + 7);
+        display->setCursor(acX, y + this->layout.rowHeight - 1);
         display->print("*");
     }
 
     // Destination text
     display->setTextColor(COLOR_WHITE);
-    display->setFont(layout.font);
-    display->setCursor(layout.destX, y + 7);
+    display->setFont(destLayout.font);
+    display->setCursor(destLayout.destX, y + this->layout.rowHeight - 1);
 
     // Check if scrolling is needed for this row (only if enabled in config)
     int destLen = strlen(destConverted);
-    bool needsScroll = (config && config->scrollEnabled) && (destLen > layout.maxChars);
+    bool needsScroll = (config && config->scrollEnabled) && (destLen > destLayout.maxChars);
     char destTrunc[64];
 
-    if (needsScroll && row < 3)
+    if (needsScroll && row < this->layout.maxDepartureRows)
     {
         // Set up scroll state for this row
         scrollState[row].needsScroll = true;
-        scrollState[row].maxOffset = destLen - layout.maxChars;
+        scrollState[row].maxOffset = destLen - destLayout.maxChars;
 
         // Apply current scroll offset
         int scrollOffset = scrollState[row].offset;
@@ -446,37 +446,37 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         }
 
         // Copy substring starting at scroll offset
-        strlcpy(destTrunc, destConverted + scrollOffset, layout.maxChars + 1);
+        strlcpy(destTrunc, destConverted + scrollOffset, destLayout.maxChars + 1);
     }
     else
     {
         // No scrolling needed - reset state and show full text
-        if (row < 3)
+        if (row < this->layout.maxDepartureRows)
         {
             scrollState[row].needsScroll = false;
             scrollState[row].offset = 0;
         }
-        strlcpy(destTrunc, destConverted, layout.maxChars + 1);
+        strlcpy(destTrunc, destConverted, destLayout.maxChars + 1);
     }
     display->print(destTrunc);
 
     // Platform display (if enabled and present)
-    if (layout.willShowPlatform)
+    if (destLayout.willShowPlatform)
     {
-        if (layout.symbolChar != '\0')
+        if (destLayout.symbolChar != '\0')
         {
             // Render directional arrow using weather font
             display->setFont(fontWeather);
-            int platformAnchor = config && config->showMultipleTimes ? 97 : 109;
+            int platformAnchor = config && config->showMultipleTimes ? (this->layout.displayWidth - 31) : (this->layout.displayWidth - 19);
 
             int16_t px1, py1;
             uint16_t pw, ph;
-            char symBuf[2] = {layout.symbolChar, '\0'};
+            char symBuf[2] = {destLayout.symbolChar, '\0'};
             display->getTextBounds(symBuf, 0, 0, &px1, &py1, &pw, &ph);
             int platformX = platformAnchor - pw - 1 - px1;
 
             display->setTextColor(COLOR_CYAN);
-            display->setCursor(platformX, y + 7);
+            display->setCursor(platformX, y + this->layout.rowHeight - 1);
             display->print(symBuf);
         }
         else
@@ -529,7 +529,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         int16_t tx1, ty1;
         uint16_t tw, th;
         display->getTextBounds(text, 0, 0, &tx1, &ty1, &tw, &th);
-        display->setCursor(anchorX - tw - tx1, y + 7);
+        display->setCursor(anchorX - tw - tx1, y + this->layout.rowHeight - 1);
         display->print(text);
     };
 
@@ -1099,10 +1099,10 @@ bool DisplayManager::updateScroll()
 
 void DisplayManager::redrawDestination(int row, const Departure &dep)
 {
-    if (row < 0 || row >= 3 || !display)
+    if (row < 0 || row >= this->layout.maxDepartureRows || !display)
         return;
 
-    int y = row * 8;
+    int y = row * this->layout.rowHeight;
 
     // Convert destination to ISO-8859-2
     char destConverted[64];
@@ -1110,16 +1110,16 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
     utf8tocp(destConverted);
 
     // Use shared layout calculation
-    DestLayout layout = calcDestLayout(dep);
+    DestLayout destLayout = calcDestLayout(dep);
 
     // Clear the destination area (from destX to just before platform/ETA)
-    int clearWidth = layout.spaceCalcEta - layout.destX - layout.platformReservedPx;
-    display->fillRect(layout.destX, y, clearWidth, 8, COLOR_BLACK);
+    int clearWidth = destLayout.spaceCalcEta - destLayout.destX - destLayout.platformReservedPx;
+    display->fillRect(destLayout.destX, y, clearWidth, this->layout.rowHeight, COLOR_BLACK);
 
     // Apply scroll offset and draw
-    display->setFont(layout.font);
+    display->setFont(destLayout.font);
     display->setTextColor(COLOR_WHITE);
-    display->setCursor(layout.destX, y + 7);
+    display->setCursor(destLayout.destX, y + this->layout.rowHeight - 1);
 
     char destTrunc[64];
     int scrollOffset = scrollState[row].offset;
@@ -1127,7 +1127,7 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
     {
         scrollOffset = scrollState[row].maxOffset;
     }
-    strlcpy(destTrunc, destConverted + scrollOffset, layout.maxChars + 1);
+    strlcpy(destTrunc, destConverted + scrollOffset, destLayout.maxChars + 1);
     display->print(destTrunc);
 }
 

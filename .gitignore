@@ -5,6 +5,7 @@
 .DS_Store
 dist/
 docs/plans
+docs/superpowers
 CODE_REVIEW.MD
 
 # Local Claude Code instruction files
