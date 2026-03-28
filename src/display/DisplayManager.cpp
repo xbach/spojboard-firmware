@@ -919,7 +919,7 @@ void DisplayManager::drawDepartures(const Departure *departures, int departureCo
     // Draw departures (top 3 rows, or fewer if numToDisplay is less)
     // When showMultipleTimes is on, skip duplicates (same line+destination
     // already shown on a previous row with its secondEta).
-    int maxRows = (numToDisplay < 3) ? numToDisplay : 3;
+    int maxRows = (numToDisplay < layout.maxDepartureRows) ? numToDisplay : layout.maxDepartureRows;
 
     int row = 0;
     for (int i = 0; i < departureCount && row < maxRows; i++)
@@ -977,7 +977,7 @@ void DisplayManager::drawDemo(const Departure *departures, int departureCount, c
     delay(1);
 
     // Draw sample departures (top 1-3 rows)
-    int rowsToDraw = (departureCount < 3) ? departureCount : 3;
+    int rowsToDraw = (departureCount < layout.maxDepartureRows) ? departureCount : layout.maxDepartureRows;
     for (int i = 0; i < rowsToDraw; i++)
     {
         renderedDeps[i] = departures[i];
@@ -993,7 +993,7 @@ void DisplayManager::drawDemo(const Departure *departures, int departureCount, c
 
 void DisplayManager::resetScroll()
 {
-    for (int i = 0; i < 3; i++)
+    for (int i = 0; i < layout.maxDepartureRows; i++)
     {
         scrollState[i].offset = 0;
         scrollState[i].maxOffset = 0;
@@ -1020,8 +1020,8 @@ bool DisplayManager::updateScroll()
 
     // Determine how many rows to consider
     int rowsToCheck = (currentDepartureCount < currentNumToDisplay) ? currentDepartureCount : currentNumToDisplay;
-    if (rowsToCheck > 3)
-        rowsToCheck = 3;
+    if (rowsToCheck > layout.maxDepartureRows)
+        rowsToCheck = layout.maxDepartureRows;
 
     // Process only ONE row per call - round-robin through rows
     // Use lastScrollTick to track which row to check next
