@@ -227,10 +227,27 @@ String buildDisplayTab(const Config* config)
     html += "</span></div>";
     html += "</div>";
 
-    // Number of departures
+    // Display Size
+    html += "<div>";
+    html += "<label for='panelRows'>DISPLAY SIZE</label>";
+    html += "<select id='panelRows' name='panel_rows'>";
+    html += "<option value='1'";
+    if (config->panelRows == 1) html += " selected";
+    html += ">128x32 (2 panels)</option>";
+    html += "<option value='2'";
+    if (config->panelRows == 2) html += " selected";
+    html += ">128x64 (4 panels)</option>";
+    html += "</select>";
+    html += "<div class='help-text'>Requires reboot. Only select 128x64 if 4 panels are connected.</div>";
+    html += "</div>";
+
+    // Number of departures (max depends on display size)
     html += "<div>";
     html += "<label for='numDepartures'>NUMBER OF DEPARTURES</label>";
-    html += "<input type='number' id='numDepartures' name='num_deps' min='1' max='3' value='";
+    int maxDeps = (config->panelRows * 32 / 8) - 1;
+    html += "<input type='number' id='numDepartures' name='num_deps' min='1' max='";
+    html += String(maxDeps);
+    html += "' value='";
     html += String(config->numDepartures);
     html += "'>";
     html += "</div>";

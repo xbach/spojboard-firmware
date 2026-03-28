@@ -430,6 +430,20 @@ function serializeLineColors() {
     if (hidden) hidden.value = result;
     return result;
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    var panelRowsSel = document.getElementById('panelRows');
+    if (panelRowsSel) {
+        panelRowsSel.addEventListener('change', function() {
+            var maxDeps = (parseInt(this.value) * 32 / 8) - 1;
+            var numDeps = document.getElementById('numDepartures');
+            if (numDeps) {
+                numDeps.max = maxDeps;
+                if (parseInt(numDeps.value) > maxDeps) numDeps.value = maxDeps;
+            }
+        });
+    }
+});
 </script>
 )rawliteral";
 

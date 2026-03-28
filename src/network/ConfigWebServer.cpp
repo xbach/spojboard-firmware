@@ -230,6 +230,7 @@ void ConfigWebServer::handleSave()
     Config newConfig = *currentConfig;
     bool wifiChanged = false;
     bool cityChanged = false;
+    bool displaySizeChanged = false;
 
     // Determine which tab is being saved (default "all" for AP mode / backward compat)
     String tab = server->hasArg("tab") ? server->arg("tab") : "all";
@@ -286,6 +287,7 @@ void ConfigWebServer::handleSave()
     if (tab == "display" || tab == "all")
     {
         parseDisplaySettings(&newConfig);
+        displaySizeChanged = (newConfig.panelRows != currentConfig->panelRows);
     }
     if (tab == "optional" || tab == "all")
     {
@@ -294,8 +296,8 @@ void ConfigWebServer::handleSave()
 
     newConfig.configured = true;
 
-    // If in AP mode, WiFi changed, or city changed, show restart message
-    if (apModeActive || wifiChanged || cityChanged)
+    // If in AP mode, WiFi changed, city changed, or display size changed, show restart message
+    if (apModeActive || wifiChanged || cityChanged || displaySizeChanged)
     {
         String html = FPSTR(HTML_HEADER);
 
@@ -381,7 +383,7 @@ void ConfigWebServer::handleSave()
 
     // Call the callback to notify main.cpp
     // Pass true for restart if either WiFi or city changed
-    onSaveCallback(newConfig, wifiChanged || cityChanged, tab.c_str());
+    onSaveCallback(newConfig, wifiChanged || cityChanged || displaySizeChanged, tab.c_str());
 }
 
 // ============================================================================
@@ -450,6 +452,14 @@ void ConfigWebServer::parseTransitSettings(Config* config)
 
 void ConfigWebServer::parseDisplaySettings(Config* config)
 {
+    if (server->hasArg("panel_rows"))
+    {
+        int newPanelRows = server->arg("panel_rows").toInt();
+        if (newPanelRows < 1) newPanelRows = 1;
+        if (newPanelRows > 2) newPanelRows = 2;
+        config->panelRows = newPanelRows;
+    }
+
     if (server->hasArg("brightness"))
     {
         config->brightness = server->arg("brightness").toInt();
@@ -461,11 +471,12 @@ void ConfigWebServer::parseDisplaySettings(Config* config)
 
     if (server->hasArg("num_deps"))
     {
+        int maxDeps = (config->panelRows * 32 / 8) - 1;
         config->numDepartures = server->arg("num_deps").toInt();
         if (config->numDepartures < 1)
             config->numDepartures = 1;
-        if (config->numDepartures > 3)
-            config->numDepartures = 3;
+        if (config->numDepartures > maxDeps)
+            config->numDepartures = maxDeps;
     }
 
     if (server->hasArg("language"))
