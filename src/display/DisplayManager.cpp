@@ -785,14 +785,17 @@ void DisplayManager::drawStatus(const char *line1, const char *line2, uint16_t c
     display->setTextColor(color);
     display->setFont(fontMedium);
 
+    // Center two lines vertically in the display
+    int centerY = layout.displayHeight / 2;
+
     if (line1)
     {
-        display->setCursor(2, 12);
+        display->setCursor(2, centerY - 2);
         display->print(line1);
     }
     if (line2)
     {
-        display->setCursor(2, 24);
+        display->setCursor(2, centerY + 10);
         display->print(line2);
     }
 }
@@ -806,10 +809,10 @@ void DisplayManager::drawOTAProgress(size_t progress, size_t total)
 
     display->clearScreen();
 
-    // Title
+    // Title - upper quarter
     display->setFont(fontMedium);
     display->setTextColor(COLOR_CYAN);
-    display->setCursor(2, 8);
+    display->setCursor(2, layout.displayHeight / 4);
     display->print("Uploading...");
 
     // Calculate percentage
@@ -822,10 +825,10 @@ void DisplayManager::drawOTAProgress(size_t progress, size_t total)
     }
 
     // Draw progress bar (center of display)
-    int barWidth = 120; // Total bar width
+    int barWidth = layout.displayWidth - 8;
     int barHeight = 10;
-    int barX = 4;  // 4px left margin
-    int barY = 13; // Center vertically
+    int barX = 4;
+    int barY = layout.displayHeight / 2 - barHeight / 2;
 
     // Draw border
     display->drawRect(barX, barY, barWidth, barHeight, COLOR_WHITE);
@@ -837,19 +840,18 @@ void DisplayManager::drawOTAProgress(size_t progress, size_t total)
         display->fillRect(barX + 1, barY + 1, fillWidth, barHeight - 2, COLOR_CYAN);
     }
 
-    // Display percentage text
+    // Display percentage text - lower quarter
     display->setFont(fontMedium);
     display->setTextColor(COLOR_WHITE);
     char percentStr[8];
     snprintf(percentStr, sizeof(percentStr), "%d%%", percentage);
 
-    // Center the percentage text at the bottom
     int16_t x1, y1;
     uint16_t w, h;
     display->getTextBounds(percentStr, 0, 0, &x1, &y1, &w, &h);
-    int textX = (128 - w) / 2 - x1;
+    int textX = (layout.displayWidth - w) / 2 - x1;
 
-    display->setCursor(textX, 31);
+    display->setCursor(textX, layout.displayHeight * 3 / 4);
     display->print(percentStr);
 
     isDrawing = false;
@@ -860,30 +862,34 @@ void DisplayManager::drawAPMode(const char *ssid, const char *password)
     display->clearScreen();
     display->setFont(fontSmall);
 
+    // Distribute 4 info lines across display height
+    int slotHeight = layout.displayHeight / 4;
+    int baseline = slotHeight - 1;
+
     // Title
     display->setTextColor(COLOR_CYAN);
-    display->setCursor(2, 7);
+    display->setCursor(2, baseline);
     display->print("WiFi Setup Mode");
 
     // SSID
     display->setTextColor(COLOR_WHITE);
-    display->setCursor(2, 15);
+    display->setCursor(2, baseline + slotHeight);
     display->print("SSID:");
     display->setTextColor(COLOR_YELLOW);
-    display->setCursor(32, 15);
+    display->setCursor(32, baseline + slotHeight);
     display->print(ssid);
 
     // Password
     display->setTextColor(COLOR_WHITE);
-    display->setCursor(2, 23);
+    display->setCursor(2, baseline + slotHeight * 2);
     display->print("Pass:");
     display->setTextColor(COLOR_GREEN);
-    display->setCursor(32, 23);
+    display->setCursor(32, baseline + slotHeight * 2);
     display->print(password);
 
     // IP
     display->setTextColor(COLOR_WHITE);
-    display->setCursor(2, 31);
+    display->setCursor(2, baseline + slotHeight * 3);
     display->print("Go to: 192.168.4.1");
 }
 
@@ -1149,7 +1155,7 @@ void DisplayManager::drawTicker(const TickerData& ticker)
     uint16_t colorRed = display->color565(200, 0, 0);
 
     // Chart area: rows 0-2 = 24 pixels tall (y: 0-23)
-    const int chartHeight = 24;
+    const int chartHeight = layout.statusBarY;
     const int chartTop = 0;
 
     // Format price text to measure its width
@@ -1200,7 +1206,7 @@ void DisplayManager::drawTicker(const TickerData& ticker)
     // Right-side text area = widest of price+arrow or symbol, plus 2px gap from chart
     int textWidth = (priceWithArrowWidth > (int)sw) ? priceWithArrowWidth : (int)sw;
     int priceAreaWidth = textWidth + 3; // 2px gap + 1px padding from right edge
-    int chartWidth = 128 - priceAreaWidth;
+    int chartWidth = layout.displayWidth - priceAreaWidth;
 
     // Number of candles that fit (4px per candle: 3px body + 1px gap)
     int candlesVisible = chartWidth / 4;
@@ -1265,7 +1271,7 @@ void DisplayManager::drawTicker(const TickerData& ticker)
     }
 
     // Draw text right-aligned: anchor from right edge, calculate X positions backward
-    int rightEdge = 127; // Rightmost pixel
+    int rightEdge = layout.displayWidth - 1; // Rightmost pixel
 
     // Price + arrow layout: [price text][1px pad][arrow 5px] right-aligned
     int arrowX = rightEdge - arrowWidth + 1;
