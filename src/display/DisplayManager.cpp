@@ -123,7 +123,7 @@ void DisplayManager::applyInfoText(const char* text)
         infoTextWidthPx = width;
 
         infoTextScroll.offset = 0;
-        infoTextScroll.maxOffset = infoTextWidthPx + 128; // Full scroll: off-right to off-left
+        infoTextScroll.maxOffset = infoTextWidthPx + layout.displayWidth; // Full scroll: off-right to off-left
         infoTextScroll.needsScroll = true;
         infoTextScroll.paused = false;     // No initial pause — start scrolling immediately
         infoTextScroll.atStart = true;
@@ -333,7 +333,7 @@ DestLayout DisplayManager::calcDestLayout(const Departure &dep)
     // When showMultipleTimes is on globally, always reserve dual-ETA width
     // so destination boundary matches the platform anchor position
     int effectiveEtaArea = (multiTimes && layout.platformReservedPx > 0) ? 30 : etaAreaWidth;
-    layout.spaceCalcEta = 128 - effectiveEtaArea;
+    layout.spaceCalcEta = this->layout.displayWidth - effectiveEtaArea;
     int availableSpace = layout.spaceCalcEta - layout.destX - layout.platformReservedPx;
 
     // Font selection based on destination length and available space
@@ -503,12 +503,12 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
             display->getTextBounds(platformConverted, 0, 0, &px1, &py1, &pw, &ph);
 
             // Position: right-align to ETA position anchor
-            // Dual ETA: anchor at 98px (shifted left for mixed-font ETAs), normal: 111px
-            int platformAnchor = config && config->showMultipleTimes ? 97 : 109;
+            // Dual ETA: anchor at displayWidth-31 (shifted left for mixed-font ETAs), normal: displayWidth-19
+            int platformAnchor = config && config->showMultipleTimes ? (this->layout.displayWidth - 31) : (this->layout.displayWidth - 19);
             int platformX = platformAnchor - pw - 1 - px1;
 
             display->setTextColor(COLOR_CYAN); // Match AC indicator
-            display->setCursor(platformX, y + 7);
+            display->setCursor(platformX, y + this->layout.rowHeight - 1);
             display->print(platformConverted);
         }
     }
@@ -543,9 +543,9 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
 
     char etaText[8];
 
-    if (layout.dualEta)
+    if (destLayout.dualEta)
     {
-        // Secondary ETA — fontCondensed, dim gray, right edge at X=109
+        // Secondary ETA — fontCondensed, dim gray, right edge at displayWidth-19
         display->setFont(fontCondensed);
 
         char eta2Text[8];
@@ -557,30 +557,30 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
             snprintf(eta2Text, sizeof(eta2Text), "%d'", dep.secondEta);
 
         display->setTextColor(display->color565(90, 90, 90));
-        drawRightAligned(eta2Text, 109);
+        drawRightAligned(eta2Text, this->layout.displayWidth - 19);
 
-        // Primary ETA — fontMedium, urgency-colored, right edge at X=127
+        // Primary ETA — fontMedium, urgency-colored, right edge at displayWidth-1
         display->setFont(fontMedium);
         formatEtaMinutes(etaText, sizeof(etaText), dep.eta);
         display->setTextColor(etaColor(dep.eta));
-        drawRightAligned(etaText, 127);
+        drawRightAligned(etaText, this->layout.displayWidth - 1);
     }
-    else if (layout.showAbsoluteTime)
+    else if (destLayout.showAbsoluteTime)
     {
-        // Absolute departure time — fontCondensed, white, right edge at X=127
+        // Absolute departure time — fontCondensed, white, right edge at displayWidth-1
         display->setFont(fontCondensed);
         struct tm *t = localtime(&dep.departureTime);
         snprintf(etaText, sizeof(etaText), "%02d:%02d", t->tm_hour, t->tm_min);
         display->setTextColor(COLOR_WHITE);
-        drawRightAligned(etaText, 127);
+        drawRightAligned(etaText, this->layout.displayWidth - 1);
     }
     else
     {
-        // Single ETA — fontMedium, urgency-colored, right edge at X=127
+        // Single ETA — fontMedium, urgency-colored, right edge at displayWidth-1
         display->setFont(fontMedium);
         formatEtaMinutes(etaText, sizeof(etaText), dep.eta);
         display->setTextColor(etaColor(dep.eta));
-        drawRightAligned(etaText, 127);
+        drawRightAligned(etaText, this->layout.displayWidth - 1);
     }
 }
 
@@ -614,12 +614,12 @@ void DisplayManager::drawClipped(const char* str, int x, int y, const GFXfont* f
 
 void DisplayManager::drawDateTime(int exclLeft, int exclRight)
 {
-    int y = 24; // Bottom row
+    int y = layout.statusBarY; // Bottom row
 
-    // Clear full 8px status bar area (needed when switching from taller infotext font)
+    // Clear full rowHeight status bar area (needed when switching from taller infotext font)
     // When exclusion zone is active, caller handles clearing
     if (exclLeft < 0)
-        display->fillRect(0, y, 128, 8, COLOR_BLACK);
+        display->fillRect(0, y, layout.displayWidth, layout.rowHeight, COLOR_BLACK);
 
     struct tm timeinfo;
     if (!getCurrentTime(&timeinfo))
@@ -628,7 +628,7 @@ void DisplayManager::drawDateTime(int exclLeft, int exclRight)
         {
             display->setTextColor(COLOR_RED);
             display->setFont(fontSmall);
-            display->setCursor(2, y + 7);
+            display->setCursor(2, y + layout.rowHeight - 1);
             display->print("Time Sync...");
         }
         return;
@@ -640,14 +640,14 @@ void DisplayManager::drawDateTime(int exclLeft, int exclRight)
     // Date
     char dateStr[8];
     snprintf(dateStr, sizeof(dateStr), "%02d.%02d.", timeinfo.tm_mday, timeinfo.tm_mon + 1);
-    drawClipped(dateStr, 2, y + 7, fontSmall, COLOR_WHITE, exclLeft, exclRight);
+    drawClipped(dateStr, 2, y + layout.rowHeight - 1, fontSmall, COLOR_WHITE, exclLeft, exclRight);
 
     // Day of week
     char dayStr[16];
     const char *localDay = getLocalizedDayFull(timeinfo.tm_wday, lang);
     snprintf(dayStr, sizeof(dayStr), "%s", localDay);
     utf8tocp(dayStr);
-    drawClipped(dayStr, 29, y + 7, fontSmall, COLOR_WHITE, exclLeft, exclRight);
+    drawClipped(dayStr, 29, y + layout.rowHeight - 1, fontSmall, COLOR_WHITE, exclLeft, exclRight);
 
     // Weather icon + temperature
     if (config && config->weatherEnabled && !weatherData.hasError)
@@ -660,11 +660,11 @@ void DisplayManager::drawDateTime(int exclLeft, int exclRight)
             char iconCode = mapWeatherCodeToIcon(weatherData.weatherCode);
             uint16_t iconColor = getWeatherColor(weatherData.weatherCode);
             char iconStr[2] = {iconCode, '\0'};
-            drawClipped(iconStr, 75, y + 7, fontWeather, iconColor, exclLeft, exclRight);
+            drawClipped(iconStr, 75, y + layout.rowHeight - 1, fontWeather, iconColor, exclLeft, exclRight);
 
             char tempStr[8];
             snprintf(tempStr, sizeof(tempStr), "%d\xB0", weatherData.temperature);
-            drawClipped(tempStr, 86, y + 7, fontSmall,
+            drawClipped(tempStr, 86, y + layout.rowHeight - 1, fontSmall,
                         getTemperatureColor(weatherData.temperature), exclLeft, exclRight);
         }
     }
@@ -672,7 +672,7 @@ void DisplayManager::drawDateTime(int exclLeft, int exclRight)
     // Time
     char timeStr[6];
     strftime(timeStr, 6, "%H:%M", &timeinfo);
-    drawClipped(timeStr, 102, y + 7, fontSmall, COLOR_WHITE, exclLeft, exclRight);
+    drawClipped(timeStr, 102, y + layout.rowHeight - 1, fontSmall, COLOR_WHITE, exclLeft, exclRight);
 }
 
 void DisplayManager::drawStatusBar()
@@ -689,27 +689,27 @@ void DisplayManager::drawStatusBar()
 
 void DisplayManager::drawInfoText()
 {
-    int y = 24; // Bottom row (same as drawDateTime)
+    int y = layout.statusBarY; // Bottom row (same as drawDateTime)
     static const int INFOTEXT_CLEAR_PAD_PX = 0;
 
     // Pixel-based scroll: text enters from right edge, exits left
-    int x = 128 - infoTextScroll.offset;
+    int x = layout.displayWidth - infoTextScroll.offset;
 
     // Calculate the infotext band (text + padding on each side)
     int clearX = x - INFOTEXT_CLEAR_PAD_PX;
     if (clearX < 0)
         clearX = 0;
     int trailX = x + infoTextWidthPx + INFOTEXT_CLEAR_PAD_PX;
-    if (trailX > 128)
-        trailX = 128;
+    if (trailX > layout.displayWidth)
+        trailX = layout.displayWidth;
 
     // Draw order: clear bar, draw infotext, then datetime around it
     // This avoids DMA tearing — infotext is never momentarily erased
-    display->fillRect(0, y, 128, 8, COLOR_BLACK);
+    display->fillRect(0, y, layout.displayWidth, layout.rowHeight, COLOR_BLACK);
 
     display->setFont(fontCondensed);
     display->setTextColor(COLOR_YELLOW);
-    display->setCursor(x, y + 7);
+    display->setCursor(x, y + layout.rowHeight - 1);
     display->print(infoTextBuf);
 
     // Draw datetime elements only outside the infotext band
