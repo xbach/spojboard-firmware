@@ -58,9 +58,11 @@ void loadConfig(Config& config)
     }
 
     config.refreshInterval = constrain(preferences.getInt("refresh", 60), 10, 300);
-    config.numDepartures = constrain(preferences.getInt("numDeps", 3), 1, 3);
     config.minDepartureTime = constrain(preferences.getInt("minDepTime", 3), 0, 30);
     config.brightness = constrain(preferences.getInt("brightness", 90), 0, 255);
+    config.panelRows = constrain(preferences.getInt("panelRows", 1), 1, 2);
+    int maxDeps = (config.panelRows * 32 / 8) - 1; // 3 for 128x32, 7 for 128x64
+    config.numDepartures = constrain(preferences.getInt("numDeps", 3), 1, maxDeps);
     strlcpy(config.lineColorMap, preferences.getString("lineColorMap", DEFAULT_LINE_COLOR_MAP).c_str(), sizeof(config.lineColorMap));
     if (strlen(config.lineColorMap) == 0)
     {
@@ -112,6 +114,8 @@ void loadConfig(Config& config)
     Serial.println("s");
     Serial.print("  Configured: ");
     Serial.println(config.configured ? "Yes" : "No");
+    Serial.print("  Panel rows: ");
+    Serial.println(config.panelRows);
 }
 
 void saveConfig(const Config& config)
@@ -158,6 +162,7 @@ void saveConfig(const Config& config)
     preferences.putInt("numDeps", config.numDepartures);
     preferences.putInt("minDepTime", config.minDepartureTime);
     preferences.putInt("brightness", config.brightness);
+    preferences.putInt("panelRows", config.panelRows);
     preferences.putString("lineColorMap", config.lineColorMap);
     preferences.putString("pltSymMap", config.platformSymbolMap);
     preferences.putString("city", config.city);

@@ -144,6 +144,7 @@ struct Config
     int numDepartures;      // Number of departures to display (1-3 rows on LED matrix)
     int minDepartureTime;   // Minimum departure time in minutes (filter out departures < this)
     int brightness;         // Display brightness (0-255)
+    int panelRows;          // Panel row count: 1 = 128x32 (2 panels), 2 = 128x64 (4 panels)
     char lineColorMap[256]; // Line color mappings (format: "A=GREEN,B=YELLOW,9*=CYAN")
     char platformSymbolMap[256]; // Platform-to-arrow mappings (format: "B=3,ID:U693Z2P=7")
     char city[16];          // Transit city: "Prague" or "Berlin"

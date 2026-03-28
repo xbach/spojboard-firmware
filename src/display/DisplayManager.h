@@ -2,6 +2,7 @@
 #define DISPLAYMANAGER_H
 
 #include <ESP32-HUB75-MatrixPanel-I2S-DMA.h>
+#include <ESP32-HUB75-VirtualMatrixPanel_T.hpp>
 #include "../config/AppConfig.h"
 #include "../api/DepartureData.h"
 #include "../api/TransitAPI.h"
@@ -75,7 +76,7 @@ public:
      * @param brightness Initial brightness (0-255)
      * @return true if initialization succeeded
      */
-    bool begin(int brightness = 90);
+    bool begin(int brightness = 90, int panelRows = 1);
 
     /**
      * Set display brightness
@@ -107,7 +108,7 @@ public:
     /**
      * Get pointer to display object (for direct access if needed)
      */
-    MatrixPanel_I2S_DMA* getDisplay() { return display; }
+    MatrixPanel_I2S_DMA* getDisplay() { return dmaDisplay; }
 
     /**
      * Set weather data pointer for display rendering
@@ -210,7 +211,9 @@ public:
     void drawTicker(const TickerData& ticker);
 
 private:
-    MatrixPanel_I2S_DMA* display;
+    MatrixPanel_I2S_DMA* dmaDisplay;                                    // Raw DMA panel (always created)
+    VirtualMatrixPanel_T<CHAIN_TOP_LEFT_DOWN>* virtualDisplay;          // Virtual panel (only for multi-row)
+    Adafruit_GFX* gfx;                                                  // Drawing surface (points to dmaDisplay or virtualDisplay)
     bool isDrawing;
     const Config* config;
     DisplayLayout layout;
@@ -245,6 +248,10 @@ private:
     // Rendered departures buffer (maps row index to actual departure shown)
     // Used by scroll system - may differ from currentDepartures[row] due to dedup
     Departure renderedDeps[MAX_POSSIBLE_DISPLAY_ROWS];
+
+    // Helpers that delegate to the correct display object
+    void clearScreen();
+    uint16_t color565(uint8_t r, uint8_t g, uint8_t b);
 
     // Internal drawing functions
     DestLayout calcDestLayout(const Departure& dep);

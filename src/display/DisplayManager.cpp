@@ -14,7 +14,8 @@
 #include "../api/WeatherAPI.h"
 
 DisplayManager::DisplayManager()
-    : display(nullptr), isDrawing(false), config(nullptr),
+    : dmaDisplay(nullptr), virtualDisplay(nullptr), gfx(nullptr),
+      isDrawing(false), config(nullptr),
       lastScrollTick(0), currentDepartures(nullptr),
       currentDepartureCount(0), currentNumToDisplay(0)
 {
@@ -147,15 +148,33 @@ void DisplayManager::applyInfoText(const char* text)
 
 DisplayManager::~DisplayManager()
 {
-    if (display)
+    if (virtualDisplay)
     {
-        delete display;
-        display = nullptr;
+        delete virtualDisplay;
+        virtualDisplay = nullptr;
     }
+    if (dmaDisplay)
+    {
+        delete dmaDisplay;
+        dmaDisplay = nullptr;
+    }
+    gfx = nullptr;
 }
 
-bool DisplayManager::begin(int brightness)
+bool DisplayManager::begin(int brightness, int panelRows)
 {
+    // Compute display layout from panel configuration
+    if (panelRows < 1) panelRows = 1;
+    if (panelRows > 2) panelRows = 2;
+
+    layout.displayWidth = 128;
+    layout.displayHeight = panelRows * 32;
+    layout.rowHeight = 8;
+    layout.maxDepartureRows = (layout.displayHeight / layout.rowHeight) - 1;
+    layout.statusBarY = layout.displayHeight - layout.rowHeight;
+    layout.statusBarBaseline = layout.displayHeight - 1;
+    layout.panelCount = panelRows * 2;
+
     HUB75_I2S_CFG::i2s_pins _pins = {
         R1_PIN, G1_PIN, B1_PIN, R2_PIN, G2_PIN, B2_PIN,
         A_PIN, B_PIN, C_PIN, D_PIN, E_PIN,
@@ -164,34 +183,72 @@ bool DisplayManager::begin(int brightness)
     HUB75_I2S_CFG mxconfig(
         PANEL_WIDTH,
         PANEL_HEIGHT,
-        PANELS_NUMBER,
+        layout.panelCount,
         _pins);
 
     mxconfig.clkphase = false;
     mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M;
 
-    display = new MatrixPanel_I2S_DMA(mxconfig);
+    dmaDisplay = new MatrixPanel_I2S_DMA(mxconfig);
 
-    if (!display->begin())
+    if (!dmaDisplay->begin())
     {
         Serial.println("Display FAILED!");
         return false;
     }
 
-    display->setBrightness8(brightness);
-    display->clearScreen();
+    dmaDisplay->setBrightness8(brightness);
+    dmaDisplay->clearScreen();
+
+    // Set up drawing surface
+    if (panelRows > 1)
+    {
+        // Multi-row: use VirtualMatrixPanel for coordinate remapping
+        // 2 rows x 2 cols of 64x32 panels, serpentine chain
+        virtualDisplay = new VirtualMatrixPanel_T<CHAIN_TOP_LEFT_DOWN>(
+            panelRows, 2, PANEL_WIDTH, PANEL_HEIGHT);
+        virtualDisplay->setDisplay(*dmaDisplay);
+        gfx = virtualDisplay;
+        Serial.printf("Display initialized: %dx%d (%d panels, virtual)\n",
+                      layout.displayWidth, layout.displayHeight, layout.panelCount);
+    }
+    else
+    {
+        // Single row: draw directly to DMA display
+        virtualDisplay = nullptr;
+        gfx = dmaDisplay;
+        Serial.printf("Display initialized: %dx%d (%d panels)\n",
+                      layout.displayWidth, layout.displayHeight, layout.panelCount);
+    }
 
     // Initialize color constants
-    initColors(display);
+    initColors(dmaDisplay);
 
     return true;
 }
 
+void DisplayManager::clearScreen()
+{
+    if (virtualDisplay)
+        virtualDisplay->clearScreen();
+    else if (dmaDisplay)
+        dmaDisplay->clearScreen();
+}
+
+uint16_t DisplayManager::color565(uint8_t r, uint8_t g, uint8_t b)
+{
+    if (virtualDisplay)
+        return virtualDisplay->color565(r, g, b);
+    if (dmaDisplay)
+        return dmaDisplay->color565(r, g, b);
+    return 0;
+}
+
 void DisplayManager::setBrightness(int brightness)
 {
-    if (display)
+    if (dmaDisplay)
     {
-        display->setBrightness8(brightness);
+        dmaDisplay->setBrightness8(brightness);
     }
 }
 
@@ -391,41 +448,41 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     // Draw line number background - always black (fixed width for all routes)
     uint16_t lineColor = getLineColorWithConfig(dep.line, config ? config->lineColorMap : "");
     int bgWidth = 18; // Fixed width to fit up to 4 characters
-    display->fillRect(1, y + 1, bgWidth, this->layout.rowHeight - 1, COLOR_BLACK);
+    gfx->fillRect(1, y + 1, bgWidth, this->layout.rowHeight - 1, COLOR_BLACK);
 
     // Line number text - colored text on black background
-    display->setTextColor(lineColor);
+    gfx->setTextColor(lineColor);
 
     // Select font based on line number length
     // 1-3 characters: medium font (6px/char)
     // 4 characters: condensed font (4px/char)
     int lineLen = strlen(lineConverted);
     const GFXfont *lineFont = (lineLen >= 4) ? fontCondensed : fontMedium;
-    display->setFont(lineFont);
+    gfx->setFont(lineFont);
 
     // Center the line number text within the background rectangle
     int16_t x1, y1;
     uint16_t w, h;
-    display->getTextBounds(lineConverted, 0, 0, &x1, &y1, &w, &h);
+    gfx->getTextBounds(lineConverted, 0, 0, &x1, &y1, &w, &h);
     // Account for font's left bearing offset (x1) when centering
     int textX = 1 + (bgWidth - w) / 2 - x1;
     // Align baseline with destination (y + rowHeight - 1)
-    display->setCursor(textX, y + this->layout.rowHeight - 1);
-    display->print(lineConverted);
+    gfx->setCursor(textX, y + this->layout.rowHeight - 1);
+    gfx->print(lineConverted);
 
     // AC indicator (asterisk before destination)
     if (dep.hasAC)
     {
         int acX = (config && config->showMultipleTimes && config->showPlatform) ? 20 : 22;
-        display->setTextColor(COLOR_CYAN);
-        display->setCursor(acX, y + this->layout.rowHeight - 1);
-        display->print("*");
+        gfx->setTextColor(COLOR_CYAN);
+        gfx->setCursor(acX, y + this->layout.rowHeight - 1);
+        gfx->print("*");
     }
 
     // Destination text
-    display->setTextColor(COLOR_WHITE);
-    display->setFont(destLayout.font);
-    display->setCursor(destLayout.destX, y + this->layout.rowHeight - 1);
+    gfx->setTextColor(COLOR_WHITE);
+    gfx->setFont(destLayout.font);
+    gfx->setCursor(destLayout.destX, y + this->layout.rowHeight - 1);
 
     // Check if scrolling is needed for this row (only if enabled in config)
     int destLen = strlen(destConverted);
@@ -458,7 +515,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         }
         strlcpy(destTrunc, destConverted, destLayout.maxChars + 1);
     }
-    display->print(destTrunc);
+    gfx->print(destTrunc);
 
     // Platform display (if enabled and present)
     if (destLayout.willShowPlatform)
@@ -466,18 +523,18 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         if (destLayout.symbolChar != '\0')
         {
             // Render directional arrow using weather font
-            display->setFont(fontWeather);
+            gfx->setFont(fontWeather);
             int platformAnchor = config && config->showMultipleTimes ? (this->layout.displayWidth - 31) : (this->layout.displayWidth - 19);
 
             int16_t px1, py1;
             uint16_t pw, ph;
             char symBuf[2] = {destLayout.symbolChar, '\0'};
-            display->getTextBounds(symBuf, 0, 0, &px1, &py1, &pw, &ph);
+            gfx->getTextBounds(symBuf, 0, 0, &px1, &py1, &pw, &ph);
             int platformX = platformAnchor - pw - 1 - px1;
 
-            display->setTextColor(COLOR_CYAN);
-            display->setCursor(platformX, y + this->layout.rowHeight - 1);
-            display->print(symBuf);
+            gfx->setTextColor(COLOR_CYAN);
+            gfx->setCursor(platformX, y + this->layout.rowHeight - 1);
+            gfx->print(symBuf);
         }
         else
         {
@@ -495,21 +552,21 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
             // Select font based on platform length (same logic as line numbers)
             int platformLen = strlen(platformConverted);
             const GFXfont *platformFont = (platformLen >= 2) ? fontCondensed : fontMedium;
-            display->setFont(platformFont);
+            gfx->setFont(platformFont);
 
             // Get actual text bounds for proper alignment (like line number centering)
             int16_t px1, py1;
             uint16_t pw, ph;
-            display->getTextBounds(platformConverted, 0, 0, &px1, &py1, &pw, &ph);
+            gfx->getTextBounds(platformConverted, 0, 0, &px1, &py1, &pw, &ph);
 
             // Position: right-align to ETA position anchor
             // Dual ETA: anchor at displayWidth-31 (shifted left for mixed-font ETAs), normal: displayWidth-19
             int platformAnchor = config && config->showMultipleTimes ? (this->layout.displayWidth - 31) : (this->layout.displayWidth - 19);
             int platformX = platformAnchor - pw - 1 - px1;
 
-            display->setTextColor(COLOR_CYAN); // Match AC indicator
-            display->setCursor(platformX, y + this->layout.rowHeight - 1);
-            display->print(platformConverted);
+            gfx->setTextColor(COLOR_CYAN); // Match AC indicator
+            gfx->setCursor(platformX, y + this->layout.rowHeight - 1);
+            gfx->print(platformConverted);
         }
     }
 
@@ -528,9 +585,9 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     auto drawRightAligned = [&](const char *text, int anchorX) {
         int16_t tx1, ty1;
         uint16_t tw, th;
-        display->getTextBounds(text, 0, 0, &tx1, &ty1, &tw, &th);
-        display->setCursor(anchorX - tw - tx1, y + this->layout.rowHeight - 1);
-        display->print(text);
+        gfx->getTextBounds(text, 0, 0, &tx1, &ty1, &tw, &th);
+        gfx->setCursor(anchorX - tw - tx1, y + this->layout.rowHeight - 1);
+        gfx->print(text);
     };
 
     // Format ETA minutes into buffer
@@ -546,7 +603,7 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
     if (destLayout.dualEta)
     {
         // Secondary ETA — fontCondensed, dim gray, right edge at displayWidth-19
-        display->setFont(fontCondensed);
+        gfx->setFont(fontCondensed);
 
         char eta2Text[8];
         if (dep.secondEta < 1)
@@ -556,30 +613,30 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         else
             snprintf(eta2Text, sizeof(eta2Text), "%d'", dep.secondEta);
 
-        display->setTextColor(display->color565(90, 90, 90));
+        gfx->setTextColor(color565(90, 90, 90));
         drawRightAligned(eta2Text, this->layout.displayWidth - 19);
 
         // Primary ETA — fontMedium, urgency-colored, right edge at displayWidth-1
-        display->setFont(fontMedium);
+        gfx->setFont(fontMedium);
         formatEtaMinutes(etaText, sizeof(etaText), dep.eta);
-        display->setTextColor(etaColor(dep.eta));
+        gfx->setTextColor(etaColor(dep.eta));
         drawRightAligned(etaText, this->layout.displayWidth - 1);
     }
     else if (destLayout.showAbsoluteTime)
     {
         // Absolute departure time — fontCondensed, white, right edge at displayWidth-1
-        display->setFont(fontCondensed);
+        gfx->setFont(fontCondensed);
         struct tm *t = localtime(&dep.departureTime);
         snprintf(etaText, sizeof(etaText), "%02d:%02d", t->tm_hour, t->tm_min);
-        display->setTextColor(COLOR_WHITE);
+        gfx->setTextColor(COLOR_WHITE);
         drawRightAligned(etaText, this->layout.displayWidth - 1);
     }
     else
     {
         // Single ETA — fontMedium, urgency-colored, right edge at displayWidth-1
-        display->setFont(fontMedium);
+        gfx->setFont(fontMedium);
         formatEtaMinutes(etaText, sizeof(etaText), dep.eta);
-        display->setTextColor(etaColor(dep.eta));
+        gfx->setTextColor(etaColor(dep.eta));
         drawRightAligned(etaText, this->layout.displayWidth - 1);
     }
 }
@@ -587,8 +644,8 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
 void DisplayManager::drawClipped(const char* str, int x, int y, const GFXfont* font,
                                  uint16_t color, int exclLeft, int exclRight)
 {
-    display->setFont(font);
-    display->setTextColor(color);
+    gfx->setFont(font);
+    gfx->setTextColor(color);
 
     uint8_t first = pgm_read_byte(&font->first);
     uint8_t last  = pgm_read_byte(&font->last);
@@ -604,8 +661,8 @@ void DisplayManager::drawClipped(const char* str, int x, int y, const GFXfont* f
         // Draw char only if fully outside exclusion zone
         if (exclLeft < 0 || (cursorX + advance) <= exclLeft || cursorX >= exclRight)
         {
-            display->setCursor(cursorX, y);
-            display->print(str[i]);
+            gfx->setCursor(cursorX, y);
+            gfx->print(str[i]);
         }
 
         cursorX += advance;
@@ -619,17 +676,17 @@ void DisplayManager::drawDateTime(int exclLeft, int exclRight)
     // Clear full rowHeight status bar area (needed when switching from taller infotext font)
     // When exclusion zone is active, caller handles clearing
     if (exclLeft < 0)
-        display->fillRect(0, y, layout.displayWidth, layout.rowHeight, COLOR_BLACK);
+        gfx->fillRect(0, y, layout.displayWidth, layout.rowHeight, COLOR_BLACK);
 
     struct tm timeinfo;
     if (!getCurrentTime(&timeinfo))
     {
         if (exclLeft < 0) // Only show sync message when drawing full datetime
         {
-            display->setTextColor(COLOR_RED);
-            display->setFont(fontSmall);
-            display->setCursor(2, y + layout.rowHeight - 1);
-            display->print("Time Sync...");
+            gfx->setTextColor(COLOR_RED);
+            gfx->setFont(fontSmall);
+            gfx->setCursor(2, y + layout.rowHeight - 1);
+            gfx->print("Time Sync...");
         }
         return;
     }
@@ -705,12 +762,12 @@ void DisplayManager::drawInfoText()
 
     // Draw order: clear bar, draw infotext, then datetime around it
     // This avoids DMA tearing — infotext is never momentarily erased
-    display->fillRect(0, y, layout.displayWidth, layout.rowHeight, COLOR_BLACK);
+    gfx->fillRect(0, y, layout.displayWidth, layout.rowHeight, COLOR_BLACK);
 
-    display->setFont(fontCondensed);
-    display->setTextColor(COLOR_YELLOW);
-    display->setCursor(x, y + layout.rowHeight - 1);
-    display->print(infoTextBuf);
+    gfx->setFont(fontCondensed);
+    gfx->setTextColor(COLOR_YELLOW);
+    gfx->setCursor(x, y + layout.rowHeight - 1);
+    gfx->print(infoTextBuf);
 
     // Draw datetime elements only outside the infotext band
     // Each element either draws fully or not at all — no half-cut characters
@@ -781,22 +838,22 @@ bool DisplayManager::updateInfoText()
 
 void DisplayManager::drawStatus(const char *line1, const char *line2, uint16_t color)
 {
-    display->clearScreen();
-    display->setTextColor(color);
-    display->setFont(fontMedium);
+    clearScreen();
+    gfx->setTextColor(color);
+    gfx->setFont(fontMedium);
 
     // Center two lines vertically in the display
     int centerY = layout.displayHeight / 2;
 
     if (line1)
     {
-        display->setCursor(2, centerY - 2);
-        display->print(line1);
+        gfx->setCursor(2, centerY - 2);
+        gfx->print(line1);
     }
     if (line2)
     {
-        display->setCursor(2, centerY + 10);
-        display->print(line2);
+        gfx->setCursor(2, centerY + 10);
+        gfx->print(line2);
     }
 }
 
@@ -807,13 +864,13 @@ void DisplayManager::drawOTAProgress(size_t progress, size_t total)
 
     isDrawing = true;
 
-    display->clearScreen();
+    clearScreen();
 
     // Title - upper quarter
-    display->setFont(fontMedium);
-    display->setTextColor(COLOR_CYAN);
-    display->setCursor(2, layout.displayHeight / 4);
-    display->print("Uploading...");
+    gfx->setFont(fontMedium);
+    gfx->setTextColor(COLOR_CYAN);
+    gfx->setCursor(2, layout.displayHeight / 4);
+    gfx->print("Uploading...");
 
     // Calculate percentage
     int percentage = 0;
@@ -831,66 +888,66 @@ void DisplayManager::drawOTAProgress(size_t progress, size_t total)
     int barY = layout.displayHeight / 2 - barHeight / 2;
 
     // Draw border
-    display->drawRect(barX, barY, barWidth, barHeight, COLOR_WHITE);
+    gfx->drawRect(barX, barY, barWidth, barHeight, COLOR_WHITE);
 
     // Fill progress
     int fillWidth = ((barWidth - 2) * percentage) / 100;
     if (fillWidth > 0)
     {
-        display->fillRect(barX + 1, barY + 1, fillWidth, barHeight - 2, COLOR_CYAN);
+        gfx->fillRect(barX + 1, barY + 1, fillWidth, barHeight - 2, COLOR_CYAN);
     }
 
     // Display percentage text - lower quarter
-    display->setFont(fontMedium);
-    display->setTextColor(COLOR_WHITE);
+    gfx->setFont(fontMedium);
+    gfx->setTextColor(COLOR_WHITE);
     char percentStr[8];
     snprintf(percentStr, sizeof(percentStr), "%d%%", percentage);
 
     int16_t x1, y1;
     uint16_t w, h;
-    display->getTextBounds(percentStr, 0, 0, &x1, &y1, &w, &h);
+    gfx->getTextBounds(percentStr, 0, 0, &x1, &y1, &w, &h);
     int textX = (layout.displayWidth - w) / 2 - x1;
 
-    display->setCursor(textX, layout.displayHeight * 3 / 4);
-    display->print(percentStr);
+    gfx->setCursor(textX, layout.displayHeight * 3 / 4);
+    gfx->print(percentStr);
 
     isDrawing = false;
 }
 
 void DisplayManager::drawAPMode(const char *ssid, const char *password)
 {
-    display->clearScreen();
-    display->setFont(fontSmall);
+    clearScreen();
+    gfx->setFont(fontSmall);
 
     // Distribute 4 info lines across display height
     int slotHeight = layout.displayHeight / 4;
     int baseline = slotHeight - 1;
 
     // Title
-    display->setTextColor(COLOR_CYAN);
-    display->setCursor(2, baseline);
-    display->print("WiFi Setup Mode");
+    gfx->setTextColor(COLOR_CYAN);
+    gfx->setCursor(2, baseline);
+    gfx->print("WiFi Setup Mode");
 
     // SSID
-    display->setTextColor(COLOR_WHITE);
-    display->setCursor(2, baseline + slotHeight);
-    display->print("SSID:");
-    display->setTextColor(COLOR_YELLOW);
-    display->setCursor(32, baseline + slotHeight);
-    display->print(ssid);
+    gfx->setTextColor(COLOR_WHITE);
+    gfx->setCursor(2, baseline + slotHeight);
+    gfx->print("SSID:");
+    gfx->setTextColor(COLOR_YELLOW);
+    gfx->setCursor(32, baseline + slotHeight);
+    gfx->print(ssid);
 
     // Password
-    display->setTextColor(COLOR_WHITE);
-    display->setCursor(2, baseline + slotHeight * 2);
-    display->print("Pass:");
-    display->setTextColor(COLOR_GREEN);
-    display->setCursor(32, baseline + slotHeight * 2);
-    display->print(password);
+    gfx->setTextColor(COLOR_WHITE);
+    gfx->setCursor(2, baseline + slotHeight * 2);
+    gfx->print("Pass:");
+    gfx->setTextColor(COLOR_GREEN);
+    gfx->setCursor(32, baseline + slotHeight * 2);
+    gfx->print(password);
 
     // IP
-    display->setTextColor(COLOR_WHITE);
-    display->setCursor(2, baseline + slotHeight * 3);
-    display->print("Go to: 192.168.4.1");
+    gfx->setTextColor(COLOR_WHITE);
+    gfx->setCursor(2, baseline + slotHeight * 3);
+    gfx->print("Go to: 192.168.4.1");
 }
 
 // ============================================================================
@@ -919,7 +976,7 @@ void DisplayManager::drawDepartures(const Departure *departures, int departureCo
     }
 
     isDrawing = true;
-    display->clearScreen();
+    clearScreen();
     delay(1);
 
     // Draw departures (top 3 rows, or fewer if numToDisplay is less)
@@ -963,8 +1020,8 @@ void DisplayManager::clearDisplay()
         return;
 
     isDrawing = true;
-    display->clearScreen();
-    display->setBrightness8(0); // Turn off display
+    clearScreen();
+    dmaDisplay->setBrightness8(0); // Turn off display
     delay(1);
     isDrawing = false;
 }
@@ -979,7 +1036,7 @@ void DisplayManager::drawDemo(const Departure *departures, int departureCount, c
         return;
 
     isDrawing = true;
-    display->clearScreen();
+    clearScreen();
     delay(1);
 
     // Draw sample departures (top 1-3 rows)
@@ -1015,7 +1072,7 @@ void DisplayManager::resetScroll()
 bool DisplayManager::updateScroll()
 {
     // Don't update if we're in the middle of a full redraw
-    if (isDrawing || !display)
+    if (isDrawing || !gfx)
         return false;
 
     // Check if we have departure data to scroll
@@ -1105,7 +1162,7 @@ bool DisplayManager::updateScroll()
 
 void DisplayManager::redrawDestination(int row, const Departure &dep)
 {
-    if (row < 0 || row >= this->layout.maxDepartureRows || !display)
+    if (row < 0 || row >= this->layout.maxDepartureRows || !gfx)
         return;
 
     int y = row * this->layout.rowHeight;
@@ -1120,12 +1177,12 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
 
     // Clear the destination area (from destX to just before platform/ETA)
     int clearWidth = destLayout.spaceCalcEta - destLayout.destX - destLayout.platformReservedPx;
-    display->fillRect(destLayout.destX, y, clearWidth, this->layout.rowHeight, COLOR_BLACK);
+    gfx->fillRect(destLayout.destX, y, clearWidth, this->layout.rowHeight, COLOR_BLACK);
 
     // Apply scroll offset and draw
-    display->setFont(destLayout.font);
-    display->setTextColor(COLOR_WHITE);
-    display->setCursor(destLayout.destX, y + this->layout.rowHeight - 1);
+    gfx->setFont(destLayout.font);
+    gfx->setTextColor(COLOR_WHITE);
+    gfx->setCursor(destLayout.destX, y + this->layout.rowHeight - 1);
 
     char destTrunc[64];
     int scrollOffset = scrollState[row].offset;
@@ -1134,7 +1191,7 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
         scrollOffset = scrollState[row].maxOffset;
     }
     strlcpy(destTrunc, destConverted + scrollOffset, destLayout.maxChars + 1);
-    display->print(destTrunc);
+    gfx->print(destTrunc);
 }
 
 // ============================================================================
@@ -1143,16 +1200,16 @@ void DisplayManager::redrawDestination(int row, const Departure &dep)
 
 void DisplayManager::drawTicker(const TickerData& ticker)
 {
-    if (isDrawing || !display)
+    if (isDrawing || !gfx)
         return;
 
     isDrawing = true;
-    display->clearScreen();
+    clearScreen();
     delay(1);
 
     // Colors for candles
-    uint16_t colorGreen = display->color565(0, 200, 0);
-    uint16_t colorRed = display->color565(200, 0, 0);
+    uint16_t colorGreen = color565(0, 200, 0);
+    uint16_t colorRed = color565(200, 0, 0);
 
     // Chart area: rows 0-2 = 24 pixels tall (y: 0-23)
     const int chartHeight = layout.statusBarY;
@@ -1187,21 +1244,21 @@ void DisplayManager::drawTicker(const TickerData& ticker)
     const int arrowPadLeft = 1; // Weather font arrows have no left padding, add 1px
 
     // Measure price text width using condensed font
-    display->setFont(fontCondensed);
+    gfx->setFont(fontCondensed);
     int16_t px1, py1;
     uint16_t pw, ph;
-    display->getTextBounds(priceText, 0, 0, &px1, &py1, &pw, &ph);
+    gfx->getTextBounds(priceText, 0, 0, &px1, &py1, &pw, &ph);
 
     // Total price+arrow width
     int priceWithArrowWidth = (int)pw + arrowPadLeft + arrowWidth;
 
     // Measure symbol text width using small font
-    display->setFont(fontSmall);
+    gfx->setFont(fontSmall);
     int16_t sx1, sy1;
     uint16_t sw, sh;
     char symbolTrunc[10];
     strlcpy(symbolTrunc, ticker.symbol, sizeof(symbolTrunc));
-    display->getTextBounds(symbolTrunc, 0, 0, &sx1, &sy1, &sw, &sh);
+    gfx->getTextBounds(symbolTrunc, 0, 0, &sx1, &sy1, &sw, &sh);
 
     // Right-side text area = widest of price+arrow or symbol, plus 2px gap from chart
     int textWidth = (priceWithArrowWidth > (int)sw) ? priceWithArrowWidth : (int)sw;
@@ -1258,7 +1315,7 @@ void DisplayManager::drawTicker(const TickerData& ticker)
 
         // Draw wick (1px wide center line from high to low)
         int wickX = x + 1; // Center of 3px body
-        display->drawFastVLine(wickX, yHigh, yLow - yHigh + 1, candleColor);
+        gfx->drawFastVLine(wickX, yHigh, yLow - yHigh + 1, candleColor);
 
         // Draw body (3px wide from open to close)
         int bodyTop = bullish ? yClose : yOpen;
@@ -1267,7 +1324,7 @@ void DisplayManager::drawTicker(const TickerData& ticker)
         if (bodyHeight < 1)
             bodyHeight = 1; // Doji: minimum 1px
 
-        display->fillRect(x, bodyTop, 3, bodyHeight, candleColor);
+        gfx->fillRect(x, bodyTop, 3, bodyHeight, candleColor);
     }
 
     // Draw text right-aligned: anchor from right edge, calculate X positions backward
@@ -1281,27 +1338,27 @@ void DisplayManager::drawTicker(const TickerData& ticker)
     uint16_t priceColor = trendUp ? colorGreen : colorRed;
 
     // Draw price text
-    display->setFont(fontCondensed);
-    display->setTextColor(priceColor);
-    display->setCursor(priceX, priceY);
-    display->print(priceText);
+    gfx->setFont(fontCondensed);
+    gfx->setTextColor(priceColor);
+    gfx->setCursor(priceX, priceY);
+    gfx->print(priceText);
 
     // Draw trend arrow in weather font
     char arrowStr[2] = {arrowChar, '\0'};
-    display->setFont(fontWeather);
-    display->setTextColor(priceColor);
-    display->setCursor(arrowX, priceY);
-    display->print(arrowStr);
+    gfx->setFont(fontWeather);
+    gfx->setTextColor(priceColor);
+    gfx->setCursor(arrowX, priceY);
+    gfx->print(arrowStr);
 
     // Draw symbol name above price in small font (also right-aligned)
     int symbolX = rightEdge - (int)sw - sx1 + 1;
     int symbolY = priceY - 9; // Above price
     if (symbolY < 6)
         symbolY = 6;
-    display->setFont(fontSmall);
-    display->setTextColor(COLOR_WHITE);
-    display->setCursor(symbolX, symbolY);
-    display->print(symbolTrunc);
+    gfx->setFont(fontSmall);
+    gfx->setTextColor(COLOR_WHITE);
+    gfx->setCursor(symbolX, symbolY);
+    gfx->print(symbolTrunc);
 
     // Draw status bar (row 3)
     drawStatusBar();

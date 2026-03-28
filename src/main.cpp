@@ -1026,7 +1026,7 @@ void setup()
     transitAPI->setStatusCallback(onAPIStatus);
 
     // Initialize display with correct brightness from config
-    if (!displayManager.begin(config.brightness))
+    if (!displayManager.begin(config.brightness, config.panelRows))
     {
         debugPrintln("Display initialization failed!");
         return;
