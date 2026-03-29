@@ -205,7 +205,7 @@ bool DisplayManager::begin(int brightness, int panelRows)
     {
         // Multi-row: use VirtualMatrixPanel for coordinate remapping
         // 2 rows x 2 cols of 64x32 panels, serpentine chain
-        virtualDisplay = new VirtualMatrixPanel_T<CHAIN_TOP_LEFT_DOWN>(
+        virtualDisplay = new VirtualMatrixPanel_T<CHAIN_TOP_RIGHT_DOWN>(
             panelRows, 2, PANEL_WIDTH, PANEL_HEIGHT);
         virtualDisplay->setDisplay(*dmaDisplay);
         gfx = virtualDisplay;

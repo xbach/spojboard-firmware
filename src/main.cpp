@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <esp_heap_caps.h>
 
 // Project modules
 #include "utils/Logger.h"
@@ -51,6 +52,12 @@ void signalDisplayUpdate(); // Thread-safe display update signaling
 // ============================================================================
 TaskHandle_t displayTaskHandle = NULL;
 SemaphoreHandle_t displayMutex = NULL;
+
+// Static task structures for PSRAM stack allocation (multi-panel mode)
+static StaticTask_t displayTaskTCB;
+static StackType_t* displayTaskStack = nullptr;
+static StaticTask_t apiTaskTCB;
+static StackType_t* apiTaskStack = nullptr;
 
 // Thread-safe display update request structure
 struct DisplayUpdateRequest {
@@ -888,11 +895,14 @@ void displayRenderTask(void* parameter)
 void signalDisplayUpdate()
 {
     // Snapshot API-protected data first (departures, weather, ticker, infotexts)
-    Departure localDeps[MAX_DEPARTURES];
+    // Static to avoid stack overflow — this function is only called from the loop task
+    static Departure localDeps[MAX_DEPARTURES];
+    static TickerData localTicker;
+    static char localInfoText[TransitAPI::MAX_INFOTEXT_LEN];
     int localDepCount = 0;
     WeatherData localWeather = {};
-    TickerData localTicker = {};
-    char localInfoText[TransitAPI::MAX_INFOTEXT_LEN] = "";
+    memset(&localTicker, 0, sizeof(localTicker));
+    localInfoText[0] = '\0';
 
     if (xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(50)))
     {
@@ -1025,6 +1035,15 @@ void setup()
     // Set up API status callback for display updates
     transitAPI->setStatusCallback(onAPIStatus);
 
+    // For multi-panel configs, enable PSRAM fallback for large allocations
+    // DMA buffer for 4 panels uses ~64KB internal, leaving little for SSL (~40KB needed)
+    if (config.panelRows > 1 && heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0)
+    {
+        heap_caps_malloc_extmem_enable(1024);
+        Serial.printf("PSRAM fallback enabled (>1KB): %u bytes PSRAM available\n",
+                      heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
+    }
+
     // Initialize display with correct brightness from config
     if (!displayManager.begin(config.brightness, config.panelRows))
     {
@@ -1036,52 +1055,61 @@ void setup()
 
     displayManager.drawStatus("Starting SpojBoard...", "FW v" FIRMWARE_RELEASE, COLOR_WHITE);
 
-    // Create display render task on Core 1 (separate from WiFi/network on Core 0)
-    BaseType_t taskCreated = xTaskCreatePinnedToCore(
-        displayRenderTask,      // Task function
-        "DisplayRender",        // Task name (for debugging)
-        12288,                  // Stack size (12KB - display ops + TickerData + departure copies)
-        NULL,                   // Task parameters
-        2,                      // Priority (2 = above idle, below critical network tasks)
-        &displayTaskHandle,     // Task handle
-        1                       // Core 1 (isolated from WiFi/web server on Core 0)
-    );
+    // Create display render task on Core 1
+    // For multi-panel configs, allocate task stacks from PSRAM to free internal RAM for SSL
+    bool usePsramStacks = (config.panelRows > 1 && heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 0);
 
-    if (taskCreated != pdPASS || displayTaskHandle == NULL)
+    if (usePsramStacks)
     {
-        Serial.println("FATAL: Failed to create display task!");
-        while (1)
+        displayTaskStack = (StackType_t*)heap_caps_malloc(12288, MALLOC_CAP_SPIRAM);
+        if (displayTaskStack)
         {
-            delay(1000);
+            displayTaskHandle = xTaskCreateStaticPinnedToCore(
+                displayRenderTask, "DisplayRender", 12288 / sizeof(StackType_t),
+                NULL, 2, displayTaskStack, &displayTaskTCB, 1);
+            Serial.println("Display task: stack in PSRAM (12KB)");
         }
     }
 
-    logTimestamp();
-    debugPrintln("Display task created on Core 1");
+    if (!displayTaskHandle)
+    {
+        // Fallback to internal RAM stack
+        BaseType_t taskCreated = xTaskCreatePinnedToCore(
+            displayRenderTask, "DisplayRender", 12288, NULL, 2, &displayTaskHandle, 1);
+        if (taskCreated != pdPASS || displayTaskHandle == NULL)
+        {
+            Serial.println("FATAL: Failed to create display task!");
+            while (1) { delay(1000); }
+        }
+        Serial.println("Display task: stack in internal RAM (12KB)");
+    }
+
     delay(100); // Give display task time to start
 
-    // Create API fetch task on Core 1 (handles blocking HTTP calls without blocking loop)
-    taskCreated = xTaskCreatePinnedToCore(
-        apiFetchTask,           // Task function
-        "APIFetch",             // Task name (for debugging)
-        10240,                  // Stack size (10KB - HTTP client + APIResult on stack)
-        NULL,                   // Task parameters
-        1,                      // Priority (1 = lower than display task, allows web server to preempt)
-        &apiFetchTaskHandle,    // Task handle
-        1                       // Core 1 (same as loop/web server)
-    );
-
-    if (taskCreated != pdPASS || apiFetchTaskHandle == NULL)
+    // Create API fetch task on Core 1 (handles blocking HTTP calls)
+    if (usePsramStacks)
     {
-        Serial.println("FATAL: Failed to create API fetch task!");
-        while (1)
+        apiTaskStack = (StackType_t*)heap_caps_malloc(10240, MALLOC_CAP_SPIRAM);
+        if (apiTaskStack)
         {
-            delay(1000);
+            apiFetchTaskHandle = xTaskCreateStaticPinnedToCore(
+                apiFetchTask, "APIFetch", 10240 / sizeof(StackType_t),
+                NULL, 1, apiTaskStack, &apiTaskTCB, 1);
+            Serial.println("API task: stack in PSRAM (10KB)");
         }
     }
 
-    logTimestamp();
-    debugPrintln("API fetch task created on Core 1");
+    if (!apiFetchTaskHandle)
+    {
+        BaseType_t taskCreated = xTaskCreatePinnedToCore(
+            apiFetchTask, "APIFetch", 10240, NULL, 1, &apiFetchTaskHandle, 1);
+        if (taskCreated != pdPASS || apiFetchTaskHandle == NULL)
+        {
+            Serial.println("FATAL: Failed to create API fetch task!");
+            while (1) { delay(1000); }
+        }
+        Serial.println("API task: stack in internal RAM (10KB)");
+    }
     delay(100); // Give API task time to start
 
     // Try to connect to WiFi (will fall back to AP mode if fails)

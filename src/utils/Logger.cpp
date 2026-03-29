@@ -1,6 +1,7 @@
 #include "Logger.h"
 #include "TelnetLogger.h"
 #include "../config/AppConfig.h"
+#include <esp_heap_caps.h>
 
 // Global config pointer for debug checks
 static const Config* g_config = nullptr;
@@ -26,12 +27,11 @@ void logTimestamp()
 void logMemory(const char* location)
 {
     logTimestamp();
-    Serial.print("MEM@");
-    Serial.print(location);
-    Serial.print(": Free=");
-    Serial.print(ESP.getFreeHeap());
-    Serial.print(" Min=");
-    Serial.println(ESP.getMinFreeHeap());
+    Serial.printf("MEM@%s: Free=%u Min=%u Internal=%u MaxBlock=%u PSRAM=%u\n",
+                  location, ESP.getFreeHeap(), ESP.getMinFreeHeap(),
+                  heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                  heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL),
+                  heap_caps_get_free_size(MALLOC_CAP_SPIRAM));
 
     // Mirror to telnet if debug enabled AND telnet is active
     if (g_config && g_config->debugMode && TelnetLogger::getInstance().isActive())

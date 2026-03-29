@@ -211,9 +211,24 @@ String buildDisplayTab(const Config* config)
     String html = "";
     html += "<div id='tab-display' class='tab-content'>";
 
-    // Basic Display Settings (2-column grid)
+    // Panel Configuration (requires restart)
     html += "<div class='form-group'>";
-    html += "<div class='form-group-title'>Basic Display Settings</div>";
+    html += "<div class='form-group-title'>Panel Configuration</div>";
+    html += "<label for='panelRows'>DISPLAY SIZE</label>";
+    html += "<select id='panelRows' name='panel_rows'>";
+    html += "<option value='1'";
+    if (config->panelRows == 1) html += " selected";
+    html += ">128x32 (2 panels)</option>";
+    html += "<option value='2'";
+    if (config->panelRows == 2) html += " selected";
+    html += ">128x64 (4 panels)</option>";
+    html += "</select>";
+    html += "<div class='help-text'>Changing display size will reboot the device. Only select 128x64 if 4 panels are connected.</div>";
+    html += "</div>"; // End form-group
+
+    // Basic Display Settings
+    html += "<div class='form-group'>";
+    html += "<div class='form-group-title'>Display Settings</div>";
     html += "<div class='grid'>";
 
     // Brightness slider
@@ -225,20 +240,6 @@ String buildDisplayTab(const Config* config)
     html += "<div class='help-text'>Current: <span id='brightnessValue'>";
     html += String(config->brightness);
     html += "</span></div>";
-    html += "</div>";
-
-    // Display Size
-    html += "<div>";
-    html += "<label for='panelRows'>DISPLAY SIZE</label>";
-    html += "<select id='panelRows' name='panel_rows'>";
-    html += "<option value='1'";
-    if (config->panelRows == 1) html += " selected";
-    html += ">128x32 (2 panels)</option>";
-    html += "<option value='2'";
-    if (config->panelRows == 2) html += " selected";
-    html += ">128x64 (4 panels)</option>";
-    html += "</select>";
-    html += "<div class='help-text'>Requires reboot. Only select 128x64 if 4 panels are connected.</div>";
     html += "</div>";
 
     // Number of departures (max depends on display size)

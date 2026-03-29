@@ -212,7 +212,7 @@ public:
 
 private:
     MatrixPanel_I2S_DMA* dmaDisplay;                                    // Raw DMA panel (always created)
-    VirtualMatrixPanel_T<CHAIN_TOP_LEFT_DOWN>* virtualDisplay;          // Virtual panel (only for multi-row)
+    VirtualMatrixPanel_T<CHAIN_TOP_RIGHT_DOWN>* virtualDisplay;         // Virtual panel (only for multi-row)
     Adafruit_GFX* gfx;                                                  // Drawing surface (points to dmaDisplay or virtualDisplay)
     bool isDrawing;
     const Config* config;
