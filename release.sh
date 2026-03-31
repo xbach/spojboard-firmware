@@ -45,12 +45,23 @@ fi
 if ! grep -q "## \[r${RELEASE_NUM}\]" CHANGELOG.md; then
   echo "WARNING: No changelog entry found for [r${RELEASE_NUM}] in CHANGELOG.md"
   echo ""
-  read -p "Continue anyway? (y/N) " -n 1 -r
+  read -p "Generate changelog entry with Claude? (y/N) " -n 1 -r
   echo
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Aborted."
-    echo "Please add a changelog entry for [r${RELEASE_NUM}] in CHANGELOG.md"
-    exit 1
+  if [[ $REPLY =~ ^[Yy]$ ]]; then
+    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+    "${SCRIPT_DIR}/tools/prepare_changelog.sh" "${RELEASE_NUM}"
+    # Re-check after generation
+    if ! grep -q "## \[r${RELEASE_NUM}\]" CHANGELOG.md; then
+      echo "ERROR: Changelog entry still missing after generation."
+      exit 1
+    fi
+  else
+    read -p "Continue without changelog? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      echo "Aborted."
+      exit 1
+    fi
   fi
 fi
 
@@ -67,7 +78,7 @@ fi
 
 echo ""
 echo "=== Changelog for r${RELEASE_NUM} ==="
-awk "/## \[r${RELEASE_NUM}\]/,/## \[r[0-9]/" CHANGELOG.md | sed '1d;$d' | head -20
+awk '/^## \[r'"${RELEASE_NUM}"'\]/{f=1;next} f && /^## \[r[0-9]/{exit} f' CHANGELOG.md | head -20
 echo ""
 
 read -p "Create and push tag ${TAG_NAME}? (y/N) " -n 1 -r
