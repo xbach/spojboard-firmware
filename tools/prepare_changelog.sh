@@ -71,9 +71,22 @@ Format rules:
 - Group related commits into single entries when appropriate
 - Do NOT include the ## [rN] header line — I will add that myself
 - Do NOT include chore/meta commits (changelog updates, version bumps, CI changes)
-- Output ONLY the changelog sections, nothing else — no intro, no explanation"
+- Do NOT include any commentary, insight blocks, callouts, horizontal rules, or markdown beyond the ### section headers and bullet lines
+- Output ONLY the changelog sections, nothing else — no intro, no explanation, no closing remarks"
 
 ENTRY=$(claude -p "$PROMPT" --max-turns 1 2>/dev/null)
+
+# Strip any leaked Insight blocks (explanatory output style emits these despite prompt)
+# Matches an opening "★ Insight ─────" line through the next "─────" closing line,
+# then collapses runs of blank lines that result.
+ENTRY=$(echo "$ENTRY" | awk '
+  /^`?★ Insight/ { in_insight=1; next }
+  in_insight && /^`?─+`?$/ { in_insight=0; next }
+  !in_insight {
+    if ($0 == "") { if (!blank) print; blank=1 }
+    else { print; blank=0 }
+  }
+')
 
 if [ -z "$ENTRY" ]; then
   echo "ERROR: Claude returned empty response."
@@ -100,21 +113,31 @@ elif [[ ! $REPLY =~ ^[Yy]$ ]]; then
   exit 1
 fi
 
-# Prepend entry to CHANGELOG.md after the header
-HEADER="## [r${RELEASE_NUM}] - Unreleased"
-NEW_SECTION="${HEADER}
+# Write new section to a temp file (awk -v can't accept multi-line values)
+SECTION_FILE=$(mktemp)
+{
+  echo "## [r${RELEASE_NUM}] - Unreleased"
+  echo
+  echo "$ENTRY"
+  echo
+} > "$SECTION_FILE"
 
-${ENTRY}
-"
-
-# Insert after the "All notable changes..." line (line 3), before the first ## entry
-awk -v section="$NEW_SECTION" '
+# Insert the section before the first existing "## [rN]" line
+awk -v sf="$SECTION_FILE" '
   /^## \[r[0-9]/ && !inserted {
-    print section
+    while ((getline line < sf) > 0) print line
+    close(sf)
     inserted=1
   }
   { print }
 ' "$CHANGELOG" > "${CHANGELOG}.tmp" && mv "${CHANGELOG}.tmp" "$CHANGELOG"
+rm "$SECTION_FILE"
+
+# Verify the entry actually landed (awk can exit 0 even after stderr errors)
+if ! grep -q "^## \[r${RELEASE_NUM}\]" "$CHANGELOG"; then
+  echo "ERROR: Insertion failed — [r${RELEASE_NUM}] not found in CHANGELOG.md"
+  exit 1
+fi
 
 echo ""
 echo "Changelog entry for [r${RELEASE_NUM}] added to CHANGELOG.md"
