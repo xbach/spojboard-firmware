@@ -27,6 +27,23 @@ if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
   exit 1
 fi
 
+# Verify FIRMWARE_RELEASE in source matches the release number being tagged
+APPCONFIG="src/config/AppConfig.h"
+SOURCE_VERSION=$(grep -E '^#define[[:space:]]+FIRMWARE_RELEASE[[:space:]]+"' "$APPCONFIG" | sed -E 's/.*"([^"]+)".*/\1/')
+if [ -z "$SOURCE_VERSION" ]; then
+  echo "ERROR: Could not read FIRMWARE_RELEASE from ${APPCONFIG}"
+  exit 1
+fi
+if [ "$SOURCE_VERSION" != "$RELEASE_NUM" ]; then
+  echo "ERROR: FIRMWARE_RELEASE in ${APPCONFIG} is \"${SOURCE_VERSION}\" but you're tagging r${RELEASE_NUM}."
+  echo "Binaries would self-report as r${SOURCE_VERSION}, breaking GitHub OTA version checks."
+  echo ""
+  echo "Fix:"
+  echo "  sed -i '' 's/FIRMWARE_RELEASE \"${SOURCE_VERSION}\"/FIRMWARE_RELEASE \"${RELEASE_NUM}\"/' ${APPCONFIG}"
+  echo "  git commit -am \"chore: bump FIRMWARE_RELEASE to ${RELEASE_NUM}\""
+  exit 1
+fi
+
 # Check if working directory is clean
 if [ -n "$(git status --porcelain)" ]; then
   echo "WARNING: Working directory is not clean!"
