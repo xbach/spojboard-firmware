@@ -2,6 +2,29 @@
 
 All notable changes to SpojBoard firmware will be documented in this file.
 
+## [r6] - 2026-05-12
+
+### Added
+- Infotext scrolling in status bar with datetime alternation, including Golemio service alerts and a manual override test page
+- Candlestick chart ticker mode via Twelve Data API (stocks and crypto)
+- 128x64 display support with VirtualMatrixPanel, web UI display size selector, and dynamic numDepartures max
+- Configurable line color defaults with `?` optional positional wildcard
+- Absolute departure time display (HH:MM) for distant departures beyond 60 minutes
+- Claude-powered changelog generation tooling for releases
+
+### Changed
+- Refactored display rendering to use DisplayLayout struct, replacing hardcoded row, width, Y-axis, and status bar magic numbers
+- Hide non-connection tabs and action buttons while in AP mode
+- Adjusted medium/condensed font selection thresholds
+
+### Fixed
+- 4-panel memory issues and config save crash on 128x64 builds
+- DST transitions now use a POSIX TZ string for correct CET/CEST handover
+- Buffer safety hardened, data race resolved, and heap fragmentation reduced
+- Destination overflow when dual ETA is enabled alongside a single-ETA row
+- Zero-pad hour in absolute departure time
+- Scrolling destination clear bounds corrected
+
 ## [r5] - 2026-02-09
 
 ### Added
