@@ -24,7 +24,8 @@ static const int SCROLL_MAX_CYCLES = 1;          // Max scroll cycles before sto
 
 // Infotext alternation timing
 static const int INFOTEXT_SCROLL_INTERVAL_MS = 100;  // Pixel scroll step interval for infotext
-static const int INFOTEXT_MIN_DATETIME_MS = 3000;    // Minimum datetime display time
+static const int INFOTEXT_MIN_DATETIME_MS = 3000;    // Minimum datetime display time (between cycles)
+static const int INFOTEXT_FIRST_DATETIME_MS = 1000;  // Short datetime beat before the first scroll-in
 
 // Destination layout calculation result (shared between drawDeparture and redrawDestination)
 struct DestLayout {

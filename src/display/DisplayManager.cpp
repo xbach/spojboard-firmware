@@ -782,11 +782,23 @@ bool DisplayManager::updateInfoText()
     unsigned long now = millis();
     unsigned long elapsed = now - infoTextPhaseStart;
 
-    // Calculate datetime display duration = half of infotext total scroll time
-    unsigned long infoTotalMs = (unsigned long)infoTextScroll.maxOffset * INFOTEXT_SCROLL_INTERVAL_MS;
-    unsigned long dateTimeShowMs = infoTotalMs / 2;
-    if (dateTimeShowMs < INFOTEXT_MIN_DATETIME_MS)
-        dateTimeShowMs = INFOTEXT_MIN_DATETIME_MS;
+    // Calculate datetime display duration before switching to the infotext scroll.
+    // First appearance (cycleCount == 0): the datetime was already on screen as the
+    // status bar's base state, so a short beat is enough before scrolling text in.
+    // Later cycles: show datetime for half the total scroll time (min INFOTEXT_MIN_DATETIME_MS),
+    // since it reappears fresh and must stay readable.
+    unsigned long dateTimeShowMs;
+    if (infoTextScroll.cycleCount == 0)
+    {
+        dateTimeShowMs = INFOTEXT_FIRST_DATETIME_MS;
+    }
+    else
+    {
+        unsigned long infoTotalMs = (unsigned long)infoTextScroll.maxOffset * INFOTEXT_SCROLL_INTERVAL_MS;
+        dateTimeShowMs = infoTotalMs / 2;
+        if (dateTimeShowMs < INFOTEXT_MIN_DATETIME_MS)
+            dateTimeShowMs = INFOTEXT_MIN_DATETIME_MS;
+    }
 
     if (!showingInfoText)
     {
