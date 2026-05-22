@@ -13,6 +13,7 @@
 #include "web/WebUtils.h"
 #include <WiFi.h>
 #include <Update.h>
+#include <ArduinoJson.h>
 #include <string.h>
 
 // Static instance pointer for OTA callback
@@ -1162,26 +1163,27 @@ void ConfigWebServer::handleSetInfoText()
 {
     String body = server->arg("plain");
 
-    // Extract "text":"<value>" from JSON
-    int textStart = body.indexOf("\"text\":\"");
-    if (textStart < 0)
-    {
-        server->send(400, "application/json", "{\"success\":false,\"error\":\"Missing text field\"}");
-        return;
-    }
-    textStart += 8; // skip "text":"
-    int textEnd = body.indexOf("\"", textStart);
-    if (textEnd < 0)
+    // Infotext is at most 512 bytes (MAX_INFOTEXT_LEN); 768 covers the value
+    // copy plus object/key overhead with headroom.
+    StaticJsonDocument<768> doc;
+    DeserializationError error = deserializeJson(doc, body);
+    if (error)
     {
         server->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
         return;
     }
 
-    String text = body.substring(textStart, textEnd);
+    // Null when "text" is absent or not a string
+    const char* text = doc["text"];
+    if (text == nullptr)
+    {
+        server->send(400, "application/json", "{\"success\":false,\"error\":\"Missing text field\"}");
+        return;
+    }
 
     if (displayManager != nullptr)
     {
-        displayManager->setInfoTextManual(text.c_str());
+        displayManager->setInfoTextManual(text);
     }
 
     logTimestamp();
@@ -1206,31 +1208,17 @@ void ConfigWebServer::handleClearInfoText()
 
 void ConfigWebServer::handleCurrentInfoText()
 {
-    char response[600];
-    if (displayManager != nullptr && displayManager->isInfoTextActive())
-    {
-        // Escape quotes in the raw text for JSON safety
-        const char* raw = displayManager->getInfoTextRaw();
-        char escaped[512];
-        int j = 0;
-        for (int i = 0; raw[i] && j < (int)sizeof(escaped) - 2; i++)
-        {
-            if (raw[i] == '"' || raw[i] == '\\')
-                escaped[j++] = '\\';
-            escaped[j++] = raw[i];
-        }
-        escaped[j] = '\0';
+    bool active = (displayManager != nullptr && displayManager->isInfoTextActive());
 
-        snprintf(response, sizeof(response),
-                 "{\"active\":true,\"manual\":%s,\"text\":\"%s\"}",
-                 displayManager->isInfoTextManual() ? "true" : "false",
-                 escaped);
-    }
-    else
-    {
-        snprintf(response, sizeof(response),
-                 "{\"active\":false,\"manual\":false,\"text\":\"\"}");
-    }
+    StaticJsonDocument<768> doc;
+    doc["active"] = active;
+    doc["manual"] = active && displayManager->isInfoTextManual();
+    doc["text"] = active ? displayManager->getInfoTextRaw() : "";
+
+    // serializeJson escapes the full JSON character set (quotes, backslashes,
+    // control chars); String output grows as needed, so no truncation.
+    String response;
+    serializeJson(doc, response);
     server->send(200, "application/json", response);
 }
 
