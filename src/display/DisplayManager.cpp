@@ -842,8 +842,9 @@ void DisplayManager::drawStatus(const char *line1, const char *line2, uint16_t c
     gfx->setTextColor(color);
     gfx->setFont(fontMedium);
 
-    // Center two lines vertically in the display
-    int centerY = layout.displayHeight / 2;
+    // Center two lines vertically in the area above the status bar so the
+    // bottom 8 px (date/time/infotext) never paints over line 2.
+    int centerY = layout.statusBarY / 2;
 
     if (line1)
     {
