@@ -1,17 +1,51 @@
 #!/bin/bash
 # SpojBoard Release Helper Script
-# Usage: ./release.sh <release_number>
+# Usage: ./release.sh [--autogen-changelog] <release_number>
 # Example: ./release.sh 3
+#          ./release.sh --autogen-changelog 3
 
 set -e
 
-if [ -z "$1" ]; then
-  echo "Usage: ./release.sh <release_number>"
+usage() {
+  echo "Usage: ./release.sh [options] <release_number>"
   echo "Example: ./release.sh 3"
+  echo "         ./release.sh --yes 3"
+  echo ""
+  echo "Options:"
+  echo "  -y, --yes, --non-interactive"
+  echo "        Run unattended: assume \"yes\" to every prompt (dirty tree, tag"
+  echo "        create/push) and auto-generate the changelog if it is missing."
+  echo "  --autogen-changelog"
+  echo "        Generate the [rN] changelog entry non-interactively (via"
+  echo "        tools/prepare_changelog.sh --yes). Fails if an entry for [rN]"
+  echo "        already exists. Combine with --yes for a fully unattended,"
+  echo "        force-fresh-changelog release."
+}
+
+AUTOGEN_CHANGELOG=false
+ASSUME_YES=false
+RELEASE_NUM=""
+for arg in "$@"; do
+  case "$arg" in
+    --autogen-changelog) AUTOGEN_CHANGELOG=true ;;
+    -y|--yes|--non-interactive) ASSUME_YES=true ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "ERROR: Unknown option: $arg"; echo ""; usage; exit 1 ;;
+    *)
+      if [ -n "$RELEASE_NUM" ]; then
+        echo "ERROR: Multiple release numbers given ('$RELEASE_NUM' and '$arg')"
+        exit 1
+      fi
+      RELEASE_NUM="$arg"
+      ;;
+  esac
+done
+
+if [ -z "$RELEASE_NUM" ]; then
+  usage
   exit 1
 fi
 
-RELEASE_NUM=$1
 TAG_NAME="r${RELEASE_NUM}"
 
 echo "=== SpojBoard Release Helper ==="
@@ -50,34 +84,67 @@ if [ -n "$(git status --porcelain)" ]; then
   echo ""
   git status --short
   echo ""
-  read -p "Continue anyway? (y/N) " -n 1 -r
-  echo
-  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    echo "Aborted."
-    exit 1
+  if [ "$ASSUME_YES" = true ]; then
+    echo "Proceeding despite dirty working tree (--yes)."
+  else
+    read -p "Continue anyway? (y/N) " -n 1 -r
+    echo
+    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+      echo "Aborted."
+      exit 1
+    fi
   fi
 fi
 
-# Check if CHANGELOG.md has entry for this release
-if ! grep -q "## \[r${RELEASE_NUM}\]" CHANGELOG.md; then
-  echo "WARNING: No changelog entry found for [r${RELEASE_NUM}] in CHANGELOG.md"
-  echo ""
-  read -p "Generate changelog entry with Claude? (y/N) " -n 1 -r
-  echo
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
-    SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-    "${SCRIPT_DIR}/tools/prepare_changelog.sh" "${RELEASE_NUM}"
-    # Re-check after generation
+# Changelog handling
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CHANGELOG_EXISTS=false
+if grep -q "## \[r${RELEASE_NUM}\]" CHANGELOG.md; then
+  CHANGELOG_EXISTS=true
+fi
+
+if [ "$AUTOGEN_CHANGELOG" = true ]; then
+  # Non-interactive generation. Fail if an entry already exists so we never
+  # silently release stale/hand-written notes when fresh ones were requested.
+  if [ "$CHANGELOG_EXISTS" = true ]; then
+    echo "ERROR: --autogen-changelog was given but a changelog entry for [r${RELEASE_NUM}] already exists."
+    echo "Remove the existing [r${RELEASE_NUM}] section first, or drop --autogen-changelog to use it as-is."
+    exit 1
+  fi
+  echo "Auto-generating changelog entry for [r${RELEASE_NUM}]..."
+  "${SCRIPT_DIR}/tools/prepare_changelog.sh" --yes "${RELEASE_NUM}"
+  # Re-check after generation
+  if ! grep -q "## \[r${RELEASE_NUM}\]" CHANGELOG.md; then
+    echo "ERROR: Changelog entry still missing after generation."
+    exit 1
+  fi
+elif [ "$CHANGELOG_EXISTS" = false ]; then
+  if [ "$ASSUME_YES" = true ]; then
+    echo "No changelog entry for [r${RELEASE_NUM}]; auto-generating (--yes)..."
+    "${SCRIPT_DIR}/tools/prepare_changelog.sh" --yes "${RELEASE_NUM}"
     if ! grep -q "## \[r${RELEASE_NUM}\]" CHANGELOG.md; then
       echo "ERROR: Changelog entry still missing after generation."
       exit 1
     fi
   else
-    read -p "Continue without changelog? (y/N) " -n 1 -r
+    echo "WARNING: No changelog entry found for [r${RELEASE_NUM}] in CHANGELOG.md"
+    echo ""
+    read -p "Generate changelog entry with Claude? (y/N) " -n 1 -r
     echo
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-      echo "Aborted."
-      exit 1
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+      "${SCRIPT_DIR}/tools/prepare_changelog.sh" "${RELEASE_NUM}"
+      # Re-check after generation
+      if ! grep -q "## \[r${RELEASE_NUM}\]" CHANGELOG.md; then
+        echo "ERROR: Changelog entry still missing after generation."
+        exit 1
+      fi
+    else
+      read -p "Continue without changelog? (y/N) " -n 1 -r
+      echo
+      if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+        echo "Aborted."
+        exit 1
+      fi
     fi
   fi
 fi
@@ -98,11 +165,15 @@ echo "=== Changelog for r${RELEASE_NUM} ==="
 awk '/^## \[r'"${RELEASE_NUM}"'\]/{f=1;next} f && /^## \[r[0-9]/{exit} f' CHANGELOG.md | head -20
 echo ""
 
-read -p "Create and push tag ${TAG_NAME}? (y/N) " -n 1 -r
-echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-  echo "Aborted."
-  exit 1
+if [ "$ASSUME_YES" = true ]; then
+  echo "Creating and pushing tag ${TAG_NAME} (--yes)..."
+else
+  read -p "Create and push tag ${TAG_NAME}? (y/N) " -n 1 -r
+  echo
+  if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Aborted."
+    exit 1
+  fi
 fi
 
 # Update CHANGELOG date if it says "Unreleased"

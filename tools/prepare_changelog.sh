@@ -1,7 +1,8 @@
 #!/bin/bash
 # Prepare a changelog entry for the next release using Claude
-# Usage: ./tools/prepare_changelog.sh [release_number]
+# Usage: ./tools/prepare_changelog.sh [-y|--yes] [release_number]
 # If release_number is omitted, auto-detects from CHANGELOG.md
+# -y/--yes: auto-accept the generated entry without prompting (non-interactive)
 
 set -e
 
@@ -14,9 +15,20 @@ if [ ! -f "$CHANGELOG" ]; then
   exit 1
 fi
 
+# Parse arguments: optional -y/--yes flag, optional release number
+AUTO_ACCEPT=false
+RELEASE_ARG=""
+for arg in "$@"; do
+  case "$arg" in
+    -y|--yes) AUTO_ACCEPT=true ;;
+    -*) echo "ERROR: Unknown option: $arg"; exit 1 ;;
+    *) RELEASE_ARG="$arg" ;;
+  esac
+done
+
 # Determine release number
-if [ -n "$1" ]; then
-  RELEASE_NUM=$1
+if [ -n "$RELEASE_ARG" ]; then
+  RELEASE_NUM=$RELEASE_ARG
 else
   # Auto-detect: find highest rN in CHANGELOG.md, increment by 1
   LAST_RELEASE=$(grep -o '## \[r[0-9]*\]' "$CHANGELOG" | head -1 | sed 's/.*r\([0-9]*\).*/\1/')
@@ -98,19 +110,23 @@ echo ""
 echo "$ENTRY"
 echo ""
 
-# Ask for confirmation
-read -p "Add this entry to CHANGELOG.md as [r${RELEASE_NUM}]? (y/e/N) " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Ee]$ ]]; then
-  # Open in editor for manual tweaks
-  TMPFILE=$(mktemp)
-  echo "$ENTRY" > "$TMPFILE"
-  ${EDITOR:-vi} "$TMPFILE"
-  ENTRY=$(cat "$TMPFILE")
-  rm "$TMPFILE"
-elif [[ ! $REPLY =~ ^[Yy]$ ]]; then
-  echo "Aborted."
-  exit 1
+# Ask for confirmation (skipped in non-interactive --yes mode)
+if [ "$AUTO_ACCEPT" = true ]; then
+  echo "Auto-accepting generated entry (--yes)."
+else
+  read -p "Add this entry to CHANGELOG.md as [r${RELEASE_NUM}]? (y/e/N) " -n 1 -r
+  echo
+  if [[ $REPLY =~ ^[Ee]$ ]]; then
+    # Open in editor for manual tweaks
+    TMPFILE=$(mktemp)
+    echo "$ENTRY" > "$TMPFILE"
+    ${EDITOR:-vi} "$TMPFILE"
+    ENTRY=$(cat "$TMPFILE")
+    rm "$TMPFILE"
+  elif [[ ! $REPLY =~ ^[Yy]$ ]]; then
+    echo "Aborted."
+    exit 1
+  fi
 fi
 
 # Write new section to a temp file (awk -v can't accept multi-line values)
