@@ -142,8 +142,15 @@ void attachSecondETAs(Departure* deps, int count)
         if (!config.showMultipleTimes) continue;
         for (int j = i + 1; j < count; j++)
         {
+            // Gate on sourceStopId: the secondary ETA must be the next departure of
+            // this line+destination FROM THE SAME PHYSICAL STOP. Two stops in the same
+            // direction can both serve the same line+destination, but a rider standing
+            // at one stop can't board the bus leaving the other, so they must not be
+            // conflated. (deps is sorted ascending by ETA, so the first match is the
+            // soonest next departure.)
             if (strcmp(deps[i].line, deps[j].line) == 0 &&
-                strcmp(deps[i].destination, deps[j].destination) == 0)
+                strcmp(deps[i].destination, deps[j].destination) == 0 &&
+                strcmp(deps[i].sourceStopId, deps[j].sourceStopId) == 0)
             {
                 deps[i].secondEta = deps[j].eta;
                 deps[i].secondDepartureTime = deps[j].departureTime;
