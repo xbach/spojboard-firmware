@@ -189,6 +189,15 @@ bool DisplayManager::begin(int brightness, int panelRows)
     mxconfig.clkphase = false;
     mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M;
 
+    // 4-panel (128x64) doubles the DMA framebuffer (~64KB internal). The transit
+    // display uses flat colors, so dropping color depth from the default 8 to 5
+    // bits is visually negligible but frees ~24KB of internal RAM — needed so the
+    // HTTPS/TLS handshake fits without any PSRAM tricks. Single-panel keeps 8-bit.
+    if (panelRows > 1)
+    {
+        mxconfig.setPixelColorDepthBits(5);
+    }
+
     dmaDisplay = new MatrixPanel_I2S_DMA(mxconfig);
 
     if (!dmaDisplay->begin())
