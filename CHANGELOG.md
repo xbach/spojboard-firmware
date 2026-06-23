@@ -2,6 +2,19 @@
 
 All notable changes to SpojBoard firmware will be documented in this file.
 
+## [r7] - 2026-06-23
+
+
+### Changed
+- Shorten the datetime delay before the first infotext scroll-in for a snappier status bar
+
+### Fixed
+- Parse large BVG responses correctly and raise HTTP timeouts to 15s to prevent dropped fetches
+- Resolve 4-panel (128x64) bootloop by dropping the PSRAM workaround
+- Brighten the secondary ETA gray on the 4-panel 5-bit display for better legibility
+- Handle quotes and control characters safely in infotext JSON
+- Center the status message above the status bar
+
 ## [r6] - 2026-05-12
 
 ### Added
