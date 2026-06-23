@@ -622,7 +622,11 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         else
             snprintf(eta2Text, sizeof(eta2Text), "%d'", dep.secondEta);
 
-        gfx->setTextColor(color565(90, 90, 90));
+        // The 4-panel display runs at 5-bit color depth (see begin()), where a low
+        // neutral gray quantizes to a muddy/flickery cast. Use a brighter gray there
+        // so it stays clean; single-panel (8-bit) keeps the dimmer gray for contrast.
+        gfx->setTextColor(layout.panelCount > 2 ? color565(150, 150, 150)
+                                                : color565(90, 90, 90));
         drawRightAligned(eta2Text, this->layout.displayWidth - 19);
 
         // Primary ETA — fontMedium, urgency-colored, right edge at displayWidth-1
