@@ -410,7 +410,7 @@ The device implements captive portal detection for:
 - Firefox (`/success.txt`)
 
 ### Memory Usage
-- Per-API JSON buffers: Golemio 12KB, BVG 24KB, MQTT 8KB
+- Per-API JSON buffers: Golemio 12KB, BVG 32KB read cap (filtered to an 8KB parse doc), MQTT 8KB
 - Configuration stored in NVS flash
 - Typical free heap: ~200KB
 - Two 2MB OTA app partitions (app0/app1); exact RAM/flash figures vary per hardware variant and build

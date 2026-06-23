@@ -219,8 +219,8 @@ HUB75 Hardware
 
 ### Heap Usage
 
-- JSON buffer: 12KB for Golemio API responses, 24KB for BVG API responses (DynamicJsonDocument)
-- BVG API responses are more verbose (~1.7KB per departure vs Golemio's more compact format)
+- JSON buffer: 12KB for Golemio responses; BVG reads up to 32KB but parses through an ArduinoJson `Filter` into an 8KB `DynamicJsonDocument` (keeps only the ~6 fields used)
+- BVG API responses are more verbose (~2.2KB per departure vs Golemio's more compact format), so the filter is what keeps RAM low on 4-panel builds
 - Configuration: NVS flash storage (persistent across reboots)
 - Typical free heap: ~200KB
 - App partitions: two OTA slots of 2MB each (0x200000); exact RAM/flash utilization varies per build and hardware variant
