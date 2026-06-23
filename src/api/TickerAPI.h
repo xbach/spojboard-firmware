@@ -46,7 +46,7 @@ public:
 
 private:
     static constexpr int JSON_BUFFER_SIZE = 8192; // 8KB buffer — stream parsing copies all strings (no zero-copy)
-    static constexpr int HTTP_TIMEOUT_MS = 10000;  // 10 second timeout
+    static constexpr int HTTP_TIMEOUT_MS = 15000;  // 15 second timeout (TLS handshake + download on RAM-tight 4-panel)
     static constexpr int MAX_RETRIES = 3;
 };
 

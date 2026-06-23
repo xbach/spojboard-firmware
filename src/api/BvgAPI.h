@@ -35,8 +35,12 @@ class BvgAPI : public TransitAPI
   private:
     APIStatusCallback statusCallback;
     static constexpr int MAX_TEMP_DEPARTURES = DEPS_PER_STOP * 12; // Buffer for up to 12 stops at full capacity
-    static constexpr int JSON_BUFFER_SIZE = 24576; // 24KB - BVG API returns verbose responses (~1.7KB per departure)
-    static constexpr int HTTP_TIMEOUT_MS = 10000;
+    // BVG responses are verbose (~2.2KB/departure, ~26KB for 12). We parse with an
+    // ArduinoJson Filter and stream directly from the socket, so the document only
+    // holds the few fields we use — keeping RAM low on 4-panel builds.
+    static constexpr int PARSE_DOC_SIZE = 8192;    // filtered document (only fields we read)
+    static constexpr int JSON_BUFFER_SIZE = 32768; // read cap; must exceed the real response size
+    static constexpr int HTTP_TIMEOUT_MS = 15000;
 
     /**
      * Query a single stop and add results to temp array

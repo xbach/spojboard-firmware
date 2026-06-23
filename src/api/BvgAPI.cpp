@@ -119,6 +119,8 @@ bool BvgAPI::querySingleStop(const char* stopId,
              (long)whenTime);
 
     HTTPClient http;
+    WiFiClientSecure client;
+    configureSecureClient(client);
     http.setTimeout(HTTP_TIMEOUT_MS);
 
     logTimestamp();
@@ -141,7 +143,7 @@ bool BvgAPI::querySingleStop(const char* stopId,
     // Retry logic: 3 attempts with exponential backoff
     for (int attempt = 1; attempt <= 3; attempt++)
     {
-        http.begin(url);
+        http.begin(client, url);
         // BVG API requires no authentication
         http.addHeader("Content-Type", "application/json");
 
@@ -191,11 +193,26 @@ bool BvgAPI::querySingleStop(const char* stopId,
         return false;
     }
 
+    // Read the full body with the buffered reader (robust on TLS: 512-byte chunks,
+    // de-chunks safely). The cap (JSON_BUFFER_SIZE) must exceed the real ~26-28KB
+    // response or it truncates -> IncompleteInput.
     String payload = readHttpResponse(http, JSON_BUFFER_SIZE, config.debugMode);
     http.end();
 
-    DynamicJsonDocument doc(JSON_BUFFER_SIZE);
-    DeserializationError error = deserializeJson(doc, payload);
+    // Parse with a filter so the document keeps only the handful of fields we use;
+    // BVG's payload is mostly fields we ignore (remarks, occupancy, trip position,
+    // operator, ...). This shrinks the doc from ~24KB to a few KB. The [0] template
+    // applies to every departures[] element.
+    StaticJsonDocument<512> filter;
+    filter["departures"][0]["direction"] = true;
+    filter["departures"][0]["when"] = true;
+    filter["departures"][0]["delay"] = true;
+    filter["departures"][0]["platform"] = true;
+    filter["departures"][0]["line"]["name"] = true;
+    filter["departures"][0]["stop"]["name"] = true;
+
+    DynamicJsonDocument doc(PARSE_DOC_SIZE);
+    DeserializationError error = deserializeJson(doc, payload, DeserializationOption::Filter(filter));
 
     if (error)
     {

@@ -7,7 +7,7 @@
 // Departure Data Structures
 // ============================================================================
 
-#define DEPS_PER_STOP 12   // Departures requested per stop from API
+#define DEPS_PER_STOP 10   // Departures requested per stop from API (BVG is ~2.2KB/dep; 10 keeps the response within the read buffer and largest free block on 4-panel builds)
 #define MAX_DEPARTURES 24  // Result cache size (larger for secondEta matching across multi-stop hubs)
 
 struct Departure

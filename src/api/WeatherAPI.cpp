@@ -1,5 +1,6 @@
 #include "WeatherAPI.h"
 #include "../utils/Logger.h"
+#include "../utils/HttpUtils.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
@@ -40,6 +41,8 @@ WeatherData WeatherAPI::fetchWeather(float latitude, float longitude)
     debugPrintln(url);
 
     HTTPClient http;
+    WiFiClientSecure client;
+    configureSecureClient(client);
     int httpCode = -1;
     bool success = false;
 
@@ -57,7 +60,7 @@ WeatherData WeatherAPI::fetchWeather(float latitude, float longitude)
             delay(delayMs);
         }
 
-        http.begin(url);
+        http.begin(client, url);
         http.setTimeout(HTTP_TIMEOUT_MS);
 
         logTimestamp();

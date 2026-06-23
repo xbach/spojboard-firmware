@@ -2,6 +2,11 @@
 #include "Logger.h"
 #include <WiFiClient.h>
 
+void configureSecureClient(WiFiClientSecure& client)
+{
+    client.setInsecure(); // no cert validation (same as prior http.begin(httpsUrl))
+}
+
 String readHttpResponse(HTTPClient& http, size_t maxSize, bool debugMode)
 {
     String payload;

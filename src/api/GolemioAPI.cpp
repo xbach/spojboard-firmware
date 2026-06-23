@@ -119,6 +119,8 @@ bool GolemioAPI::querySingleStop(const char* stopId,
     debugPrintln(queryMsg);
 
     HTTPClient http;
+    WiFiClientSecure client;
+    configureSecureClient(client);
     char url[512];
 
     // Query each stop with MAX_DEPARTURES to ensure good caching and sorting
@@ -145,7 +147,7 @@ bool GolemioAPI::querySingleStop(const char* stopId,
     debugPrint(minutesBeforeParam);
     debugPrintln("");
 
-    http.begin(url);
+    http.begin(client, url);
     http.addHeader("x-access-token", config.pragueApiKey);
     http.addHeader("Content-Type", "application/json");
     http.setTimeout(HTTP_TIMEOUT_MS);

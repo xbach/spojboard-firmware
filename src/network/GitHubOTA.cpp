@@ -1,6 +1,7 @@
 #include "GitHubOTA.h"
 #include "../config/AppConfig.h"
 #include "../utils/Logger.h"
+#include "../utils/HttpUtils.h"
 #include <Update.h>
 #include <WiFi.h>
 
@@ -209,7 +210,9 @@ GitHubOTA::ReleaseInfo GitHubOTA::checkForUpdate(const char* currentRelease)
 
     // Make HTTP request to GitHub API
     HTTPClient http;
-    http.begin(GITHUB_API_URL);
+    WiFiClientSecure client;
+    configureSecureClient(client);
+    http.begin(client, GITHUB_API_URL);
     http.setTimeout(HTTP_TIMEOUT_MS);
     http.addHeader("Accept", "application/vnd.github.v3+json");
 
@@ -379,7 +382,9 @@ bool GitHubOTA::downloadAndInstall(const char* assetUrl, size_t expectedSize, Pr
 
     // Make HTTP request with redirect following enabled
     HTTPClient http;
-    http.begin(assetUrl);
+    WiFiClientSecure client;
+    configureSecureClient(client);
+    http.begin(client, assetUrl);
     http.setTimeout(HTTP_TIMEOUT_MS);
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS); // Follow redirects automatically
 

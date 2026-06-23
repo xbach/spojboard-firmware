@@ -1,5 +1,6 @@
 #include "TickerAPI.h"
 #include "../utils/Logger.h"
+#include "../utils/HttpUtils.h"
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
@@ -51,6 +52,8 @@ TickerData TickerAPI::fetchTicker(const char* symbol, const char* interval, cons
     debugPrintln(interval);
 
     HTTPClient http;
+    WiFiClientSecure client;
+    configureSecureClient(client);
     int httpCode = -1;
     bool success = false;
 
@@ -68,7 +71,7 @@ TickerData TickerAPI::fetchTicker(const char* symbol, const char* interval, cons
             delay(delayMs);
         }
 
-        http.begin(url);
+        http.begin(client, url);
         http.setTimeout(HTTP_TIMEOUT_MS);
 
         httpCode = http.GET();

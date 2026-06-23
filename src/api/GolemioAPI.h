@@ -36,7 +36,7 @@ class GolemioAPI : public TransitAPI
     APIStatusCallback statusCallback;
     static constexpr int MAX_TEMP_DEPARTURES = DEPS_PER_STOP * 12; // Buffer for up to 12 stops at full capacity
     static constexpr int JSON_BUFFER_SIZE = 12288; // 12KB - handles busy stops with many departures
-    static constexpr int HTTP_TIMEOUT_MS = 10000;
+    static constexpr int HTTP_TIMEOUT_MS = 15000;
 
     /**
      * Query a single stop and add results to temp array
