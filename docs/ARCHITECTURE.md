@@ -77,20 +77,22 @@ HUB75 Hardware
 **Priority-based state evaluation:**
 1. Demo mode (highest) - custom sample departures
 2. Rest mode - display off
-3. AP mode - WiFi setup credentials
-4. WiFi connecting - connection status
-5. Setup required - web UI address
-6. API error - error message
-7. No departures - info message
-8. Normal operation (lowest) - real departures
+3. Ticker mode - candlestick chart (easter egg)
+4. AP mode - WiFi setup credentials
+5. WiFi connecting - connection status
+6. Setup required - web UI address
+7. API error - error message
+8. No departures - info message
+9. Normal operation (lowest) - real departures
 
 ## Configuration Constants
 
-- **`MAX_DEPARTURES = 12`** ([DepartureData.h:10](../src/api/DepartureData.h#L10)) - Maximum cache size (hardcoded)
+- **`MAX_DEPARTURES = 24`** ([DepartureData.h:11](../src/api/DepartureData.h#L11)) - Maximum cache size (hardcoded)
+- **`DEPS_PER_STOP = 12`** ([DepartureData.h:10](../src/api/DepartureData.h#L10)) - Departures fetched per stop
 - **`MAX_TEMP_DEPARTURES = 144`** (GolemioAPI/BvgAPI) - Collection buffer size (12 stops × 12 departures)
-- **`config.numDepartures`** - User setting for display rows (1-3 only)
+- **`config.numDepartures`** - User setting for display rows. Max depends on display size: `(panelRows * 32 / 8) - 1`, i.e. 3 on 128×32 (`panelRows=1`, default) or 7 on 128×64 (`panelRows=2`).
 
-**Important:** `config.numDepartures` only controls how many rows to show on the LED matrix (1-3), not API fetch size. Both transit APIs (Prague Golemio and Berlin BVG) always fetch `MAX_DEPARTURES` (12) per stop for better caching and sorting. This simplifies the user experience - users don't need to understand API response sizes.
+**Important:** `config.numDepartures` only controls how many rows to show on the LED matrix, not API fetch size. Both transit APIs (Prague Golemio and Berlin BVG) always fetch `DEPS_PER_STOP` (12) per stop for better caching and sorting. This simplifies the user experience - users don't need to understand API response sizes.
 
 ## Complete Pipeline Flow
 
@@ -98,13 +100,13 @@ HUB75 Hardware
 ┌──────────────────────────────────────────────────────────────────┐
 │ 1. USER CONFIGURATION                                            │
 │    config.city = "Prague" or "Berlin"  # Transit city selection  │
-│    config.numDepartures = 2            # Show 2 rows on display  │
+│    config.numDepartures = 2            # Show 2 display rows     │
 │    config.pragueStopIds = "A,B"        # Query 2 Prague stops    │
 │    config.berlinStopIds = "X,Y"        # Query 2 Berlin stops    │
 └──────────────────────────────────────────────────────────────────┘
                               ↓
 ┌──────────────────────────────────────────────────────────────────┐
-│ 2. API QUERIES (Always fetch MAX_DEPARTURES = 12 per stop)      │
+│ 2. API QUERIES (Always fetch DEPS_PER_STOP = 12 per stop)       │
 │    TransitAPI::fetchDepartures() (GolemioAPI or BvgAPI)          │
 │    loops through stops:                                          │
 │    - Stop A: API call → 12 departures → tempDepartures[0-11]    │
@@ -127,12 +129,12 @@ HUB75 Hardware
                               ↓
 ┌──────────────────────────────────────────────────────────────────┐
 │ 4. COPY TO CACHE (GolemioAPI.cpp:81-88)                         │
-│    Copy top MAX_DEPARTURES (12) from sorted temp to cache:       │
+│    Copy top MAX_DEPARTURES (24) from sorted temp to cache:       │
 │    for (i = 0; i < tempCount && count < MAX_DEPARTURES; i++)    │
 │        result.departures[count++] = tempDepartures[i];           │
 │    Result:                                                       │
-│    - result.departures[12] = top 12 soonest departures           │
-│    - result.departureCount = 12                                  │
+│    - result.departures[24] = top 24 soonest departures           │
+│    - result.departureCount = up to 24                            │
 │    - Each departure includes departureTime (Unix timestamp)      │
 └──────────────────────────────────────────────────────────────────┘
                               ↓
@@ -157,18 +159,19 @@ HUB75 Hardware
 ┌──────────────────────────────────────────────────────────────────┐
 │ 7. DISPLAY RENDERING (DisplayManager.cpp:345-414)               │
 │    updateDisplay(..., departures, departureCount, numToDisplay)  │
-│    - rowsToDraw = min(departureCount, numToDisplay, 3)          │
-│    - rowsToDraw = min(12, 2, 3) = 2                             │
+│    - rowsToDraw = min(departureCount, numToDisplay, maxRows)    │
+│    - rowsToDraw = min(24, 2, 3) = 2                             │
 │    - for (i = 0; i < 2; i++): drawDeparture(i, departures[i])   │
 │    Only first 2 departures shown on LED matrix (user setting)    │
-│    Physical maximum is 3 rows (128×32 display = 4 rows total,   │
-│    with row 4 reserved for date/time status bar)                │
+│    Physical maximum is (panelRows*32/8)-1 rows: 3 on 128×32     │
+│    (panelRows=1, default) or 7 on 128×64 (panelRows=2), with    │
+│    the bottom row reserved for the date/time status bar         │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
 ## Design Rationale
 
-### 1. Always Fetch MAX_DEPARTURES (12)
+### 1. Always Fetch DEPS_PER_STOP (12)
 - Ensures good caching regardless of display setting
 - Simplifies API logic - no user-dependent behavior
 - Better sorting with more data points
@@ -179,13 +182,13 @@ HUB75 Hardware
 - Prevents data loss when querying multiple stops
 - Memory cost: ~7KB (acceptable on ESP32 with ~200KB free)
 
-### 3. Fixed Cache Size (12)
-- Keeps "best" 12 departures after sorting
-- Reasonable memory usage (~600 bytes)
-- More departures than can be displayed (3) for filtering flexibility
+### 3. Fixed Cache Size (24)
+- Keeps "best" 24 departures after sorting
+- Reasonable memory usage (~1.2KB)
+- More departures than can be displayed for filtering flexibility and secondEta matching across multi-stop hubs
 
-### 4. Display-Only User Control (1-3)
-- Maps directly to physical LED matrix rows
+### 4. Display-Only User Control
+- Maps directly to physical LED matrix rows (max 3 on 128×32, 7 on 128×64)
 - Simple to understand: "How many rows to show?"
 - No technical knowledge required
 
@@ -203,7 +206,7 @@ HUB75 Hardware
   - Located in `GolemioAPI::fetchDepartures()` and `BvgAPI::fetchDepartures()`
   - Allocated once at compile time
 
-- **Cache**: `Departure departures[12]` (~600 bytes)
+- **Cache**: `Departure departures[24]` (~1.2KB)
   - Global in `main.cpp`
   - Persists between API calls
   - Used for ETA recalculation
@@ -216,12 +219,11 @@ HUB75 Hardware
 
 ### Heap Usage
 
-- JSON buffer: 8KB for Golemio API responses, 24KB for BVG API responses (DynamicJsonDocument)
+- JSON buffer: 12KB for Golemio API responses, 24KB for BVG API responses (DynamicJsonDocument)
 - BVG API responses are more verbose (~1.7KB per departure vs Golemio's more compact format)
 - Configuration: NVS flash storage (persistent across reboots)
 - Typical free heap: ~200KB
-- RAM usage: 21.4% (70KB used of 327KB)
-- Flash usage: 94.7% (1.24MB used of 1.31MB)
+- App partitions: two OTA slots of 2MB each (0x200000); exact RAM/flash utilization varies per build and hardware variant
 
 ## State Machine
 
@@ -288,7 +290,7 @@ Layered architecture with zero circular dependencies:
 ┌─────────────────────────────────────────────────────────┐
 │ Layer 5: Business Logic                                 │
 │   TransitAPI (abstract), GolemioAPI, BvgAPI, MqttAPI,   │
-│   GitHubOTA, WeatherAPI                                 │
+│   WeatherAPI, TickerAPI, GitHubOTA                      │
 └─────────────────────────────────────────────────────────┘
                         ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -335,7 +337,7 @@ main.cpp
   └─ displayRenderTask() on Core 1: display rendering via notification
 
 DisplayController
-  ├─ State machine: decides what to display (8 priority levels)
+  ├─ State machine: decides what to display (9 priority levels)
   ├─ Delegates rendering to DisplayManager
   └─ No direct hardware access
 
@@ -369,8 +371,8 @@ When multiple stop IDs are configured (comma-separated, max 12 stops):
 2. **Apply 1-second delay** between API calls to reduce server load and avoid rate limiting
 3. **Collect in temp buffer** (capacity: 144 = 12 stops × 12 departures)
 4. **Sort by ETA** (earliest departures first across all stops)
-5. **Cache top 12** soonest departures with timestamps
-6. **Display configured rows** (1-3) on LED matrix
+5. **Cache top 24** soonest departures with timestamps
+6. **Display configured rows** (max 3 on 128×32, 7 on 128×64) on LED matrix
 7. **Recalculate ETAs** every 10 seconds without additional API calls
 
 This ensures you always see the **soonest** departures across all stops, regardless of which stop they come from.

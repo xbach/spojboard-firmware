@@ -32,6 +32,8 @@ Standalone operation with web-based configuration, no external server required f
 - **Extended Character Support**: Custom 8-bit ISO-8859-2 fonts with automatic UTF-8 conversion (ž, š, č, ř, ň, ť, ď, ß, etc.)
 - **Adaptive Font Rendering**: Automatically switches to condensed font for long destination names based on available space (accounting for ETA, platform, and dual ETA layout)
 - **Optional Scrolling**: Enable scrolling for long destination names that exceed display width (disabled by default)
+- **Selectable Panel Size**: 128×32 (two panels, up to 3 departure rows) by default, or 128×64 (four panels, up to 7 departure rows) via `panelRows=2` (requires reboot)
+- **Ticker Mode** (easter egg): Candlestick price chart for stocks (e.g. AAPL) or crypto (e.g. BTC/USD) via the Twelve Data API
 - **Headsign Shortening**: Automatic shortening of long Czech words (e.g., "Nádraží" → "Nádr.", "nádraží" → "nádr.") to maximize display space
 - **Trip Filtering**: Configurable minimum departure time (default 3 minutes) to hide departures that are too soon to catch
 - **AC Indicator**: Shows asterisk (*) for air-conditioned vehicles (Prague only)
@@ -59,7 +61,7 @@ SpojBoard supports two hardware variants. The firmware automatically detects and
 ### Option 1: MatrixPortal S3 (Recommended)
 
 - **Board**: [Adafruit MatrixPortal ESP32-S3](https://www.adafruit.com/product/5778)
-- **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total)
+- **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total). Optionally 4 panels for 128×64 (`panelRows=2`)
 - **Power**: 5V 2A minimum (3A recommended) via USB-C
 - **Wiring**: Built-in HUB75 connector - just plug in your panels
 - **Level shifting**: Includes 2× 74AHCT245 level shifters, works reliably with all HUB75 panels
@@ -67,7 +69,7 @@ SpojBoard supports two hardware variants. The firmware automatically detects and
 ### Option 2: Generic ESP32-S3 N8R2
 
 - **Board**: ESP32-S3-DevKitC-1 or similar (8MB flash minimum)
-- **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total)
+- **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total). Optionally 4 panels for 128×64 (`panelRows=2`)
 - **Power**: 5V 2A minimum (3A recommended) via screw terminals on panels
 - **Wiring**: Standard HUB75 rainbow cable to GPIO pins
 
@@ -168,17 +170,13 @@ The built-in web server provides a tabbed configuration interface with per-tab s
 
 ## Getting Your Stop ID
 
+Look up stop IDs with the station search in the docs at **[spojboard.xbco.cz/docs/station-search](https://spojboard.xbco.cz/docs/station-search/)** — no need to dig through the individual transit agency websites.
+
 ### Prague (Golemio API)
-1. Visit [data.pid.cz/stops/json/stops.json](https://data.pid.cz/stops/json/stops.json)
-2. Search for your stop name (Ctrl+F)
-3. Find the `gtfsIds` value (e.g., `U693Z2P`)
-4. You can enter multiple IDs separated by commas
+Find your stop and copy its GTFS ID (e.g., `U693Z2P`). You can enter multiple IDs separated by commas.
 
 ### Berlin (BVG API)
-1. Visit [v6.bvg.transport.rest](https://v6.bvg.transport.rest/)
-2. Use the `/locations` endpoint to search for your stop
-3. Find the stop ID (numeric, e.g., `900013102`)
-4. You can enter multiple IDs separated by commas
+Find your stop and copy its numeric ID (e.g., `900013102`). You can enter multiple IDs separated by commas.
 
 ### MQTT (Home Assistant / Custom)
 No stop IDs needed - configure your MQTT broker to aggregate and filter departures server-side. See **[MQTT Integration Guide](docs/MQTT.md)** for complete setup instructions.
@@ -372,8 +370,8 @@ Check for and install new releases directly from GitHub:
 Upload a firmware .bin file manually:
 
 1. **Get the firmware file** for your hardware variant:
-   - MatrixPortal S3: `spojboard-matrixportal_s3-r2-abc12345.bin`
-   - ESP32-S3 N8R2: `spojboard-esp32_s3_n8r2-r2-abc12345.bin`
+   - MatrixPortal S3: `spojboard-matrixportal_s3-r6-abc12345.bin`
+   - ESP32-S3 N8R2: `spojboard-esp32_s3_n8r2-r6-abc12345.bin`
 2. **Open web interface** and click "Update Firmware"
 3. **Select .bin file** and click "Upload Firmware"
 4. **Wait for upload** - progress shown on screen
@@ -412,11 +410,10 @@ The device implements captive portal detection for:
 - Firefox (`/success.txt`)
 
 ### Memory Usage
-- JSON buffer: 8KB for API responses
+- Per-API JSON buffers: Golemio 12KB, BVG 24KB, MQTT 8KB
 - Configuration stored in NVS flash
 - Typical free heap: ~200KB
-- RAM usage: 21.4% (70KB used of 327KB)
-- Flash usage: 94.7% (1.24MB used of 1.31MB)
+- Two 2MB OTA app partitions (app0/app1); exact RAM/flash figures vary per hardware variant and build
 
 ### Multi-Stop Behavior
 When multiple stop IDs are configured (comma-separated, max 12 stops), the system:
@@ -424,20 +421,18 @@ When multiple stop IDs are configured (comma-separated, max 12 stops), the syste
 2. Applies 1-second delay between API calls to reduce server load and avoid rate limiting
 3. Collects all departures in temporary buffer (capacity: 144 total = 12 stops × 12 departures)
 4. Sorts by ETA (earliest departures first across all stops)
-5. Caches the top 12 soonest departures with timestamps for ETA recalculation
-6. Displays the configured number of rows (1-3) on the LED matrix
+5. Caches the top 24 soonest departures with timestamps for ETA recalculation
+6. Displays the configured number of rows (up to 3 on 128×32, up to 7 on 128×64) on the LED matrix
 7. Recalculates ETAs every 10 seconds from cached timestamps without additional API calls
 
-This ensures you always see the **soonest** departures across all your stops, regardless of which stop they come from. The API always fetches 12 departures per stop for caching and sorting - the user only controls how many rows (1-3) to display on the LED matrix. The 10-second ETA recalculation keeps the display fresh without hammering the API, allowing longer refresh intervals (up to 300s) during peak times.
+This ensures you always see the **soonest** departures across all your stops, regardless of which stop they come from. The API always fetches 12 departures per stop for caching and sorting - the user only controls how many rows to display on the LED matrix (up to 3 on 128×32, up to 7 on 128×64). The 10-second ETA recalculation keeps the display fresh without hammering the API, allowing longer refresh intervals (up to 300s) during peak times.
 
 ### Destination String Shortening
-To maximize display space on the 128×32 LED matrix, long Czech destination names are automatically shortened before display (Prague only):
-- "Nádraží" → "Nádr." (uppercase)
-- "nádraží" → "nádr." (lowercase)
-- "Sídliště" → "Sídl."
-- "Nemocnice" → "Nem."
+To maximize display space on the LED matrix, long destination names are automatically shortened before display:
+- **Czech** (Prague): "Nádraží" → "Nádr." (uppercase), "nádraží" → "nádr." (lowercase), "Sídliště" → "Sídl.", "Nemocnice" → "Nem."
+- **German** (Berlin): "Hauptbahnhof" → "Hbf", "Bahnhof" → "Bhf", "(Berlin)" → "(B)"
 
-Combined with adaptive font rendering (condensed font for destinations >16 chars), even very long station names fit comfortably on the display. Shortening is applied before UTF-8 to ISO-8859-2 conversion, ensuring Czech diacritics are preserved correctly. Berlin station names are displayed as-is from the API.
+Combined with adaptive font rendering (condensed font for destinations >16 chars), even very long station names fit comfortably on the display. Shortening is applied before UTF-8 to ISO-8859-2 conversion, ensuring diacritics are preserved correctly.
 
 ## Fonts & Character Support
 

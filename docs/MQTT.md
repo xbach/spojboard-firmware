@@ -142,7 +142,7 @@ Map your JSON structure to SpojBoard fields:
 - **Refresh Interval**:
   - Timestamp mode: 60-300s (device handles countdown)
   - ETA mode: 10-60s (needs frequent server updates)
-- **Number of Departures**: 1-3 rows (max visible on 128×32 display)
+- **Number of Departures**: display rows (max 3 on 128×32, 7 on 128×64)
 - **Min Departure Time**: ⚠️ **Set the same value on both server and device** - See Dual Filtering Strategy above
 
 ### 7. Save Configuration
@@ -178,8 +178,8 @@ SpojBoard expects a JSON object with a `"departures"` array:
 
 **Field Notes:**
 - `eta` and `dep`: Only one is required based on ETA mode selection
-- `plt`: Optional, stored but not currently displayed
-- `ac`: Optional, shows ❄️ icon on display if `true`
+- `plt`: Optional, rendered as a directional arrow when **Show Platform** is enabled (mapped via `platformSymbolMap`)
+- `ac`: Optional, shows a cyan asterisk `*` on display if `true`
 - Additional fields in JSON are ignored
 
 ## Generic Server Requirements
@@ -618,7 +618,7 @@ Server-side benefits:
 
 - **MQTT Buffer**: 8KB (supports large JSON responses)
 - **JSON Parser**: 8KB (ArduinoJson DynamicJsonDocument)
-- **Max Departures**: 144 temporary (reduced to 3-12 for display)
+- **Max Departures**: 144 temporary buffer → cached top 24 → display up to configured rows (max 3 on 128×32, 7 on 128×64)
 
 ### Connection Behavior
 
@@ -688,10 +688,11 @@ mosquitto_passwd -c /etc/mosquitto/passwd spojboard
 
 ## Related Documentation
 
-- [Main README](../README.md) - Project overview
-- [Configuration Guide](CONFIGURATION.md) - General device setup
-- [API Documentation](API.md) - Prague/Berlin API details
-- [Hardware Setup](HARDWARE.md) - Physical assembly guide
+- [Main README](../README.MD) - Project overview
+- [Architecture & Data Flow](ARCHITECTURE.md) - Internals and pipeline
+- [REST API](REST_API.md) - Device HTTP/REST endpoints
+- [Wiring Guide](WIRING.md) - Hardware pin mappings
+- [Troubleshooting](TROUBLESHOOTING.md) - Common issues
 
 ## Support
 

@@ -260,13 +260,16 @@ SpojBoard includes three custom fonts optimized for LED matrix display:
 
 ### Font Selection Logic
 
-The display automatically chooses the appropriate font based on destination length and available space. Font selection is handled by `calcDestLayout()` in `DisplayManager.cpp` using a threshold-based system:
+The display automatically chooses the appropriate font based on destination length and available space. Font selection is handled by `calcDestLayout()` in `DisplayManager.cpp` using a threshold-based system rather than any fixed character constant:
 
-- A `mediumThreshold` (11-14 chars) is computed based on active display features (dual ETA, platform, absolute time)
-- Destinations at or below the threshold use the regular (medium) font at ~6px/char
-- Longer destinations switch to the condensed font at ~4px/char
-- `maxChars` is computed from the actual available pixel space after subtracting route box, ETA area, platform reservation, and AC indicator
-- The AC indicator reduces the threshold by 1 character
+- A `mediumThreshold` is computed from the active display features:
+  - **14** chars when only the primary ETA is shown
+  - **12** chars when platform symbols **or** dual ETA **or** absolute departure time is active
+  - **11** chars when both platform symbols **and** dual ETA are active
+  - minus **1** if the AC indicator is present on the row
+- Destinations at or below the threshold use the regular (medium) font; longer destinations switch to the condensed font
+- `maxChars` (the truncation/scroll limit) is computed from the actual available pixel width after subtracting the route box, ETA area, platform reservation, and AC indicator — capped at 63
+- Horizontal scrolling triggers when the destination exceeds the available pixel width (there is no fixed "16 char" or "23 char" cutoff)
 
 ## Character Set Coverage
 
