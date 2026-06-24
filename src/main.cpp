@@ -158,7 +158,19 @@ void attachSecondETAs(Departure* deps, int count)
             // at one stop can't board the bus leaving the other, so they must not be
             // conflated. (deps is sorted ascending by ETA, so the first match is the
             // soonest next departure.)
-            if (strcmp(deps[i].line, deps[j].line) == 0 &&
+            //
+            // The match must be a DIFFERENT trip, not a duplicate of this one. With
+            // line+dest+stop already equal, a trip's identity is (departureTime,
+            // delayMinutes) — departureTime being the real-time PREDICTED timestamp (see
+            // GolemioAPI parse). Skip only when BOTH match: that's an API echoing the same
+            // trip twice (or the same stop ID listed twice), which would otherwise show
+            // secondEta == eta. Two genuinely different trains can share a predicted
+            // instant — e.g. a delayed first train coinciding with the next — but their
+            // schedules differ so their delayMinutes differ, keeping them valid seconds.
+            bool sameTrip = (deps[j].departureTime == deps[i].departureTime &&
+                             deps[j].delayMinutes == deps[i].delayMinutes);
+            if (!sameTrip &&
+                strcmp(deps[i].line, deps[j].line) == 0 &&
                 strcmp(deps[i].destination, deps[j].destination) == 0 &&
                 strcmp(deps[i].sourceStopId, deps[j].sourceStopId) == 0)
             {
