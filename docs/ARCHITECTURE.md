@@ -179,7 +179,7 @@ HUB75 Hardware
 ### 2. Single Cross-Stop Accumulator (`apiFetchTask`)
 - `AccEntry acc[DEPS_PER_STOP × 12]` persists across cycles, tagged by stop index for keep-stale-per-stop eviction
 - Replaced the three per-client `tempDepartures[144]` buffers (one per API, all linked but only one active) — reclaimed ~32 KB internal RAM (TA-0190)
-- MQTT keeps its own `tempDepartures[144]`: its server-side aggregate needs a local sort before handing back one `StopResult`
+- MQTT still needs its own `tempDepartures[144]` (its server-side aggregate must be sorted before handing back one `StopResult`) plus an 8 KB `responseBuffer` — but these are **lazily heap-allocated on the first MQTT `fetchStop()`**, so a Prague/Berlin device never pays them (~27 KB static + ~8 KB heap reclaimed; TA-0190)
 
 ### 3. Fixed Cache Size (24)
 - `MAX_DEPARTURES` caps both the per-stop `StopResult` and the published snapshot
@@ -204,7 +204,7 @@ HUB75 Hardware
   - One cross-stop buffer (was three per-client `tempDepartures[144]`, ~32 KB reclaimed — TA-0190)
   - `AccEntry` = `Departure dep` + `int stopIndex` (the stop tag travels through the ETA `qsort`)
   - Function-local static (`.bss`), never on the task stack
-  - MQTT additionally keeps `tempDepartures[144]` for its server-aggregate sort
+  - MQTT additionally needs `tempDepartures[144]` + an 8 KB `responseBuffer`, but **lazily heap-allocated only when the active city is MQTT** (`MqttAPI::ensureInitialized`) — Prague/Berlin keep ~27 KB static + ~8 KB heap free; measured boot `MaxBlock` +41 KB on 4-panel
 
 - **Per-stop result**: `StopResult` (`Departure departures[MAX_DEPARTURES]`, ~3KB)
   - Filled by `fetchStop()`; the orchestrator merges it into the accumulator
