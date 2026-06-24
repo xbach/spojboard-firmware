@@ -512,6 +512,61 @@ void onTickerMode(bool enabled)
 }
 
 // ============================================================================
+// Departure publish helper (Stage B: shared by the per-stop orchestration)
+// ============================================================================
+// Builds the displayed snapshot from the per-stop accumulator and copies it into the
+// shared departures[] under apiDataMutex. The accumulator MUST already be sorted by ETA;
+// this filters stale / below-minDepartureTime rows, caps to MAX_DEPARTURES, attaches
+// second ETAs, and signals the display. Mutex is held only for the fast copy
+// (build-then-swap) so the display task never sees a half-written array.
+// Called only from apiFetchTask (single task) — the static snapshot buffer is safe.
+static void publishDepartureSnapshot(const Departure* acc, int accCount, const char* snapStopName,
+                                     const char* snapInfoText, bool hasError, const char* errorMsg)
+{
+    static Departure snapshot[MAX_DEPARTURES];
+    int snapCount = 0;
+    time_t now;
+    time(&now);
+
+    for (int i = 0; i < accCount && snapCount < MAX_DEPARTURES; i++)
+    {
+        int diffSec = difftime(acc[i].departureTime, now);
+        int eta = (diffSec > 0) ? (diffSec / 60) : 0;
+        // Keep only future departures meeting the minimum threshold (eta=0 = <1min).
+        if (diffSec > 0 && eta >= config.minDepartureTime)
+        {
+            snapshot[snapCount] = acc[i];
+            snapshot[snapCount].eta = eta;
+            snapCount++;
+        }
+    }
+
+    // Second ETAs are computed on the filtered+sorted snapshot, gated by sourceStopId.
+    attachSecondETAs(snapshot, snapCount);
+
+    if (xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(100)))
+    {
+        departureCount = snapCount;
+        for (int i = 0; i < snapCount; i++)
+            departures[i] = snapshot[i];
+        strlcpy(stopName, snapStopName, sizeof(stopName));
+        strlcpy(infoText, snapInfoText, sizeof(infoText));
+        apiError = hasError;
+        if (hasError)
+            strlcpy(apiErrorMsg, errorMsg, sizeof(apiErrorMsg));
+        awaitingDepartures = false;
+        xSemaphoreGive(apiDataMutex);
+
+        signalDisplayUpdate();
+    }
+    else
+    {
+        logTimestamp();
+        debugPrintln("APIFetchTask: Failed to acquire mutex for departures publish");
+    }
+}
+
+// ============================================================================
 // API Fetch Task - Runs on Core 1 (handles blocking HTTP calls)
 // ============================================================================
 void apiFetchTask(void* parameter)
@@ -593,19 +648,18 @@ void apiFetchTask(void* parameter)
             }
         }
 
-        // Fetch departures (blocking HTTP call)
+        // Fetch departures — per-stop orchestration (hoisted from the API clients in
+        // Stage B). Each configured stop is fetched individually, merged into a persistent
+        // accumulator, and (during the initial fill) published incrementally so the board
+        // fills progressively instead of staying blank until the slowest stop returns.
         if (shouldFetchDepartures)
         {
             logTimestamp();
-            debugPrintln("APIFetchTask: Fetching departures (blocking)...");
-            logTimestamp();
-            debugPrint("APIFetchTask: config.minDepartureTime = ");
+            debugPrint("APIFetchTask: Fetching departures per-stop (minDepTime=");
             debugPrint(config.minDepartureTime);
-            debugPrintln("");
+            debugPrintln(")");
 
-            // Log current device time for debugging time sync issues
-            time_t currentTime;
-            time(&currentTime);
+            // Log device time for time-sync debugging.
             struct tm timeinfo;
             if (getLocalTime(&timeinfo))
             {
@@ -613,10 +667,7 @@ void apiFetchTask(void* parameter)
                 strftime(deviceTimeStr, sizeof(deviceTimeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
                 logTimestamp();
                 debugPrint("APIFetchTask: Device time = ");
-                debugPrint(deviceTimeStr);
-                debugPrint(" (unix=");
-                debugPrint((int)currentTime);
-                debugPrintln(")");
+                debugPrintln(deviceTimeStr);
             }
             else
             {
@@ -624,95 +675,129 @@ void apiFetchTask(void* parameter)
                 debugPrintln("⚠️ APIFetchTask: Device time not synced!");
             }
 
-            // Call API client (blocking operation)
-            TransitAPI::APIResult result = transitAPI->fetchDepartures(config);
+            // Persistent accumulator (survives across cycles for keep-stale-per-stop).
+            // accStopIndex[i] records which stop index produced accDepartures[i], so a
+            // stop's old rows are evicted on its next SUCCESSFUL fetch without touching
+            // other stops — and without relying on sourceStopId (MQTT sets it freely).
+            // Static: lives in .bss, never on the task stack, never pruned mid-cycle.
+            static Departure accDepartures[DEPS_PER_STOP * 12];
+            static int accStopIndex[DEPS_PER_STOP * 12];
+            static int accCount = 0;
+            const int ACC_CAPACITY = DEPS_PER_STOP * 12;
 
-            // Filter out stale departures (already departed) and those below minDepartureTime
-            // This catches API issues, network latency, and stale data from any API source
-            int validCount = 0;
-            time_t now;
-            time(&now);
+            int stopCount = transitAPI->getStopCount(config);
 
-            for (int i = 0; i < result.departureCount; i++)
+            // Drop rows from stops that no longer exist (stop list shrank without reboot).
             {
-                // Check if departure is in the future (not already departed)
-                int diffSec = difftime(result.departures[i].departureTime, now);
-
-                // Calculate ETA (0 for departures in 0-59 seconds, or already departed)
-                int freshEta = (diffSec > 0) ? (diffSec / 60) : 0;
-
-                // Keep only FUTURE departures that meet minimum time threshold
-                // Note: diffSec > 0 ensures we only keep departures that haven't left yet
-                // This allows eta=0 (1-59 seconds) to display as "<1'" when minDepartureTime=0
-                if (diffSec > 0 && freshEta >= config.minDepartureTime)
+                int w = 0;
+                for (int i = 0; i < accCount; i++)
                 {
-                    // Update with fresh ETA and copy to valid position
-                    result.departures[validCount] = result.departures[i];
-                    result.departures[validCount].eta = freshEta;
-                    validCount++;
+                    if (accStopIndex[i] < stopCount)
+                    {
+                        if (w != i)
+                        {
+                            accDepartures[w] = accDepartures[i];
+                            accStopIndex[w] = accStopIndex[i];
+                        }
+                        w++;
+                    }
                 }
+                accCount = w;
             }
 
-            // Log filtering stats
-            if (validCount != result.departureCount)
+            // Publish progressively only while the board is empty (initial fill); in steady
+            // state replace silently and publish once at the end to avoid render churn.
+            bool incrementalPublish = (departureCount == 0) || awaitingDepartures;
+
+            bool anyError = false;
+            char cycleStopName[64] = "";
+            char cycleInfoText[TransitAPI::MAX_INFOTEXT_LEN] = "";
+
+            for (int s = 0; s < stopCount; s++)
             {
-                logTimestamp();
-                char filterMsg[80];
-                snprintf(filterMsg, sizeof(filterMsg),
-                         "APIFetchTask: Filtered %d stale departures (%d -> %d valid)",
-                         result.departureCount - validCount, result.departureCount, validCount);
-                debugPrintln(filterMsg);
+                TransitAPI::StopResult sr = transitAPI->fetchStop(config, s);
+
+                if (sr.hasError)
+                {
+                    // Keep this stop's previous rows — a failed fetch must not blank it.
+                    anyError = true;
+                    logTimestamp();
+                    debugPrint("APIFetchTask: stop ");
+                    debugPrint(s);
+                    debugPrint(" error (keeping previous) - ");
+                    debugPrintln(sr.errorMsg);
+                }
+                else
+                {
+                    // Evict this stop's old rows, then insert its fresh ones.
+                    int w = 0;
+                    for (int i = 0; i < accCount; i++)
+                    {
+                        if (accStopIndex[i] != s)
+                        {
+                            if (w != i)
+                            {
+                                accDepartures[w] = accDepartures[i];
+                                accStopIndex[w] = accStopIndex[i];
+                            }
+                            w++;
+                        }
+                    }
+                    accCount = w;
+                    for (int i = 0; i < sr.departureCount && accCount < ACC_CAPACITY; i++)
+                    {
+                        accDepartures[accCount] = sr.departures[i];
+                        accStopIndex[accCount] = s;
+                        accCount++;
+                    }
+                }
+
+                // First non-empty stop name wins (matches prior first-stop behavior);
+                // concatenate infotexts across stops as the old shared buffer did.
+                if (cycleStopName[0] == '\0' && sr.stopName[0] != '\0')
+                    strlcpy(cycleStopName, sr.stopName, sizeof(cycleStopName));
+                if (sr.infoText[0] != '\0')
+                {
+                    if (cycleInfoText[0] != '\0')
+                        strlcat(cycleInfoText, " /// ", sizeof(cycleInfoText));
+                    strlcat(cycleInfoText, sr.infoText, sizeof(cycleInfoText));
+                }
+
+                // Sort accumulator by ETA so the published cap keeps the soonest.
+                if (accCount > 1)
+                    qsort(accDepartures, accCount, sizeof(Departure), compareDepartures);
+
+                // Progressive publish during initial fill (skip the last stop — the
+                // post-loop publish covers it).
+                if (incrementalPublish && s < stopCount - 1)
+                    publishDepartureSnapshot(accDepartures, accCount, cycleStopName, cycleInfoText, false, "");
+
+                if (s < stopCount - 1)
+                    delay(1000); // inter-stop rate limiting (hoisted from the clients)
             }
 
-            result.departureCount = validCount;
+            // Final publish of the complete cycle. Error flag matches the old semantics:
+            // set only when there's nothing to show (keep-stale means a cached prior cycle
+            // keeps accCount > 0 even if every stop failed this round).
+            bool cycleError = (accCount == 0);
+            publishDepartureSnapshot(accDepartures, accCount, cycleStopName, cycleInfoText, cycleError,
+                                     cycleError ? "No departures" : "");
 
-            // Attach second ETAs for same line+destination pairs
-            attachSecondETAs(result.departures, result.departureCount);
+            logTimestamp();
+            debugPrintln("APIFetchTask: Departures fetch complete");
 
-            // Update global state with mutex protection
-            if (xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(100)))
+            // One-shot heap watermark after the first fetch (HTTPS handshake is the peak).
+            static bool loggedPostFetch = false;
+            if (!loggedPostFetch)
             {
-                departureCount = result.departureCount;
-                for (int i = 0; i < result.departureCount; i++)
-                {
-                    departures[i] = result.departures[i];
-                }
-                strlcpy(stopName, result.stopName, sizeof(stopName));
-                strlcpy(infoText, result.infoText, sizeof(infoText));
-                apiError = result.hasError;
-                if (result.hasError)
-                {
-                    strlcpy(apiErrorMsg, result.errorMsg, sizeof(apiErrorMsg));
-                }
-                awaitingDepartures = false;
-                xSemaphoreGive(apiDataMutex);
-
-                // Signal display update
-                signalDisplayUpdate();
-
-                logTimestamp();
-                debugPrintln("APIFetchTask: Departures fetch complete");
-
-                // One-shot heap watermark after the first fetch, so the post-SSL
-                // internal-RAM margin is visible (HTTPS handshake is the peak user).
-                static bool loggedPostFetch = false;
-                if (!loggedPostFetch)
-                {
-                    loggedPostFetch = true;
-                    logMemory("post_fetch");
-                }
-            }
-            else
-            {
-                logTimestamp();
-                debugPrintln("APIFetchTask: Failed to acquire mutex for departures update");
+                loggedPostFetch = true;
+                logMemory("post_fetch");
             }
 
-            // Schedule the next fetch from the COMPLETION time (fresh millis()), not the
-            // stale loop-top `now`. A fetch that overran the interval must not immediately
-            // re-fire and starve weather/ticker. On error, retry sooner (see scheduling).
+            // Schedule next from COMPLETION time (not stale loop-top now); retry sooner if
+            // any stop failed this cycle.
             apiFetchRequest.lastDeparturesFetch = millis();
-            apiFetchRequest.departuresRetryPending = result.hasError;
+            apiFetchRequest.departuresRetryPending = anyError;
         }
 
         // Fetch weather (blocking HTTP call)
