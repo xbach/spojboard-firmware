@@ -89,8 +89,18 @@ struct APIFetchRequest {
     unsigned long lastDeparturesFetch;
     unsigned long lastWeatherFetch;
     unsigned long lastTickerFetch;
+    // After a failed fetch, retry sooner than the full configured interval (so one miss
+    // doesn't blank/stale data for a whole refresh cycle). Touched only by apiFetchTask.
+    bool departuresRetryPending;
+    bool weatherRetryPending;
     volatile bool timezoneInitialized; // Set to true after initTimeSync() - prevents fetches with wrong timezone
-} apiFetchRequest = {.fetchDeparturesNow = false, .fetchWeatherNow = false, .fetchTickerNow = false, .lastDeparturesFetch = 0, .lastWeatherFetch = 0, .lastTickerFetch = 0, .timezoneInitialized = false};
+} apiFetchRequest = {.fetchDeparturesNow = false, .fetchWeatherNow = false, .fetchTickerNow = false, .lastDeparturesFetch = 0, .lastWeatherFetch = 0, .lastTickerFetch = 0, .departuresRetryPending = false, .weatherRetryPending = false, .timezoneInitialized = false};
+
+// Failed-fetch retry cadence: after an error, retry sooner than the configured interval
+// (but never wait longer than the normal interval). Prevents a single miss from blanking
+// data for a full cycle, without busy-retrying every loop tick.
+static const unsigned long DEPARTURES_RETRY_MS = 15000UL; // 15s
+static const unsigned long WEATHER_RETRY_MS = 60000UL;    // 60s
 
 // ============================================================================
 // Departure Data (structure defined in api/DepartureData.h)
@@ -549,6 +559,8 @@ void apiFetchTask(void* parameter)
             if (!tickerModeActive && isCityConfigured())
             {
                 unsigned long departuresInterval = (unsigned long)config.refreshInterval * 1000;
+                if (apiFetchRequest.departuresRetryPending && DEPARTURES_RETRY_MS < departuresInterval)
+                    departuresInterval = DEPARTURES_RETRY_MS;
                 if (now - apiFetchRequest.lastDeparturesFetch >= departuresInterval ||
                     apiFetchRequest.lastDeparturesFetch == 0)
                 {
@@ -560,6 +572,8 @@ void apiFetchTask(void* parameter)
             if (config.weatherEnabled && config.weatherLatitude != 0.0 && config.weatherLongitude != 0.0)
             {
                 unsigned long weatherInterval = (unsigned long)config.weatherRefreshInterval * 60000;
+                if (apiFetchRequest.weatherRetryPending && WEATHER_RETRY_MS < weatherInterval)
+                    weatherInterval = WEATHER_RETRY_MS;
                 if (now - apiFetchRequest.lastWeatherFetch >= weatherInterval ||
                     apiFetchRequest.lastWeatherFetch == 0)
                 {
@@ -582,8 +596,6 @@ void apiFetchTask(void* parameter)
         // Fetch departures (blocking HTTP call)
         if (shouldFetchDepartures)
         {
-            apiFetchRequest.lastDeparturesFetch = now;
-
             logTimestamp();
             debugPrintln("APIFetchTask: Fetching departures (blocking)...");
             logTimestamp();
@@ -695,13 +707,17 @@ void apiFetchTask(void* parameter)
                 logTimestamp();
                 debugPrintln("APIFetchTask: Failed to acquire mutex for departures update");
             }
+
+            // Schedule the next fetch from the COMPLETION time (fresh millis()), not the
+            // stale loop-top `now`. A fetch that overran the interval must not immediately
+            // re-fire and starve weather/ticker. On error, retry sooner (see scheduling).
+            apiFetchRequest.lastDeparturesFetch = millis();
+            apiFetchRequest.departuresRetryPending = result.hasError;
         }
 
         // Fetch weather (blocking HTTP call)
         if (shouldFetchWeather)
         {
-            apiFetchRequest.lastWeatherFetch = now;
-
             logTimestamp();
             debugPrintln("APIFetchTask: Fetching weather (blocking)...");
 
@@ -711,23 +727,28 @@ void apiFetchTask(void* parameter)
             // Update global weather state with mutex protection
             if (xSemaphoreTake(apiDataMutex, pdMS_TO_TICKS(100)))
             {
-                weatherData = newWeatherData;
+                // Keep the previous weatherData on error — a stale temperature beats a
+                // blank status bar (mirrors the ticker pattern). Only overwrite on success.
+                if (!newWeatherData.hasError)
+                {
+                    weatherData = newWeatherData;
+                }
                 xSemaphoreGive(apiDataMutex);
 
                 // Signal display update
                 signalDisplayUpdate();
 
-                if (weatherData.hasError)
+                if (newWeatherData.hasError)
                 {
                     logTimestamp();
-                    debugPrint("APIFetchTask: Weather error - ");
-                    debugPrintln(weatherData.errorMsg);
+                    debugPrint("APIFetchTask: Weather error (keeping previous) - ");
+                    debugPrintln(newWeatherData.errorMsg);
                 }
                 else
                 {
                     logTimestamp();
                     char msg[64];
-                    snprintf(msg, sizeof(msg), "APIFetchTask: Weather updated: %d°C", weatherData.temperature);
+                    snprintf(msg, sizeof(msg), "APIFetchTask: Weather updated: %d°C", newWeatherData.temperature);
                     debugPrintln(msg);
                 }
             }
@@ -736,6 +757,11 @@ void apiFetchTask(void* parameter)
                 logTimestamp();
                 debugPrintln("APIFetchTask: Failed to acquire mutex for weather update");
             }
+
+            // Schedule next fetch from completion; retry sooner on error so a single miss
+            // doesn't leave the temperature stale for a whole refresh interval.
+            apiFetchRequest.lastWeatherFetch = millis();
+            apiFetchRequest.weatherRetryPending = newWeatherData.hasError;
         }
 
         // Fetch ticker data (blocking HTTP call)
