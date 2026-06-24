@@ -46,12 +46,19 @@ SpojBoard utilizes both cores of the ESP32-S3 for optimal performance using Free
 
 ### Thread Safety
 
-Two mutexes protect shared data with short lock durations (~1ms):
+Five mutexes protect shared data with short lock durations (~1ms); all are created in `AppState::createMutexes()` (see `core/AppState`):
 
-- **`displayMutex`** - Protects `DisplayUpdateRequest` struct (display task <-> loop)
-- **`apiDataMutex`** - Protects `departures[]` array and weather data (API task <-> loop)
+- **`displayMutex`** - Protects `DisplayUpdateRequest` struct (display task <-> loop/API)
+- **`apiDataMutex`** - Protects `departures[]`/`departureCount`, `weatherData`, `infoText`, `tickerData`, `stopName`, `apiError`, `apiErrorMsg`, `awaitingDepartures` (API task <-> loop)
+- **`displayHwMutex`** - Serializes all HUB75 DMA-buffer writes: the render task's `render()` vs. direct draws from `onAPIStatus` (API-task ctx) / `onDemoStop` (loop ctx). Leaf lock.
+- **`signalMutex`** - Serializes `signalDisplayUpdate()` against itself (called from both loop and `apiFetchTask`, uses static snapshot buffers). Outer lock — wraps the `apiDataMutex`+`displayMutex` acquisitions.
+- **`configMutex`** - Guards `config` between its writer (`onConfigSave`) and `apiFetchTask`'s per-iteration snapshot. Leaf lock.
+
+Lock order (acyclic, no deadlock): `signalMutex` → `apiDataMutex` → `displayMutex` (sequential); `displayHwMutex` and `configMutex` are leaves.
 
 **Data snapshot pattern**: Data is copied under mutex, then processed without locks. Rendering and HTTP calls never hold a mutex.
+
+> **Implementation note (TA-0225):** the task bodies and shared state were extracted out of `main.cpp` into a `core/` layer — `AppState` (shared state + mutexes), `AppCallbacks` (web/API callbacks), `DisplayBridge` (`signalDisplayUpdate` + `displayRenderTask`), `TransitOrchestrator` (`apiFetchTask` + accumulator + `recalculateETAs`), `AppRuntime` (setup/loop glue). Where this document says "main.cpp" for the fetch pipeline / accumulator / global cache, the code now lives in the corresponding `core/` module; `main.cpp` is now just the `setup()`/`loop()` skeleton.
 
 ### Why This Design?
 
