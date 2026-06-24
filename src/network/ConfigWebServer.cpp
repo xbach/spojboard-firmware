@@ -1,4 +1,5 @@
 #include "ConfigWebServer.h"
+#include "../core/AppState.h" // departures[]/departureCount/apiDataMutex (shared state)
 #include "../utils/Logger.h"
 #include "../display/DisplayManager.h"
 #include "../api/WeatherAPI.h"
@@ -1418,10 +1419,8 @@ void ConfigWebServer::handleTickerMode()
 // Departure Data Viewer
 // ============================================================================
 
-// Access global departure cache from main.cpp (protected by apiDataMutex)
-extern Departure departures[];
-extern int departureCount;
-extern SemaphoreHandle_t apiDataMutex;
+// Global departure cache + apiDataMutex are declared in core/AppState.h
+// (protected by apiDataMutex).
 
 void ConfigWebServer::handleDepartures()
 {
