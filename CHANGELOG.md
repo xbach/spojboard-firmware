@@ -2,7 +2,7 @@
 
 All notable changes to SpojBoard firmware will be documented in this file.
 
-## [r8] - Unreleased
+## [r8] - 2026-06-24
 
 ### Added
 - Progressive multi-stop display: departures paint as each stop responds, instead of waiting for the slowest stop
