@@ -13,98 +13,6 @@ void GolemioAPI::setStatusCallback(APIStatusCallback callback)
     statusCallback = callback;
 }
 
-TransitAPI::APIResult GolemioAPI::fetchDepartures(const Config& config)
-{
-    TransitAPI::APIResult result = {};
-    result.departureCount = 0;
-    result.hasError = false;
-    result.stopName[0] = '\0';
-    result.errorMsg[0] = '\0';
-    result.infoText[0] = '\0';
-
-    // Validate inputs (use Prague-specific fields)
-    if (strlen(config.pragueApiKey) == 0 || strlen(config.pragueStopIds) == 0)
-    {
-        result.hasError = true;
-        strlcpy(result.errorMsg, "Missing API key or stop IDs", sizeof(result.errorMsg));
-        return result;
-    }
-
-    logTimestamp();
-    debugPrintln("API: Fetching departures...");
-    logMemory("api_start");
-
-    // Temporary array to collect all departures from all stops
-    // IMPORTANT: Static to avoid stack overflow (~2KB array)
-    static Departure tempDepartures[MAX_TEMP_DEPARTURES];
-    int tempCount = 0;
-
-    // Parse comma-separated stop IDs (use Prague-specific field)
-    char stopIdsCopy[128];
-    strlcpy(stopIdsCopy, config.pragueStopIds, sizeof(stopIdsCopy));
-
-    char* stopId = strtok(stopIdsCopy, ",");
-    bool firstStop = true;
-
-    while (stopId != NULL && tempCount < MAX_TEMP_DEPARTURES)
-    {
-        // Trim whitespace
-        while (*stopId == ' ')
-            stopId++;
-
-        if (strlen(stopId) == 0)
-        {
-            stopId = strtok(NULL, ",");
-            continue;
-        }
-
-        querySingleStop(stopId, config, tempDepartures, tempCount, result.stopName, firstStop, result.infoText);
-
-        delay(1000);
-
-        stopId = strtok(NULL, ",");
-    }
-
-    // Sort all collected departures by ETA
-    if (tempCount > 0)
-    {
-        qsort(tempDepartures, tempCount, sizeof(Departure), compareDepartures);
-
-        char msg[64];
-        snprintf(msg, sizeof(msg), "Collected %d departures from all stops", tempCount);
-        logTimestamp();
-        debugPrintln(msg);
-    }
-
-    // Copy to final array (no filtering here - main.cpp handles filtering after fetch)
-    // Note: Device-side filtering is needed because:
-    // 1. Network latency causes departures to age during HTTP request/response
-    // 2. API issues may return stale data despite server-side filtering
-    // 3. Server-side offset filtering is useful but not sufficient alone
-    result.departureCount = 0;
-    for (int i = 0; i < tempCount && result.departureCount < MAX_DEPARTURES; i++)
-    {
-        result.departures[result.departureCount] = tempDepartures[i];
-        result.departureCount++;
-    }
-
-    char filterMsg[64];
-    snprintf(filterMsg, sizeof(filterMsg), "Final departures after filtering: %d", result.departureCount);
-    logTimestamp();
-    debugPrintln(filterMsg);
-
-    // Set error status if no departures found
-    if (tempCount == 0)
-    {
-        result.hasError = true;
-        strlcpy(result.errorMsg, "No departures", sizeof(result.errorMsg));
-    }
-
-    logMemory("api_complete");
-
-    return result;
-}
-
 int GolemioAPI::getStopCount(const Config& config)
 {
     return countStopIds(config.pragueStopIds);
@@ -296,7 +204,7 @@ bool GolemioAPI::querySingleStop(const char* stopId,
 
             for (JsonObject dep : deps)
             {
-                if (tempCount >= MAX_TEMP_DEPARTURES)
+                if (tempCount >= MAX_DEPARTURES) // bound to the per-stop StopResult buffer
                     break;
 
                 parseDepartureObject(dep, config, tempDepartures, tempCount, stopId);

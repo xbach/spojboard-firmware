@@ -49,12 +49,29 @@ void MqttAPI::setStatusCallback(APIStatusCallback callback)
     statusCallback = callback;
 }
 
-TransitAPI::APIResult MqttAPI::fetchDepartures(const Config& config)
+int MqttAPI::getStopCount(const Config& config)
 {
-    APIResult result = {};
+    return 1; // MQTT aggregates all stops server-side
+}
+
+// MQTT presents as a single "stop": one request/response returns the whole
+// server-aggregated set. Sorted and capped to MAX_DEPARTURES here (the server is
+// expected to pre-filter); the orchestrator merges it like any other stop.
+TransitAPI::StopResult MqttAPI::fetchStop(const Config& config, int index)
+{
+    TransitAPI::StopResult result = {};
     result.departureCount = 0;
     result.hasError = false;
     strlcpy(result.stopName, "MQTT", sizeof(result.stopName));
+    result.errorMsg[0] = '\0';
+    result.infoText[0] = '\0'; // MQTT has no infotext
+
+    if (index != 0)
+    {
+        result.hasError = true;
+        strlcpy(result.errorMsg, "Stop index out of range", sizeof(result.errorMsg));
+        return result;
+    }
 
     logTimestamp();
     debugPrintln("MQTT: Fetching departures...");
@@ -140,7 +157,9 @@ TransitAPI::APIResult MqttAPI::fetchDepartures(const Config& config)
         return result;
     }
 
-    // Parse response
+    // Parse response. MQTT keeps its own temp buffer: unlike Golemio/BVG (one stop
+    // each, hoisted to apiFetchTask), MQTT's single response carries the whole
+    // aggregate and must be sorted before capping to MAX_DEPARTURES.
     static Departure tempDepartures[MAX_TEMP_DEPARTURES];
     int tempCount = 0;
 
@@ -165,7 +184,7 @@ TransitAPI::APIResult MqttAPI::fetchDepartures(const Config& config)
         qsort(tempDepartures, tempCount, sizeof(Departure), compareDepartures);
     }
 
-    // Copy results to API result (no minDepartureTime filtering for MQTT!)
+    // Copy results (no minDepartureTime filtering for MQTT!)
     result.departureCount = (tempCount > MAX_DEPARTURES) ? MAX_DEPARTURES : tempCount;
     for (int i = 0; i < result.departureCount; i++)
     {
@@ -178,43 +197,6 @@ TransitAPI::APIResult MqttAPI::fetchDepartures(const Config& config)
     debugPrintln(" departures");
 
     return result;
-}
-
-int MqttAPI::getStopCount(const Config& config)
-{
-    return 1; // MQTT aggregates all stops server-side
-}
-
-TransitAPI::StopResult MqttAPI::fetchStop(const Config& config, int index)
-{
-    TransitAPI::StopResult sr = {};
-    sr.departureCount = 0;
-    sr.hasError = false;
-    sr.stopName[0] = '\0';
-    sr.errorMsg[0] = '\0';
-    sr.infoText[0] = '\0';
-
-    if (index != 0)
-    {
-        sr.hasError = true;
-        strlcpy(sr.errorMsg, "Stop index out of range", sizeof(sr.errorMsg));
-        return sr;
-    }
-
-    // MQTT has exactly one aggregated response; reuse the existing fetch and
-    // translate APIResult -> StopResult (identical layout). Stage C will inline
-    // the body here and drop fetchDepartures to avoid the transient copy.
-    APIResult r = fetchDepartures(config);
-    sr.departureCount = r.departureCount;
-    for (int i = 0; i < r.departureCount; i++)
-    {
-        sr.departures[i] = r.departures[i];
-    }
-    strlcpy(sr.stopName, r.stopName, sizeof(sr.stopName));
-    sr.hasError = r.hasError;
-    strlcpy(sr.errorMsg, r.errorMsg, sizeof(sr.errorMsg));
-    strlcpy(sr.infoText, r.infoText, sizeof(sr.infoText));
-    return sr;
 }
 
 // ============================================================================

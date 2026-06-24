@@ -18,16 +18,6 @@ class TransitAPI
     // Maximum length for concatenated infotexts (multiple joined with " /// ")
     static constexpr int MAX_INFOTEXT_LEN = 512;
 
-    struct APIResult
-    {
-        Departure departures[MAX_DEPARTURES];
-        int departureCount;
-        char stopName[64];
-        bool hasError;
-        char errorMsg[64];
-        char infoText[MAX_INFOTEXT_LEN]; // Concatenated service alerts/infotexts
-    };
-
     // Result of fetching a SINGLE stop. Sized to MAX_DEPARTURES because MQTT
     // aggregates all stops server-side and returns its whole set as one "stop";
     // Golemio/BVG fill at most DEPS_PER_STOP. `hasError` lets the orchestrator
@@ -51,13 +41,6 @@ class TransitAPI
      * @param callback Function to call with status messages
      */
     virtual void setStatusCallback(APIStatusCallback callback) = 0;
-
-    /**
-     * Fetch departures from transit API
-     * @param config Configuration with API key, stop IDs, and filters
-     * @return APIResult with departures, count, and error status
-     */
-    virtual APIResult fetchDepartures(const Config& config) = 0;
 
     /**
      * Number of stops this API iterates for a full fetch.

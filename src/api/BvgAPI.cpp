@@ -14,85 +14,6 @@ void BvgAPI::setStatusCallback(APIStatusCallback callback)
     statusCallback = callback;
 }
 
-TransitAPI::APIResult BvgAPI::fetchDepartures(const Config& config)
-{
-    TransitAPI::APIResult result = {};
-    result.departureCount = 0;
-    result.hasError = false;
-    result.stopName[0] = '\0';
-    result.errorMsg[0] = '\0';
-
-    // Validate inputs (use Berlin-specific field)
-    if (strlen(config.berlinStopIds) == 0)
-    {
-        result.hasError = true;
-        strlcpy(result.errorMsg, "Missing stop IDs", sizeof(result.errorMsg));
-        return result;
-    }
-
-    logTimestamp();
-    debugPrintln("BVG API: Fetching departures...");
-    logMemory("bvg_api_start");
-
-    // Temporary array to collect all departures from all stops
-    // IMPORTANT: Static to avoid stack overflow (~2KB array)
-    static Departure tempDepartures[MAX_TEMP_DEPARTURES];
-    int tempCount = 0;
-
-    // Parse comma-separated stop IDs (use Berlin-specific field)
-    char stopIdsCopy[128];
-    strlcpy(stopIdsCopy, config.berlinStopIds, sizeof(stopIdsCopy));
-
-    char* stopId = strtok(stopIdsCopy, ",");
-    bool firstStop = true;
-
-    while (stopId != NULL && tempCount < MAX_TEMP_DEPARTURES)
-    {
-        // Trim whitespace
-        while (*stopId == ' ')
-            stopId++;
-
-        if (strlen(stopId) == 0)
-        {
-            stopId = strtok(NULL, ",");
-            continue;
-        }
-
-        querySingleStop(stopId, config, tempDepartures, tempCount, result.stopName, firstStop);
-
-        // Rate limiting: 1-second delay between API calls
-        delay(1000);
-
-        stopId = strtok(NULL, ",");
-    }
-
-    // Sort all collected departures by ETA (ascending)
-    qsort(tempDepartures, tempCount, sizeof(Departure), compareDepartures);
-
-    // Copy to final array (up to MAX_DEPARTURES for caching)
-    // Note: Filtering by minDepartureTime now happens in main.cpp (APIFetchTask) for consistency across all APIs
-    result.departureCount = 0;
-    for (int i = 0; i < tempCount && result.departureCount < MAX_DEPARTURES; i++)
-    {
-        result.departures[result.departureCount] = tempDepartures[i];
-        result.departureCount++;
-    }
-
-    if (result.departureCount == 0)
-    {
-        result.hasError = true;
-        strlcpy(result.errorMsg, "No departures", sizeof(result.errorMsg));
-    }
-
-    logTimestamp();
-    char msg[64];
-    snprintf(msg, sizeof(msg), "BVG API: Fetched %d departures", result.departureCount);
-    debugPrintln(msg);
-    logMemory("bvg_api_end");
-
-    return result;
-}
-
 int BvgAPI::getStopCount(const Config& config)
 {
     return countStopIds(config.berlinStopIds);
@@ -296,7 +217,7 @@ bool BvgAPI::querySingleStop(const char* stopId,
     int beforeParse = tempCount;
     for (JsonObject depJson : departures)
     {
-        if (tempCount >= MAX_TEMP_DEPARTURES)
+        if (tempCount >= MAX_DEPARTURES) // bound to the per-stop StopResult buffer
             break;
 
         parseDepartureObject(depJson, config, tempDepartures, tempCount, stopId);

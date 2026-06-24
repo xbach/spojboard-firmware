@@ -25,19 +25,11 @@ class BvgAPI : public TransitAPI
      */
     virtual void setStatusCallback(APIStatusCallback callback) override;
 
-    /**
-     * Fetch departures from BVG API
-     * @param config Configuration with stop IDs and filters
-     * @return APIResult with departures, count, and error status
-     */
-    virtual APIResult fetchDepartures(const Config& config) override;
-
     virtual int getStopCount(const Config& config) override;
     virtual StopResult fetchStop(const Config& config, int index) override;
 
   private:
     APIStatusCallback statusCallback;
-    static constexpr int MAX_TEMP_DEPARTURES = DEPS_PER_STOP * 12; // Buffer for up to 12 stops at full capacity
     // BVG responses are verbose (~2.2KB/departure, ~26KB for 12). We parse with an
     // ArduinoJson Filter and stream directly from the socket, so the document only
     // holds the few fields we use — keeping RAM low on 4-panel builds.

@@ -37,13 +37,6 @@ class MqttAPI : public TransitAPI
      */
     virtual void setStatusCallback(APIStatusCallback callback) override;
 
-    /**
-     * Fetch departures via MQTT request/response
-     * @param config Configuration with MQTT broker, topics, and field mappings
-     * @return APIResult with departures, count, and error status
-     */
-    virtual APIResult fetchDepartures(const Config& config) override;
-
     // MQTT aggregates all stops server-side, so it presents as a single "stop":
     // getStopCount() == 1 and fetchStop(0) returns the whole aggregated set.
     virtual int getStopCount(const Config& config) override;
