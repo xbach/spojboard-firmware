@@ -69,6 +69,13 @@ void stripBrackets(char* str);
 // Stop-ID list parsing (shared by Golemio and BVG multi-stop clients)
 // ============================================================================
 
+// Buffer size for a comma-separated stop-ID list. Sized for the design maximum of 12 stops
+// (the accumulator holds DEPS_PER_STOP * 12 departures) of the longest stop IDs — Prague's
+// run ~9 chars (e.g. "U2269Z301"), allow up to 11: 12 IDs * 11 + 11 commas + 1 NUL = 144.
+// MUST be used by Config::{prague,berlin}StopIds AND the strtok copy buffers in
+// countStopIds()/getStopIdAt() — if they differ, the longer list is silently truncated.
+#define STOP_IDS_BUF_SIZE 144
+
 /**
  * Count the non-empty, comma-separated stop IDs in a list.
  * @param csv Comma-separated stop-ID string (e.g. "U693Z2P, U321Z1P")

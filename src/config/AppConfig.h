@@ -3,6 +3,7 @@
 
 #include <Preferences.h>
 #include <cstdint>
+#include "../api/DepartureData.h" // STOP_IDS_BUF_SIZE (stop-ID list buffer)
 
 // ============================================================================
 // Firmware Version
@@ -122,8 +123,8 @@ struct Config
                                // the payload (~303 chars); newer keys ~224. Sized large so the
                                // variable-length email never truncates the token (→ 401). NVS
                                // stores the actual length, so the headroom is free. (Issue #5)
-    char pragueStopIds[128];   // Prague stop IDs (e.g., "U693Z2P,U693Z1P")
-    char berlinStopIds[128];   // Berlin stop IDs (e.g., "900013102")
+    char pragueStopIds[STOP_IDS_BUF_SIZE]; // Prague stop IDs (e.g., "U693Z2P,U693Z1P"); sized for 12 stops
+    char berlinStopIds[STOP_IDS_BUF_SIZE]; // Berlin stop IDs (e.g., "900013102"); see STOP_IDS_BUF_SIZE
     // Note: Berlin BVG API requires no authentication
 
     // MQTT-specific configuration

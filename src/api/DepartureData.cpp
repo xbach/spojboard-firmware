@@ -119,7 +119,7 @@ int countStopIds(const char* csv)
     if (csv == nullptr)
         return 0;
 
-    char copy[128];
+    char copy[STOP_IDS_BUF_SIZE];
     strlcpy(copy, csv, sizeof(copy));
 
     int count = 0;
@@ -140,7 +140,7 @@ bool getStopIdAt(const char* csv, int index, char* out, size_t outSize)
     if (csv == nullptr || out == nullptr || outSize == 0 || index < 0)
         return false;
 
-    char copy[128];
+    char copy[STOP_IDS_BUF_SIZE];
     strlcpy(copy, csv, sizeof(copy));
 
     int i = 0;
