@@ -23,7 +23,7 @@ Standalone operation with web-based configuration, no external server required f
 - **Direct API Access**: Fetches departure data every 10-300 seconds (configurable)
 - **MQTT Integration**: Request/response pattern with configurable JSON field mappings, dual ETA modes (timestamp/pre-calculated), and server-side aggregation - see [MQTT Guide](docs/MQTT.md)
 - **Local ETA Updates**: Recalculates ETAs every 10 seconds from cached timestamps without additional API calls - reduces server load while keeping display fresh
-- **Multi-Stop Support**: Query up to 12 stops simultaneously (144 departure buffer), automatically sorted by departure time with 1s rate limiting
+- **Multi-Stop Support**: Query up to 12 stops, automatically sorted by departure time with 1s rate limiting; partial results paint as each stop responds, and a failed stop keeps its last-known departures
 - **WiFi Setup Portal**: Automatic AP mode with captive portal when WiFi fails - no code editing needed
 - **Dual ETA Display**: Optionally show next two departure times per line - see departure frequency at a glance (disabled by default)
 - **Dual-Core Architecture**: FreeRTOS multi-task design - Core 0 handles WiFi interrupts, Core 1 runs display rendering, API fetching, and web server concurrently for responsive operation
@@ -417,15 +417,15 @@ The device implements captive portal detection for:
 
 ### Multi-Stop Behavior
 When multiple stop IDs are configured (comma-separated, max 12 stops), the system:
-1. Queries each stop individually via separate API calls (always fetches 12 departures per stop)
+1. Queries each stop individually (Prague fetches 12 departures per stop; Berlin fetches 10 to stay within its response-size limit)
 2. Applies 1-second delay between API calls to reduce server load and avoid rate limiting
-3. Collects all departures in temporary buffer (capacity: 144 total = 12 stops × 12 departures)
+3. Merges each stop's results into a running buffer — and if one stop's fetch fails, that stop keeps its last-known departures instead of going blank
 4. Sorts by ETA (earliest departures first across all stops)
 5. Caches the top 24 soonest departures with timestamps for ETA recalculation
-6. Displays the configured number of rows (up to 3 on 128×32, up to 7 on 128×64) on the LED matrix
+6. Displays the configured number of rows (up to 3 on 128×32, up to 7 on 128×64) on the LED matrix, painting partial results as soon as the first stop responds
 7. Recalculates ETAs every 10 seconds from cached timestamps without additional API calls
 
-This ensures you always see the **soonest** departures across all your stops, regardless of which stop they come from. The API always fetches 12 departures per stop for caching and sorting - the user only controls how many rows to display on the LED matrix (up to 3 on 128×32, up to 7 on 128×64). The 10-second ETA recalculation keeps the display fresh without hammering the API, allowing longer refresh intervals (up to 300s) during peak times.
+This ensures you always see the **soonest** departures across all your stops, regardless of which stop they come from. The board fetches more departures than it shows for better caching and sorting — the user only controls how many rows to display on the LED matrix (up to 3 on 128×32, up to 7 on 128×64). The 10-second ETA recalculation keeps the display fresh without hammering the API, allowing longer refresh intervals (up to 300s) during peak times.
 
 ### Destination String Shortening
 To maximize display space on the LED matrix, long destination names are automatically shortened before display:

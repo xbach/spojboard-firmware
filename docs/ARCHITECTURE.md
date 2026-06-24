@@ -35,8 +35,9 @@ SpojBoard utilizes both cores of the ESP32-S3 for optimal performance using Free
 │   mutex, renders to HUB75 (~100ms)              │
 │                                                 │
 │ apiFetchTask()       [Priority 1]               │
-│   Handles blocking HTTP calls (200-2000ms)      │
-│   Updates departures via mutex, sleeps 100ms    │
+│   Orchestrates per-stop fetch + accumulator,    │
+│   blocking HTTP calls (200-2000ms), publishes   │
+│   departures via mutex, sleeps 100ms            │
 │                                                 │
 │ Arduino loop()       [Priority 1]               │
 │   Web server, ETA recalculation, state mgmt    │
@@ -87,12 +88,13 @@ HUB75 Hardware
 
 ## Configuration Constants
 
-- **`MAX_DEPARTURES = 24`** ([DepartureData.h:11](../src/api/DepartureData.h#L11)) - Maximum cache size (hardcoded)
-- **`DEPS_PER_STOP = 12`** ([DepartureData.h:10](../src/api/DepartureData.h#L10)) - Departures fetched per stop
-- **`MAX_TEMP_DEPARTURES = 144`** (GolemioAPI/BvgAPI) - Collection buffer size (12 stops × 12 departures)
+- **`MAX_DEPARTURES = 24`** ([DepartureData.h:11](../src/api/DepartureData.h#L11)) - Per-stop `StopResult` buffer size and the final cache cap. Larger than any display so the secondEta matcher has depth within a stop.
+- **`DEPS_PER_STOP = 12`** ([DepartureData.h:10](../src/api/DepartureData.h#L10)) - Departures requested per stop (Golemio) and the accumulator/temp-buffer sizing factor.
+- **`BVG_MAX_RESULTS = 10`** ([BvgAPI.h](../src/api/BvgAPI.h)) - BVG clamps its own `results=` request to this. A busy hub's BVG payload is >2.7 KB/departure, so 12 would overflow the 32 KB read cap and truncate (`IncompleteInput`). Golemio's compact payload has no such limit and requests the full `DEPS_PER_STOP`.
+- **`MAX_TEMP_DEPARTURES = 144`** (MqttAPI only) - MQTT's server-aggregate scratch buffer (`DEPS_PER_STOP × 12`). Golemio/BVG no longer use a per-client temp buffer — they write straight into the per-stop `StopResult.departures` (capped at `MAX_DEPARTURES`); the cross-stop accumulator lives in `apiFetchTask`.
 - **`config.numDepartures`** - User setting for display rows. Max depends on display size: `(panelRows * 32 / 8) - 1`, i.e. 3 on 128×32 (`panelRows=1`, default) or 7 on 128×64 (`panelRows=2`).
 
-**Important:** `config.numDepartures` only controls how many rows to show on the LED matrix, not API fetch size. Both transit APIs (Prague Golemio and Berlin BVG) always fetch `DEPS_PER_STOP` (12) per stop for better caching and sorting. This simplifies the user experience - users don't need to understand API response sizes.
+**Important:** `config.numDepartures` only controls how many rows to show on the LED matrix, not API fetch size. Golemio always requests `DEPS_PER_STOP` (12) per stop; BVG requests `BVG_MAX_RESULTS` (10) to stay within its read cap. Fetching more than displayed gives the sorter and secondEta matcher more to work with. Users don't need to understand API response sizes.
 
 ## Complete Pipeline Flow
 
@@ -106,36 +108,34 @@ HUB75 Hardware
 └──────────────────────────────────────────────────────────────────┘
                               ↓
 ┌──────────────────────────────────────────────────────────────────┐
-│ 2. API QUERIES (Always fetch DEPS_PER_STOP = 12 per stop)       │
-│    TransitAPI::fetchDepartures() (GolemioAPI or BvgAPI)          │
-│    loops through stops:                                          │
-│    - Stop A: API call → 12 departures → tempDepartures[0-11]    │
-│    - delay(1000)  # 1-second rate limiting                       │
-│    - Stop B: API call → 12 departures → tempDepartures[12-23]   │
-│    Total collected: 24 departures in temporary buffer            │
-│    Buffer capacity: 144 (supports up to 12 stops)                │
+│ 2. PER-STOP FETCH (apiFetchTask orchestrates, not the client)   │
+│    stopCount = transitAPI->getStopCount(config)                  │
+│    for s in 0..stopCount-1:                                      │
+│      StopResult sr = transitAPI->fetchStop(config, s)           │
+│        # Golemio: results=12 | BVG: results=10 (read-cap safe)  │
+│        # writes straight into sr.departures[MAX_DEPARTURES]     │
+│      if sr.hasError: keep this stop's previous rows (keep-stale) │
+│      else: evict acc entries tagged s, append sr's fresh rows    │
+│      delay(1000)  # 1-second inter-stop rate limiting            │
 └──────────────────────────────────────────────────────────────────┘
                               ↓
 ┌──────────────────────────────────────────────────────────────────┐
-│ 3. SORT BY ETA (GolemioAPI.cpp:71)                              │
-│    qsort(tempDepartures, 24, ..., compareDepartures)            │
-│    All departures sorted by increasing ETA across all stops      │
-│    Example sorted result:                                        │
-│    [0] = Stop B, Line 7, ETA 2min                                │
-│    [1] = Stop A, Line 31, ETA 5min                               │
-│    [2] = Stop B, Line A, ETA 8min                                │
-│    ... (21 more)                                                 │
+│ 3. ACCUMULATOR SORT (main.cpp, per stop)                        │
+│    Persistent: AccEntry acc[DEPS_PER_STOP*12] (Departure + tag) │
+│    qsort(acc, accCount, ..., compareAccEntry)  # by ETA         │
+│    The stopIndex tag is bound INTO AccEntry so it co-permutes    │
+│    with its departure — a parallel tag array would desync and    │
+│    mis-target the per-stop eviction (was a duplicate-row bug).   │
 └──────────────────────────────────────────────────────────────────┘
                               ↓
 ┌──────────────────────────────────────────────────────────────────┐
-│ 4. COPY TO CACHE (GolemioAPI.cpp:81-88)                         │
-│    Copy top MAX_DEPARTURES (24) from sorted temp to cache:       │
-│    for (i = 0; i < tempCount && count < MAX_DEPARTURES; i++)    │
-│        result.departures[count++] = tempDepartures[i];           │
-│    Result:                                                       │
-│    - result.departures[24] = top 24 soonest departures           │
-│    - result.departureCount = up to 24                            │
-│    - Each departure includes departureTime (Unix timestamp)      │
+│ 4. PUBLISH SNAPSHOT (publishDepartureSnapshot)                  │
+│    Filter stale / below-minDepartureTime, cap to MAX_DEPARTURES, │
+│    attach secondEta (gated by sourceStopId), copy into the       │
+│    shared departures[] under apiDataMutex, signal display.       │
+│    Progressive: during initial fill the board publishes after    │
+│    each stop (partial data shows ~1s sooner); in steady state it │
+│    replaces silently and publishes once at cycle end.            │
 └──────────────────────────────────────────────────────────────────┘
                               ↓
 ┌──────────────────────────────────────────────────────────────────┐
@@ -171,21 +171,20 @@ HUB75 Hardware
 
 ## Design Rationale
 
-### 1. Always Fetch DEPS_PER_STOP (12)
-- Ensures good caching regardless of display setting
-- Simplifies API logic - no user-dependent behavior
-- Better sorting with more data points
-- Users don't need to understand API response sizes
+### 1. Fetch More Than Displayed (per-API)
+- Golemio requests `DEPS_PER_STOP` (12); BVG requests `BVG_MAX_RESULTS` (10) to stay under its 32 KB read cap
+- Ensures good caching regardless of display setting and gives the sorter/secondEta matcher depth
+- Per-API request count is decoupled from the shared buffer sizing — one overloaded knob can't satisfy both a compact and a verbose backend
 
-### 2. Large Temp Buffer (144)
-- Supports up to 12 stops × 12 departures = 144 total
-- Prevents data loss when querying multiple stops
-- Memory cost: ~7KB (acceptable on ESP32 with ~200KB free)
+### 2. Single Cross-Stop Accumulator (`apiFetchTask`)
+- `AccEntry acc[DEPS_PER_STOP × 12]` persists across cycles, tagged by stop index for keep-stale-per-stop eviction
+- Replaced the three per-client `tempDepartures[144]` buffers (one per API, all linked but only one active) — reclaimed ~32 KB internal RAM (TA-0190)
+- MQTT keeps its own `tempDepartures[144]`: its server-side aggregate needs a local sort before handing back one `StopResult`
 
 ### 3. Fixed Cache Size (24)
-- Keeps "best" 24 departures after sorting
-- Reasonable memory usage (~1.2KB)
-- More departures than can be displayed for filtering flexibility and secondEta matching across multi-stop hubs
+- `MAX_DEPARTURES` caps both the per-stop `StopResult` and the published snapshot
+- Reasonable memory usage (~3 KB per `StopResult`)
+- Larger than any display so the **per-stop** secondEta matcher has depth. secondEta is gated by `sourceStopId` — a line+destination only departs from one stop, so matches are never conflated *across* stops (the old "across multi-stop hubs" framing is explicitly **not** wanted)
 
 ### 4. Display-Only User Control
 - Maps directly to physical LED matrix rows (max 3 on 128×32, 7 on 128×64)
@@ -201,12 +200,16 @@ HUB75 Hardware
 
 ### Data Structures
 
-- **Temp Buffer**: `static Departure tempDepartures[144]` (~7KB)
-  - Function-local static to avoid stack overflow
-  - Located in `GolemioAPI::fetchDepartures()` and `BvgAPI::fetchDepartures()`
-  - Allocated once at compile time
+- **Accumulator**: `static AccEntry acc[DEPS_PER_STOP × 12]` in `apiFetchTask` (~20KB)
+  - One cross-stop buffer (was three per-client `tempDepartures[144]`, ~32 KB reclaimed — TA-0190)
+  - `AccEntry` = `Departure dep` + `int stopIndex` (the stop tag travels through the ETA `qsort`)
+  - Function-local static (`.bss`), never on the task stack
+  - MQTT additionally keeps `tempDepartures[144]` for its server-aggregate sort
 
-- **Cache**: `Departure departures[24]` (~1.2KB)
+- **Per-stop result**: `StopResult` (`Departure departures[MAX_DEPARTURES]`, ~3KB)
+  - Filled by `fetchStop()`; the orchestrator merges it into the accumulator
+
+- **Cache**: `Departure departures[24]` (~3KB)
   - Global in `main.cpp`
   - Persists between API calls
   - Used for ETA recalculation
@@ -215,12 +218,10 @@ HUB75 Hardware
   - Receives pointer to cache
   - Zero memory overhead
 
-**Total**: ~8KB for departure data structures
-
 ### Heap Usage
 
 - JSON buffer: 12KB for Golemio responses; BVG reads up to 32KB but parses through an ArduinoJson `Filter` into an 8KB `DynamicJsonDocument` (keeps only the ~6 fields used)
-- BVG API responses are more verbose (~2.2KB per departure vs Golemio's more compact format), so the filter is what keeps RAM low on 4-panel builds
+- BVG API responses are verbose (>2.7KB per departure at busy hubs vs Golemio's compact format) — the filter keeps RAM low on 4-panel builds, and BVG clamps `results=10` so the raw response stays under the 32 KB read cap (12 would truncate → `IncompleteInput`)
 - Configuration: NVS flash storage (persistent across reboots)
 - Typical free heap: ~200KB
 - App partitions: two OTA slots of 2MB each (0x200000); exact RAM/flash utilization varies per build and hardware variant
@@ -353,8 +354,8 @@ WiFiManager
   └─ Provides status query methods
 
 GolemioAPI / BvgAPI / MqttAPI
-  ├─ Fetches departures via HTTP or MQTT
-  ├─ Returns APIResult struct (no state stored)
+  ├─ Implements getStopCount() + fetchStop(index)
+  ├─ Returns one StopResult per stop (no state stored; hasError = fail vs empty)
   └─ Uses statusCallback for progress updates
 
 ConfigWebServer
@@ -365,21 +366,21 @@ ConfigWebServer
 
 ## Multi-Stop Behavior
 
-When multiple stop IDs are configured (comma-separated, max 12 stops):
+When multiple stop IDs are configured (comma-separated, max 12 stops), `apiFetchTask` drives the loop (the API client just serves one stop at a time via `fetchStop`):
 
-1. **Query each stop individually** via separate API calls (always 12 departures per stop)
+1. **Query each stop individually** via `fetchStop(config, s)` (Golemio 12, BVG 10 departures per stop)
 2. **Apply 1-second delay** between API calls to reduce server load and avoid rate limiting
-3. **Collect in temp buffer** (capacity: 144 = 12 stops × 12 departures)
-4. **Sort by ETA** (earliest departures first across all stops)
-5. **Cache top 24** soonest departures with timestamps
+3. **Merge into the accumulator**: on success, evict that stop's previous rows and append the fresh ones; on failure, **keep the stop's stale rows** so a single failed fetch never blanks it
+4. **Sort the accumulator by ETA** (earliest first across all stops; the stop tag co-permutes)
+5. **Publish top 24** soonest departures with timestamps — **progressively** during the initial fill (partial board shows ~1 s sooner), silently-then-once in steady state
 6. **Display configured rows** (max 3 on 128×32, 7 on 128×64) on LED matrix
-7. **Recalculate ETAs** every 10 seconds without additional API calls
+7. **Recalculate ETAs** every 10 seconds without additional API calls (re-sorts and re-attaches secondEta)
 
-This ensures you always see the **soonest** departures across all stops, regardless of which stop they come from.
+This ensures you always see the **soonest** departures across all stops, regardless of which stop they come from — while a transient failure of one stop leaves the others (and that stop's last-known rows) intact.
 
 ### Rate Limiting
 
-The 1-second delay between API calls (`delay(1000)` in [GolemioAPI.cpp:63](../src/api/GolemioAPI.cpp#L63)) prevents:
+The 1-second delay between per-stop API calls (`delay(1000)` in the `apiFetchTask` orchestration loop, [main.cpp](../src/main.cpp); hoisted out of the API clients during the per-stop refactor) prevents:
 - HTTP 429 (Too Many Requests) errors
 - Excessive load on Golemio API servers
 - Connection timeouts from rapid requests
@@ -420,10 +421,10 @@ Always available (115200 baud):
 - Configuration changes
 
 ### Memory Monitoring
-Key checkpoints logged via `logMemory()`:
-- `api_start` - Before API call
-- `api_complete` - After processing response
-- `display_update` - After display render
+Key checkpoints logged via `logMemory()` (printed as `MEM@<label>`):
+- `boot` / `display_init` - Startup, before and after the DMA framebuffer allocation
+- `post_fetch` - After the first departures fetch (the HTTPS handshake peak)
+- `weather_start` / `weather_complete` - Around the weather fetch (tightest contiguous-block point)
 
 Use telnet to monitor memory in real-time:
 ```bash
