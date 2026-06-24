@@ -65,4 +65,25 @@ void stripSpaces(char* str);
  */
 void stripBrackets(char* str);
 
+// ============================================================================
+// Stop-ID list parsing (shared by Golemio and BVG multi-stop clients)
+// ============================================================================
+
+/**
+ * Count the non-empty, comma-separated stop IDs in a list.
+ * @param csv Comma-separated stop-ID string (e.g. "U693Z2P, U321Z1P")
+ * @return Number of non-empty tokens
+ */
+int countStopIds(const char* csv);
+
+/**
+ * Extract the index-th non-empty, whitespace-trimmed stop ID from a list.
+ * @param csv Comma-separated stop-ID string
+ * @param index Zero-based index of the stop to extract
+ * @param out Output buffer for the stop ID
+ * @param outSize Size of the output buffer
+ * @return true if a stop ID was written, false if index is out of range
+ */
+bool getStopIdAt(const char* csv, int index, char* out, size_t outSize);
+
 #endif // DEPARTUREDATA_H

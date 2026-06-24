@@ -180,6 +180,43 @@ TransitAPI::APIResult MqttAPI::fetchDepartures(const Config& config)
     return result;
 }
 
+int MqttAPI::getStopCount(const Config& config)
+{
+    return 1; // MQTT aggregates all stops server-side
+}
+
+TransitAPI::StopResult MqttAPI::fetchStop(const Config& config, int index)
+{
+    TransitAPI::StopResult sr = {};
+    sr.departureCount = 0;
+    sr.hasError = false;
+    sr.stopName[0] = '\0';
+    sr.errorMsg[0] = '\0';
+    sr.infoText[0] = '\0';
+
+    if (index != 0)
+    {
+        sr.hasError = true;
+        strlcpy(sr.errorMsg, "Stop index out of range", sizeof(sr.errorMsg));
+        return sr;
+    }
+
+    // MQTT has exactly one aggregated response; reuse the existing fetch and
+    // translate APIResult -> StopResult (identical layout). Stage C will inline
+    // the body here and drop fetchDepartures to avoid the transient copy.
+    APIResult r = fetchDepartures(config);
+    sr.departureCount = r.departureCount;
+    for (int i = 0; i < r.departureCount; i++)
+    {
+        sr.departures[i] = r.departures[i];
+    }
+    strlcpy(sr.stopName, r.stopName, sizeof(sr.stopName));
+    sr.hasError = r.hasError;
+    strlcpy(sr.errorMsg, r.errorMsg, sizeof(sr.errorMsg));
+    strlcpy(sr.infoText, r.infoText, sizeof(sr.infoText));
+    return sr;
+}
+
 // ============================================================================
 // Connection Management
 // ============================================================================

@@ -105,6 +105,49 @@ TransitAPI::APIResult GolemioAPI::fetchDepartures(const Config& config)
     return result;
 }
 
+int GolemioAPI::getStopCount(const Config& config)
+{
+    return countStopIds(config.pragueStopIds);
+}
+
+TransitAPI::StopResult GolemioAPI::fetchStop(const Config& config, int index)
+{
+    TransitAPI::StopResult result = {};
+    result.departureCount = 0;
+    result.hasError = false;
+    result.stopName[0] = '\0';
+    result.errorMsg[0] = '\0';
+    result.infoText[0] = '\0';
+
+    if (strlen(config.pragueApiKey) == 0 || strlen(config.pragueStopIds) == 0)
+    {
+        result.hasError = true;
+        strlcpy(result.errorMsg, "Missing API key or stop IDs", sizeof(result.errorMsg));
+        return result;
+    }
+
+    char stopId[16];
+    if (!getStopIdAt(config.pragueStopIds, index, stopId, sizeof(stopId)))
+    {
+        result.hasError = true;
+        strlcpy(result.errorMsg, "Stop index out of range", sizeof(result.errorMsg));
+        return result;
+    }
+
+    // querySingleStop appends into the caller's buffer and (for the "first stop")
+    // captures the stop name. Each fetchStop is self-contained, so it's always
+    // the first/only stop from the buffer's perspective.
+    bool isFirstStop = true;
+    bool ok = querySingleStop(stopId, config, result.departures, result.departureCount, result.stopName,
+                              isFirstStop, result.infoText);
+    if (!ok)
+    {
+        result.hasError = true;
+        strlcpy(result.errorMsg, "Stop fetch failed", sizeof(result.errorMsg));
+    }
+    return result;
+}
+
 bool GolemioAPI::querySingleStop(const char* stopId,
                                  const Config& config,
                                  Departure* tempDepartures,

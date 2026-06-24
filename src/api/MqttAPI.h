@@ -44,6 +44,11 @@ class MqttAPI : public TransitAPI
      */
     virtual APIResult fetchDepartures(const Config& config) override;
 
+    // MQTT aggregates all stops server-side, so it presents as a single "stop":
+    // getStopCount() == 1 and fetchStop(0) returns the whole aggregated set.
+    virtual int getStopCount(const Config& config) override;
+    virtual StopResult fetchStop(const Config& config, int index) override;
+
   private:
     // Constants (must be declared before members that use them)
     static constexpr int JSON_BUFFER_SIZE = 8192; // 8KB for JSON parsing

@@ -93,6 +93,46 @@ TransitAPI::APIResult BvgAPI::fetchDepartures(const Config& config)
     return result;
 }
 
+int BvgAPI::getStopCount(const Config& config)
+{
+    return countStopIds(config.berlinStopIds);
+}
+
+TransitAPI::StopResult BvgAPI::fetchStop(const Config& config, int index)
+{
+    TransitAPI::StopResult result = {};
+    result.departureCount = 0;
+    result.hasError = false;
+    result.stopName[0] = '\0';
+    result.errorMsg[0] = '\0';
+    result.infoText[0] = '\0'; // BVG has no infotexts
+
+    if (strlen(config.berlinStopIds) == 0)
+    {
+        result.hasError = true;
+        strlcpy(result.errorMsg, "Missing stop IDs", sizeof(result.errorMsg));
+        return result;
+    }
+
+    char stopId[16];
+    if (!getStopIdAt(config.berlinStopIds, index, stopId, sizeof(stopId)))
+    {
+        result.hasError = true;
+        strlcpy(result.errorMsg, "Stop index out of range", sizeof(result.errorMsg));
+        return result;
+    }
+
+    bool isFirstStop = true;
+    bool ok = querySingleStop(stopId, config, result.departures, result.departureCount, result.stopName,
+                              isFirstStop);
+    if (!ok)
+    {
+        result.hasError = true;
+        strlcpy(result.errorMsg, "Stop fetch failed", sizeof(result.errorMsg));
+    }
+    return result;
+}
+
 bool BvgAPI::querySingleStop(const char* stopId,
                              const Config& config,
                              Departure* tempDepartures,

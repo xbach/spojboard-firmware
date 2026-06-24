@@ -32,6 +32,9 @@ class BvgAPI : public TransitAPI
      */
     virtual APIResult fetchDepartures(const Config& config) override;
 
+    virtual int getStopCount(const Config& config) override;
+    virtual StopResult fetchStop(const Config& config, int index) override;
+
   private:
     APIStatusCallback statusCallback;
     static constexpr int MAX_TEMP_DEPARTURES = DEPS_PER_STOP * 12; // Buffer for up to 12 stops at full capacity

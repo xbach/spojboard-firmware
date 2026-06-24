@@ -28,6 +28,20 @@ class TransitAPI
         char infoText[MAX_INFOTEXT_LEN]; // Concatenated service alerts/infotexts
     };
 
+    // Result of fetching a SINGLE stop. Sized to MAX_DEPARTURES because MQTT
+    // aggregates all stops server-side and returns its whole set as one "stop";
+    // Golemio/BVG fill at most DEPS_PER_STOP. `hasError` lets the orchestrator
+    // distinguish a failed fetch (keep stale rows) from a legitimately-empty one.
+    struct StopResult
+    {
+        Departure departures[MAX_DEPARTURES];
+        int departureCount;
+        char stopName[64];
+        bool hasError;
+        char errorMsg[64];
+        char infoText[MAX_INFOTEXT_LEN];
+    };
+
     typedef void (*APIStatusCallback)(const char* message);
 
     virtual ~TransitAPI() = default;
@@ -44,6 +58,21 @@ class TransitAPI
      * @return APIResult with departures, count, and error status
      */
     virtual APIResult fetchDepartures(const Config& config) = 0;
+
+    /**
+     * Number of stops this API iterates for a full fetch.
+     * Prague/Berlin: count of configured stop IDs. MQTT: always 1 (server aggregates).
+     */
+    virtual int getStopCount(const Config& config) = 0;
+
+    /**
+     * Fetch a single stop by index in [0, getStopCount()). Lets the caller
+     * (apiFetchTask) drive multi-stop orchestration and render incrementally.
+     * @param config Configuration
+     * @param index Zero-based stop index
+     * @return StopResult for that stop (hasError distinguishes fail vs. empty)
+     */
+    virtual StopResult fetchStop(const Config& config, int index) = 0;
 };
 
 #endif // TRANSITAPI_H

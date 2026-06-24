@@ -1,5 +1,6 @@
 #include "DepartureData.h"
 #include <string.h>
+#include <stdlib.h>
 
 // ============================================================================
 // String Shortening for Display
@@ -107,4 +108,57 @@ void stripBrackets(char* str)
         src++;
     }
     *dst = '\0';
+}
+
+// ============================================================================
+// Stop-ID list parsing (shared by Golemio and BVG multi-stop clients)
+// ============================================================================
+
+int countStopIds(const char* csv)
+{
+    if (csv == nullptr)
+        return 0;
+
+    char copy[128];
+    strlcpy(copy, csv, sizeof(copy));
+
+    int count = 0;
+    char* token = strtok(copy, ",");
+    while (token != nullptr)
+    {
+        while (*token == ' ')
+            token++;
+        if (strlen(token) > 0)
+            count++;
+        token = strtok(nullptr, ",");
+    }
+    return count;
+}
+
+bool getStopIdAt(const char* csv, int index, char* out, size_t outSize)
+{
+    if (csv == nullptr || out == nullptr || outSize == 0 || index < 0)
+        return false;
+
+    char copy[128];
+    strlcpy(copy, csv, sizeof(copy));
+
+    int i = 0;
+    char* token = strtok(copy, ",");
+    while (token != nullptr)
+    {
+        while (*token == ' ')
+            token++;
+        if (strlen(token) > 0)
+        {
+            if (i == index)
+            {
+                strlcpy(out, token, outSize);
+                return true;
+            }
+            i++;
+        }
+        token = strtok(nullptr, ",");
+    }
+    return false;
 }
