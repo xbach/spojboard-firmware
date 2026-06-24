@@ -2,6 +2,24 @@
 
 All notable changes to SpojBoard firmware will be documented in this file.
 
+## [r8] - Unreleased
+
+### Added
+- Progressive multi-stop display: departures paint as each stop responds, instead of waiting for the slowest stop
+- Fetch more departures per stop (Prague) for better "next departure" (secondary ETA) coverage
+
+### Changed
+- Secondary ETA now matches only departures from the same stop
+- Lower memory use (lazy MQTT buffers + per-stop refactor), freeing internal RAM on 4-panel displays
+- Minor DepartureMono font glyph adjustments
+
+### Fixed
+- Remove duplicate departure rows (which also made the secondary ETA mirror the main one)
+- Work with older Golemio API keys that include an email address (#5)
+- Keep the last good weather reading during a brief network hiccup instead of blanking it, and retry failed fetches sooner
+- A stop that fails to refresh now keeps its last-known departures instead of going blank
+- Parse Berlin (BVG) departures reliably at busy hubs
+
 ## [r7] - 2026-06-23
 
 
