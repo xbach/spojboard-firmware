@@ -56,9 +56,21 @@ class MqttAPI : public TransitAPI
 
     // Response handling
     volatile bool responseReceived;
-    char responseBuffer[MQTT_BUFFER_SIZE]; // Pre-allocated buffer (avoids heap alloc in callback)
+    char* responseBuffer; // Heap buffer (avoids heap alloc in callback); allocated lazily, see ensureInitialized()
     unsigned int responseLength;
     unsigned long responseTimeout;
+
+    // Whole-aggregate sort scratch (MQTT-only — Golemio/BVG write straight into StopResult).
+    // Heap, allocated lazily so a non-MQTT device never pays the ~19KB. See ensureInitialized().
+    Departure* tempDepartures;
+
+    /**
+     * Lazily allocate the heavy MQTT resources (PubSubClient + its buffer, responseBuffer,
+     * tempDepartures) on first use — only a device actually running MQTT pays the ~27KB +
+     * ~8KB. Idempotent; called at the top of every fetchStop. (TA-0190)
+     * @return true if all resources are allocated, false on out-of-memory
+     */
+    bool ensureInitialized();
 
     /**
      * Connect to MQTT broker with optional authentication

@@ -13,13 +13,41 @@ MqttAPI* MqttAPI::instanceForCallback = nullptr;
 // Constructor / Destructor
 // ============================================================================
 
-MqttAPI::MqttAPI() : statusCallback(nullptr), responseReceived(false), responseLength(0), responseTimeout(0)
+MqttAPI::MqttAPI()
+    : mqttClient(nullptr), statusCallback(nullptr), responseReceived(false), responseBuffer(nullptr),
+      responseLength(0), responseTimeout(0), tempDepartures(nullptr)
 {
-    mqttClient = new PubSubClient(wifiClient);
-    mqttClient->setBufferSize(MQTT_BUFFER_SIZE); // CRITICAL: Must be called before connect
-    mqttClient->setCallback(messageCallback);
-
+    // No heavy allocation here — the global mqttAPI is constructed on every device, but only
+    // a device whose active city is MQTT ever calls fetchStop(). Resources are allocated there
+    // (ensureInitialized), so Prague/Berlin keep the ~27KB + ~8KB free. (TA-0190)
     instanceForCallback = this; // Set static pointer for callback
+}
+
+// Allocate the heavy MQTT resources on first use (idempotent). Partial allocations persist in
+// the members and are reused on the next call, so a transient OOM never leaks. Freed in dtor.
+bool MqttAPI::ensureInitialized()
+{
+    if (!mqttClient)
+    {
+        mqttClient = new PubSubClient(wifiClient);
+        if (!mqttClient)
+            return false;
+        mqttClient->setBufferSize(MQTT_BUFFER_SIZE); // CRITICAL: must be set before connect
+        mqttClient->setCallback(messageCallback);
+    }
+    if (!responseBuffer)
+    {
+        responseBuffer = (char*)malloc(MQTT_BUFFER_SIZE);
+        if (!responseBuffer)
+            return false;
+    }
+    if (!tempDepartures)
+    {
+        tempDepartures = (Departure*)malloc(sizeof(Departure) * MAX_TEMP_DEPARTURES);
+        if (!tempDepartures)
+            return false;
+    }
+    return true;
 }
 
 MqttAPI::~MqttAPI()
@@ -33,6 +61,11 @@ MqttAPI::~MqttAPI()
         delete mqttClient;
         mqttClient = nullptr;
     }
+
+    free(responseBuffer); // free(nullptr) is a no-op
+    responseBuffer = nullptr;
+    free(tempDepartures);
+    tempDepartures = nullptr;
 
     if (instanceForCallback == this)
     {
@@ -110,6 +143,19 @@ TransitAPI::StopResult MqttAPI::fetchStop(const Config& config, int index)
         return result;
     }
 
+    // Allocate the heavy buffers lazily — first MQTT fetch only. On a Prague/Berlin device
+    // this is never reached, so the ~27KB + ~8KB stays free. (TA-0190)
+    if (!ensureInitialized())
+    {
+        logTimestamp();
+        debugPrintln("MQTT: Out of memory allocating buffers");
+        result.hasError = true;
+        strlcpy(result.errorMsg, "MQTT: Out of memory", sizeof(result.errorMsg));
+        if (statusCallback)
+            statusCallback("MQTT: Out of memory");
+        return result;
+    }
+
     // Connect to broker
     if (!connectToBroker(config))
     {
@@ -157,10 +203,9 @@ TransitAPI::StopResult MqttAPI::fetchStop(const Config& config, int index)
         return result;
     }
 
-    // Parse response. MQTT keeps its own temp buffer: unlike Golemio/BVG (one stop
-    // each, hoisted to apiFetchTask), MQTT's single response carries the whole
+    // Parse response into the member temp buffer (heap, allocated above). Unlike Golemio/BVG
+    // (one stop each, hoisted to apiFetchTask), MQTT's single response carries the whole
     // aggregate and must be sorted before capping to MAX_DEPARTURES.
-    static Departure tempDepartures[MAX_TEMP_DEPARTURES];
     int tempCount = 0;
 
     if (!parseResponse(config, tempDepartures, tempCount))
@@ -296,6 +341,9 @@ void MqttAPI::handleMessage(char* topic, byte* payload, unsigned int length)
     debugPrint("MQTT: Message received (");
     debugPrint(length);
     debugPrintln(" bytes)");
+
+    if (!responseBuffer)
+        return; // can't happen (ensureInitialized runs before subscribe), but never deref null in a callback
 
     // Copy to pre-allocated buffer (no heap allocation in callback)
     unsigned int copyLen = (length < MQTT_BUFFER_SIZE - 1) ? length : MQTT_BUFFER_SIZE - 1;
