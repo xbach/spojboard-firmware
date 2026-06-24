@@ -62,8 +62,13 @@ bool BvgAPI::querySingleStop(const char* stopId,
                              bool& isFirstStop)
 {
     // Build URL without server-side time offset
-    // Format: https://v6.bvg.transport.rest/stops/{stopId}/departures?duration=120&results=12&when={unix_timestamp}
+    // Format: https://v6.bvg.transport.rest/stops/{stopId}/departures?duration=120&results=N&when={unix_timestamp}
     char url[256];
+
+    // Clamp the request to BVG_MAX_RESULTS: a busy hub's response at the full DEPS_PER_STOP
+    // (12) overflows the 32KB read cap and truncates -> IncompleteInput. Golemio has no such
+    // limit; this keeps the per-API request count decoupled from the shared buffer sizing.
+    const int requestResults = (DEPS_PER_STOP < BVG_MAX_RESULTS) ? DEPS_PER_STOP : BVG_MAX_RESULTS;
 
     // Calculate offset time: current time + minDepartureTime (in seconds)
     // BVG API accepts Unix timestamps (seconds since epoch)
@@ -76,7 +81,7 @@ bool BvgAPI::querySingleStop(const char* stopId,
              sizeof(url),
              "https://v6.bvg.transport.rest/stops/%s/departures?duration=120&results=%d&when=%ld",
              stopId,
-             DEPS_PER_STOP,
+             requestResults,
              (long)whenTime);
 
     HTTPClient http;

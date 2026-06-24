@@ -7,7 +7,7 @@
 // Departure Data Structures
 // ============================================================================
 
-#define DEPS_PER_STOP 10   // Departures requested per stop from API (BVG is ~2.2KB/dep; 10 keeps the response within the read buffer and largest free block on 4-panel builds)
+#define DEPS_PER_STOP 12   // Departures requested per stop (Golemio) + temp/accumulator sizing. Restored from 10 after TA-0224 freed ~32KB internal RAM: deeper per-stop horizon improves secondaryETA coverage on 4-panel. BVG clamps its own request to BVG_MAX_RESULTS (10) — its >2.7KB/dep payload overflows the 32KB read cap at 12 (verified on 4-panel Berlin hub 900120003).
 #define MAX_DEPARTURES 24  // Result cache size (larger for secondEta matching across multi-stop hubs)
 
 struct Departure
