@@ -118,7 +118,10 @@ struct Config
     char wifiPassword[64];
 
     // Per-city configuration fields
-    char pragueApiKey[300];    // Golemio API key for Prague
+    char pragueApiKey[512];    // Golemio API key (JWT) for Prague. Older keys embed an email in
+                               // the payload (~303 chars); newer keys ~224. Sized large so the
+                               // variable-length email never truncates the token (→ 401). NVS
+                               // stores the actual length, so the headroom is free. (Issue #5)
     char pragueStopIds[128];   // Prague stop IDs (e.g., "U693Z2P,U693Z1P")
     char berlinStopIds[128];   // Berlin stop IDs (e.g., "900013102")
     // Note: Berlin BVG API requires no authentication
