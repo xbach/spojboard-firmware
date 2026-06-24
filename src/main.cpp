@@ -523,6 +523,24 @@ void onTickerMode(bool enabled)
     }
 }
 
+// Per-stop accumulator entry. The stop index that produced a departure MUST travel
+// WITH the departure through qsort — a parallel `int[]` tag array desyncs the instant
+// qsort permutes only the Departure array, which then mis-targets the per-stop eviction
+// and produces duplicate trips. Binding the tag into the sorted record makes them
+// physically inseparable. (RAM-neutral: the int tag existed before as a parallel array.)
+struct AccEntry
+{
+    Departure dep;
+    int stopIndex;
+};
+
+// qsort comparator over AccEntry — delegates to compareDepartures on the embedded
+// departure so the stopIndex tag is co-permuted with its departure.
+static int compareAccEntry(const void* a, const void* b)
+{
+    return compareDepartures(&((const AccEntry*)a)->dep, &((const AccEntry*)b)->dep);
+}
+
 // ============================================================================
 // Departure publish helper (Stage B: shared by the per-stop orchestration)
 // ============================================================================
@@ -532,7 +550,7 @@ void onTickerMode(bool enabled)
 // second ETAs, and signals the display. Mutex is held only for the fast copy
 // (build-then-swap) so the display task never sees a half-written array.
 // Called only from apiFetchTask (single task) — the static snapshot buffer is safe.
-static void publishDepartureSnapshot(const Departure* acc, int accCount, const char* snapStopName,
+static void publishDepartureSnapshot(const AccEntry* acc, int accCount, const char* snapStopName,
                                      const char* snapInfoText, bool hasError, const char* errorMsg)
 {
     static Departure snapshot[MAX_DEPARTURES];
@@ -542,12 +560,12 @@ static void publishDepartureSnapshot(const Departure* acc, int accCount, const c
 
     for (int i = 0; i < accCount && snapCount < MAX_DEPARTURES; i++)
     {
-        int diffSec = difftime(acc[i].departureTime, now);
+        int diffSec = difftime(acc[i].dep.departureTime, now);
         int eta = (diffSec > 0) ? (diffSec / 60) : 0;
         // Keep only future departures meeting the minimum threshold (eta=0 = <1min).
         if (diffSec > 0 && eta >= config.minDepartureTime)
         {
-            snapshot[snapCount] = acc[i];
+            snapshot[snapCount] = acc[i].dep;
             snapshot[snapCount].eta = eta;
             snapCount++;
         }
@@ -688,12 +706,13 @@ void apiFetchTask(void* parameter)
             }
 
             // Persistent accumulator (survives across cycles for keep-stale-per-stop).
-            // accStopIndex[i] records which stop index produced accDepartures[i], so a
-            // stop's old rows are evicted on its next SUCCESSFUL fetch without touching
-            // other stops — and without relying on sourceStopId (MQTT sets it freely).
+            // acc[i].stopIndex records which stop produced acc[i].dep, so a stop's old rows
+            // are evicted on its next SUCCESSFUL fetch without touching other stops — and
+            // without relying on sourceStopId (MQTT sets it freely). The tag is bound INTO
+            // AccEntry (not a parallel array) so it co-permutes with its departure through
+            // the ETA qsort; a parallel array would desync and mis-target the eviction.
             // Static: lives in .bss, never on the task stack, never pruned mid-cycle.
-            static Departure accDepartures[DEPS_PER_STOP * 12];
-            static int accStopIndex[DEPS_PER_STOP * 12];
+            static AccEntry acc[DEPS_PER_STOP * 12];
             static int accCount = 0;
             const int ACC_CAPACITY = DEPS_PER_STOP * 12;
 
@@ -704,13 +723,10 @@ void apiFetchTask(void* parameter)
                 int w = 0;
                 for (int i = 0; i < accCount; i++)
                 {
-                    if (accStopIndex[i] < stopCount)
+                    if (acc[i].stopIndex < stopCount)
                     {
                         if (w != i)
-                        {
-                            accDepartures[w] = accDepartures[i];
-                            accStopIndex[w] = accStopIndex[i];
-                        }
+                            acc[w] = acc[i];
                         w++;
                     }
                 }
@@ -741,25 +757,23 @@ void apiFetchTask(void* parameter)
                 }
                 else
                 {
-                    // Evict this stop's old rows, then insert its fresh ones.
+                    // Evict this stop's old rows, then insert its fresh ones. The stopIndex
+                    // tag travels inside AccEntry, so it stays correct across the ETA sort.
                     int w = 0;
                     for (int i = 0; i < accCount; i++)
                     {
-                        if (accStopIndex[i] != s)
+                        if (acc[i].stopIndex != s)
                         {
                             if (w != i)
-                            {
-                                accDepartures[w] = accDepartures[i];
-                                accStopIndex[w] = accStopIndex[i];
-                            }
+                                acc[w] = acc[i];
                             w++;
                         }
                     }
                     accCount = w;
                     for (int i = 0; i < sr.departureCount && accCount < ACC_CAPACITY; i++)
                     {
-                        accDepartures[accCount] = sr.departures[i];
-                        accStopIndex[accCount] = s;
+                        acc[accCount].dep = sr.departures[i];
+                        acc[accCount].stopIndex = s;
                         accCount++;
                     }
                 }
@@ -775,14 +789,15 @@ void apiFetchTask(void* parameter)
                     strlcat(cycleInfoText, sr.infoText, sizeof(cycleInfoText));
                 }
 
-                // Sort accumulator by ETA so the published cap keeps the soonest.
+                // Sort accumulator by ETA so the published cap keeps the soonest. The
+                // comparator co-permutes each entry's stopIndex tag with its departure.
                 if (accCount > 1)
-                    qsort(accDepartures, accCount, sizeof(Departure), compareDepartures);
+                    qsort(acc, accCount, sizeof(AccEntry), compareAccEntry);
 
                 // Progressive publish during initial fill (skip the last stop — the
                 // post-loop publish covers it).
                 if (incrementalPublish && s < stopCount - 1)
-                    publishDepartureSnapshot(accDepartures, accCount, cycleStopName, cycleInfoText, false, "");
+                    publishDepartureSnapshot(acc, accCount, cycleStopName, cycleInfoText, false, "");
 
                 if (s < stopCount - 1)
                     delay(1000); // inter-stop rate limiting (hoisted from the clients)
@@ -792,7 +807,7 @@ void apiFetchTask(void* parameter)
             // set only when there's nothing to show (keep-stale means a cached prior cycle
             // keeps accCount > 0 even if every stop failed this round).
             bool cycleError = (accCount == 0);
-            publishDepartureSnapshot(accDepartures, accCount, cycleStopName, cycleInfoText, cycleError,
+            publishDepartureSnapshot(acc, accCount, cycleStopName, cycleInfoText, cycleError,
                                      cycleError ? "No departures" : "");
 
             logTimestamp();
