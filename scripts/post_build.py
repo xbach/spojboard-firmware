@@ -16,8 +16,15 @@ def post_program_action(source, target, env):
         if match:
             release_num = match.group(1)
 
-    # Get build ID from environment (set by build_timestamp.py)
+    # Get build ID from environment (set by build_id.py)
     build_id = env.get("FIRMWARE_BUILD_ID", "unknown")
+
+    # A dirty build is NOT the commit its ID names, so it must not be able to
+    # masquerade as a release artifact in dist/. The suffix goes on the build-ID
+    # field, after the "-r<release>-" marker, so the variant is still the text
+    # between "spojboard-" and the first "-r" -- the grammar GitHubOTA.cpp parses.
+    if env.get("FIRMWARE_BUILD_DIRTY"):
+        build_id = f"{build_id}-dirty"
 
     # Get hardware variant from project environment
     variant = env.GetProjectOption("custom_hardware_variant", "unknown")

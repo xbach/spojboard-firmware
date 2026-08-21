@@ -12,6 +12,10 @@
 
 // Build ID is injected by build script (8 hex characters)
 // Generated from build timestamp using DJB2 hash algorithm
+#ifndef BUILD_DIRTY
+#define BUILD_DIRTY 0 // Fallback if not set by build system (scripts/build_id.py)
+#endif
+
 #ifndef BUILD_ID
 #define BUILD_ID 0x00000000 // Fallback if not set by build system
 #endif

@@ -18,9 +18,11 @@ String buildSystemTab(const Config* config, bool apModeActive, size_t freeHeap, 
     html += "<span class='info-value'>" + String(VARIANT_DISPLAY_NAME) + "</span>";
     html += "</div>";
 
-    // Firmware version with build ID
-    char buildIdStr[10];
-    snprintf(buildIdStr, sizeof(buildIdStr), "%08x", BUILD_ID);
+    // Firmware version with build ID. The ID is a git SHA prefix, so it is a
+    // real reference -- unless the tree was dirty, in which case it names a
+    // commit this binary does NOT match, and must say so.
+    char buildIdStr[24];
+    snprintf(buildIdStr, sizeof(buildIdStr), "%08x%s", BUILD_ID, BUILD_DIRTY ? "-dirty" : "");
     html += "<div class='info-row'>";
     html += "<span class='info-label'>Firmware:</span>";
     html += "<span class='info-value'>Release " + String(FIRMWARE_RELEASE) + " (" + String(buildIdStr) + ")</span>";

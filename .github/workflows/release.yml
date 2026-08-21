@@ -21,16 +21,34 @@ jobs:
       with:
         python-version: '3.11'
 
+    # PlatformIO core is pinned like everything else: it chooses the dependency
+    # resolver and the build pipeline, so floating it floats the firmware.
     - name: Install PlatformIO
       run: |
         python -m pip install --upgrade pip
-        pip install platformio
+        pip install 'platformio==6.1.18'
+
+    - name: Run host-native tests
+      run: pio test -e native
 
     - name: Build firmware (all variants)
       run: |
         echo "Building all hardware variants..."
         pio run -e matrixportal_s3
         pio run -e esp32_s3_n8r2
+
+    # The whole point of pinning platform-espressif32 by release URL is that CI
+    # and the dev machine build the same firmware. Until r8 they did not: a clean
+    # runner resolved the bare name "espressif32" to platformio/espressif32 7.0.1
+    # (Arduino core 2.0.17) while the dev machine used the pioarduino fork
+    # (Arduino core 3.3.7). Fail loudly if that ever drifts apart again.
+    - name: Verify pinned toolchain
+      run: |
+        pio pkg list -e matrixportal_s3 2>&1 | tee /tmp/pkgs.txt
+        if ! grep -q 'framework-arduinoespressif32 @ 3.3.7' /tmp/pkgs.txt; then
+          echo "::error::Expected Arduino core 3.3.7; toolchain resolution has drifted."
+          exit 1
+        fi
 
     - name: Get release number from tag
       id: get_version
