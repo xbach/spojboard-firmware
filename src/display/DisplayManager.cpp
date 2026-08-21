@@ -230,6 +230,13 @@ bool DisplayManager::begin(int brightness, int panelRows)
                       layout.displayWidth, layout.displayHeight, layout.panelCount);
     }
 
+    // Adafruit_GFX constructs with wrap=true, which snaps any cursor at or beyond
+    // the right edge back to x=0 one yAdvance down -- and getTextBounds() carries
+    // the same logic, so it MIS-MEASURES every string wider than the panel, i.e.
+    // exactly the strings that scroll. Every draw site here measures and truncates
+    // explicitly, so wrapping is never wanted.
+    gfx->setTextWrap(false);
+
     // Initialize color constants
     initColors(dmaDisplay);
 
