@@ -1408,11 +1408,16 @@ char DisplayManager::mapWeatherCodeToIcon(int wmoCode)
     if (wmoCode >= 45 && wmoCode <= 48)
         return 'f'; // Fog
     if (wmoCode >= 51 && wmoCode <= 57)
-        return 'g'; // Drizzle/light rain
+        return 'g'; // Drizzle + freezing drizzle
     if (wmoCode >= 61 && wmoCode <= 67)
-        return 'd'; // Rain
+        return 'd'; // Rain + freezing rain
+    // 80-82 (rain showers) sit INSIDE the 71-86 span but are rain, not snow.
+    // They must be tested first: WMO interleaves showers between snow fall
+    // (71-77) and snow showers (85-86), so no single range covers snow.
+    if (wmoCode >= 80 && wmoCode <= 82)
+        return 'd'; // Rain showers
     if (wmoCode >= 71 && wmoCode <= 86)
-        return 'e'; // Snow/sleet
+        return 'e'; // Snow fall, snow grains, snow showers
     if (wmoCode >= 95)
         return 't'; // Thunderstorm
     return 'c';     // Default: cloudy
@@ -1429,6 +1434,8 @@ uint16_t DisplayManager::getWeatherColor(int wmoCode)
         return COLOR_PURPLE; // Fog
     if (wmoCode >= 51 && wmoCode <= 67)
         return COLOR_CYAN; // Drizzle/Rain
+    if (wmoCode >= 80 && wmoCode <= 82)
+        return COLOR_CYAN; // Rain showers (inside the 71-86 span, see mapWeatherCodeToIcon)
     if (wmoCode >= 71 && wmoCode <= 86)
         return COLOR_BLUE; // Snow
     if (wmoCode >= 95)
