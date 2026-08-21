@@ -146,6 +146,24 @@ void DisplayManager::applyInfoText(const char* text)
     }
 }
 
+// Null-object drawing surface. Used only if the HUB75 panel object itself could
+// not be allocated -- it keeps `gfx` non-null so every draw call in this file is a
+// harmless no-op instead of a crash. A failed panel must never take WiFi and the
+// web config down with it; that is the only way to recover a device remotely.
+// (A panel whose begin() merely failed needs no such help: every DMA entry point
+// in ESP32-HUB75-MatrixPanel-I2S-DMA already early-returns on !initialized.)
+namespace
+{
+class NullGFX : public Adafruit_GFX
+{
+public:
+    NullGFX(int16_t w, int16_t h) : Adafruit_GFX(w, h) {}
+    void drawPixel(int16_t, int16_t, uint16_t) override {}
+};
+
+NullGFX nullSurface(128, 64);
+} // namespace
+
 DisplayManager::~DisplayManager()
 {
     if (virtualDisplay)
@@ -200,10 +218,21 @@ bool DisplayManager::begin(int brightness, int panelRows)
 
     dmaDisplay = new MatrixPanel_I2S_DMA(mxconfig);
 
-    if (!dmaDisplay->begin())
+    if (!dmaDisplay)
+    {
+        Serial.println("Display allocation FAILED!");
+        gfx = &nullSurface;
+        gfx->setTextWrap(false);
+        return false;
+    }
+
+    // A failed begin() is NOT fatal and must not short-circuit the rest of this
+    // function: `gfx` has to end up wired either way, because setup() carries on
+    // to WiFi/web-config so the device stays reachable without a panel.
+    const bool hardwareOk = dmaDisplay->begin();
+    if (!hardwareOk)
     {
         Serial.println("Display FAILED!");
-        return false;
     }
 
     dmaDisplay->setBrightness8(brightness);
@@ -240,7 +269,7 @@ bool DisplayManager::begin(int brightness, int panelRows)
     // Initialize color constants
     initColors(dmaDisplay);
 
-    return true;
+    return hardwareOk;
 }
 
 void DisplayManager::clearScreen()
@@ -1054,7 +1083,8 @@ void DisplayManager::clearDisplay()
 
     isDrawing = true;
     clearScreen();
-    dmaDisplay->setBrightness8(0); // Turn off display
+    if (dmaDisplay)
+        dmaDisplay->setBrightness8(0); // Turn off display
     delay(1);
     isDrawing = false;
 }

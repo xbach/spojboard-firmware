@@ -139,11 +139,16 @@ void setup()
     // Select transit API by config.city + wire the status callback
     selectTransitAPI();
 
-    // Initialize display with correct brightness from config
+    // Initialize display with correct brightness from config.
+    // NOT fatal: a dead panel must not cost us WiFi, the web config and OTA --
+    // those are the only way to recover a device that has no working display.
+    // DisplayManager keeps its drawing surface valid on failure, so every draw
+    // below silently no-ops. Deliberately NOT reordered after WiFi: the boot
+    // status screens ("Starting SpojBoard...", "WiFi Failed!") are the only
+    // local output this device has.
     if (!displayManager.begin(config.brightness, config.panelRows))
     {
-        debugPrintln("Display initialization failed!");
-        return;
+        debugPrintln("Display initialization failed - continuing headless!");
     }
     displayManager.setConfig(&config);
     logMemory("display_init");
