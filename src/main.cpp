@@ -5,7 +5,6 @@
 #include "utils/TimeUtils.h"
 #include "utils/gfxlatin2.h"
 #include "utils/RestMode.h"
-#include "utils/TelnetLogger.h"
 #include "config/AppConfig.h"
 #include "api/DepartureData.h"
 #include "api/GolemioAPI.h"
@@ -133,9 +132,6 @@ void setup()
     // Load configuration FIRST (needed for display brightness)
     loadConfig(config);
 
-    // Initialize logger with config for debug mode checks (MUST be after loadConfig)
-    initLogger(&config);
-
     // Select transit API by config.city + wire the status callback
     selectTransitAPI();
 
@@ -211,14 +207,6 @@ void setup()
         debugPrintln("Initializing timezone configuration...");
         initTimeSync();
         apiFetchRequest.timezoneInitialized = true; // Allow API fetches now
-
-        // Start telnet logger if debug mode enabled
-        if (config.debugMode)
-        {
-            TelnetLogger::getInstance().begin(23);
-            logTimestamp();
-            debugPrintln("Debug mode enabled - telnet logging active");
-        }
     }
 
     // Initialize web server with callbacks
@@ -308,12 +296,6 @@ void loop()
 
     // Handle web server requests
     webServer.handleClient();
-
-    // Process telnet connections if debug enabled
-    if (config.debugMode)
-    {
-        TelnetLogger::getInstance().loop();
-    }
 
     // Update web server state for status display
     pushWebServerState();

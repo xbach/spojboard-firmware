@@ -209,10 +209,7 @@ If your issue isn't covered here:
 
 2. **Enable Debug Mode**
    - Enable debug mode in web configuration
-   - Connect via telnet to see detailed logs:
-     ```bash
-     telnet <device-ip> 23
-     ```
+   - This turns on verbose HTTP chunk and API-parse logging on the serial console
 
 3. **Try Demo Mode**
    - Use demo mode to verify hardware is functioning

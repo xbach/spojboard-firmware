@@ -85,7 +85,7 @@ String buildOptionalTab(const Config* config)
     if (config->debugMode)
         html += " checked";
     html += "> Enable debug mode</label>";
-    html += "<div class='help-text'>Enable telnet logging and verbose output</div>";
+    html += "<div class='help-text'>Verbose HTTP and API logging on the serial console</div>";
     html += "</div>";
 
     html += "</div>"; // End debug form-group

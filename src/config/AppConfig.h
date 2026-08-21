@@ -153,7 +153,7 @@ struct Config
     char platformSymbolMap[256]; // Platform-to-arrow mappings (format: "B=3,ID:U693Z2P=7")
     char city[16];          // Transit city: "Prague" or "Berlin"
     char language[8];       // Display language: "en", "cs", "de"
-    bool debugMode;         // Enable telnet logging and verbose output
+    bool debugMode;         // Enable verbose HTTP/API logging on Serial
     bool showPlatform;      // Display platform/track between destination and ETA
     bool scrollEnabled;     // Enable scrolling for long destination names (default: off)
     bool showMultipleTimes; // Show next two departure times per line (default: off)

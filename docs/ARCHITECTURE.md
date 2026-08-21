@@ -413,12 +413,12 @@ With 12 stops configured, a full query cycle takes ~12 seconds (plus network lat
 
 ## Debugging & Logging
 
-### Debug Mode (Telnet)
-When `config.debugMode = true`:
-- Telnet server listens on port 23
-- All `debugPrintln()` calls mirrored to telnet clients
-- Memory usage logged at key points
-- API responses logged with timestamps
+### Debug Mode
+When `config.debugMode = true`, the transit clients and `readHttpResponse()` emit
+verbose diagnostics on Serial: per-chunk HTTP read progress, raw API payload sizes
+and the first few parsed departures. It gates volume only — it is not a separate
+log sink. (A telnet mirror on port 23 existed until r9 and was removed along with
+the `ESPTelnet` dependency.)
 
 ### Serial Output
 Always available (115200 baud):
@@ -433,7 +433,7 @@ Key checkpoints logged via `logMemory()` (printed as `MEM@<label>`):
 - `post_fetch` - After the first departures fetch (the HTTPS handshake peak)
 - `weather_start` / `weather_complete` - Around the weather fetch (tightest contiguous-block point)
 
-Use telnet to monitor memory in real-time:
+Watch these on the serial console:
 ```bash
-telnet <device-ip> 23
+pio device monitor
 ```

@@ -5,6 +5,11 @@
 
 // ============================================================================
 // Debug Logging Utilities
+//
+// Everything here goes to Serial and nowhere else. Telnet mirroring was removed
+// (it cost a dependency and a listening port for a channel nobody used); the
+// separate `config.debugMode` flag survives and still gates the verbose HTTP /
+// API chunk logging in HttpUtils and the transit clients.
 // ============================================================================
 
 /**
@@ -19,32 +24,25 @@ void logTimestamp();
 void logMemory(const char* location);
 
 /**
- * Initialize logger with config reference
- * Must be called before using conditional logging functions
- * @param cfg Pointer to config structure
- */
-void initLogger(const struct Config* cfg);
-
-/**
- * Print message to Serial and telnet (if debug enabled)
+ * Print message to Serial
  * @param message Message to print
  */
 void debugPrint(const char* message);
 
 /**
- * Print message with newline to Serial and telnet (if debug enabled)
+ * Print message with newline to Serial
  * @param message Message to print
  */
 void debugPrintln(const char* message);
 
 /**
- * Print integer to Serial and telnet (if debug enabled)
+ * Print integer to Serial
  * @param value Integer value to print
  */
 void debugPrint(int value);
 
 /**
- * Print unsigned integer to Serial and telnet (if debug enabled)
+ * Print unsigned integer to Serial
  * Also handles size_t on ESP32 (where size_t == unsigned int)
  * @param value Unsigned integer value to print
  */
