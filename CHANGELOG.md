@@ -2,7 +2,7 @@
 
 All notable changes to SpojBoard firmware will be documented in this file.
 
-## [r9] - Unreleased
+## [r9] - 2026-08-22
 
 ### Fixed
 - Weather now shows rain, not snow, during rain showers
