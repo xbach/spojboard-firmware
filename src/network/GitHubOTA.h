@@ -55,7 +55,18 @@ class GitHubOTA
     bool downloadAndInstall(const char* assetUrl, size_t expectedSize, ProgressCallback onProgress);
 
   private:
-    static constexpr int JSON_BUFFER_SIZE = 8192;
+    // The GitHub release payload is parsed through an ArduinoJson Filter that
+    // keeps only the six fields actually read. Measured on real payloads: an
+    // unfiltered doc grows ~1,248 bytes per asset (8KB overflows at FOUR assets
+    // and r8's own 2-asset release already used 6,772 of 8,192); filtered it
+    // grows ~256 bytes per asset, so 12KB covers 16 assets plus a 4KB changelog
+    // with room to spare. This is what stops the asset count from ever being
+    // able to break update checks again.
+    static constexpr int JSON_BUFFER_SIZE = 12288;
+    // Cap on the raw response we buffer before parsing. `http.getString()` had
+    // no cap at all, so the whole payload landed on the heap at whatever size
+    // GitHub sent.
+    static constexpr size_t JSON_READ_CAP = 32768;
     static constexpr int HTTP_TIMEOUT_MS = 30000; // 30 seconds for downloads
     static constexpr const char* GITHUB_API_URL =
         "https://api.github.com/repos/xbach/spojboard-firmware/releases/latest";
@@ -83,15 +94,6 @@ class GitHubOTA
      * @return true if format is valid
      */
     bool validateFirmwareFilename(const char* filename);
-
-    /**
-     * Extract hardware variant from filename
-     * @param filename Firmware filename (e.g., "spojboard-matrixportal_s3-r4-hash.bin")
-     * @param variant Output buffer for variant name
-     * @param variantSize Size of variant buffer
-     * @return true if variant extracted successfully
-     */
-    bool extractVariantFromFilename(const char* filename, char* variant, size_t variantSize);
 
     /**
      * Set error message

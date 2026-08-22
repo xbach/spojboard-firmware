@@ -2,6 +2,7 @@
 #include "../config/AppConfig.h"
 #include "../utils/Logger.h"
 #include "../utils/HttpUtils.h"
+#include "OtaAssetName.h"
 #include <Update.h>
 #include <WiFi.h>
 
@@ -33,44 +34,6 @@ int GitHubOTA::parseReleaseNumber(const char* tagName)
     return releaseNum;
 }
 
-bool GitHubOTA::extractVariantFromFilename(const char* filename, char* variant, size_t variantSize)
-{
-    // Expected format: spojboard-{variant}-r{number}-{8hex}.bin
-    // Example: spojboard-matrixportal_s3-r4-a1b2c3d4.bin
-
-    if (!filename || !variant)
-    {
-        return false;
-    }
-
-    // Find "spojboard-" prefix
-    const char* start = strstr(filename, "spojboard-");
-    if (!start)
-    {
-        return false;
-    }
-
-    start += 10; // Skip "spojboard-"
-
-    // Find next "-r" which marks end of variant
-    const char* end = strstr(start, "-r");
-    if (!end)
-    {
-        return false;
-    }
-
-    // Extract variant name
-    int len = end - start;
-    if (len <= 0 || (size_t)len >= variantSize)
-    {
-        return false;
-    }
-
-    strncpy(variant, start, len);
-    variant[len] = '\0';
-    return true;
-}
-
 bool GitHubOTA::validateFirmwareFilename(const char* filename)
 {
     // Expected formats:
@@ -95,24 +58,26 @@ bool GitHubOTA::validateFirmwareFilename(const char* filename)
         return false;
     }
 
-    // Try to extract variant (new format)
-    char fileVariant[32] = {0};
-    if (extractVariantFromFilename(filename, fileVariant, sizeof(fileVariant)))
+    // New format: spojboard-<board>[_<display>]-r<n>-<id>.bin
+    OtaAssetInfo info = otaClassifyAsset(filename, VARIANT_NAME);
+    if (info.match == OtaAssetMatch::Bare)
     {
-        // New format with variant - verify it matches current hardware
-        if (strcmp(fileVariant, VARIANT_NAME) != 0)
-        {
-            logTimestamp();
-            Serial.print("Firmware variant mismatch: file is for '");
-            Serial.print(fileVariant);
-            Serial.print("', you have '");
-            Serial.print(VARIANT_NAME);
-            Serial.println("'");
-            return false;
-        }
-
-        // Variant matches
         return true;
+    }
+    if (info.match == OtaAssetMatch::Display)
+    {
+        // A display-suffixed build is only ours if the geometry matches too.
+        if (strcmp(info.display, DISPLAY_VARIANT_NAME) == 0)
+        {
+            return true;
+        }
+        logTimestamp();
+        Serial.print("Firmware display mismatch: file is for '");
+        Serial.print(info.display);
+        Serial.print("', this build is '");
+        Serial.print(DISPLAY_VARIANT_NAME);
+        Serial.println("'");
+        return false;
     }
 
     // Couldn't extract variant - check if it's old format (spojboard-r{num}-{hash}.bin)
@@ -149,31 +114,53 @@ bool GitHubOTA::findBinaryAsset(JsonDocument& doc, char* outUrl, char* outName, 
         return false;
     }
 
-    // Iterate through all assets to find matching variant
-    for (JsonObject asset : assets)
+    // TWO PASSES, most specific first. A release may carry a bare asset per
+    // board, per-display assets, or both, and the order GitHub lists them in is
+    // upload order -- not something to depend on. Taking the first validating
+    // asset would let a bare build win over an exact geometry match purely
+    // because it was uploaded earlier.
+    //
+    //   pass 1: spojboard-<board>_<DISPLAY_VARIANT_NAME>-...   exact geometry
+    //   pass 2: spojboard-<board>-...                          bare, any geometry
+    //
+    // So a release with no display suffixes at all still updates every device,
+    // and one that adds them routes each device to its own build. A release
+    // carrying ONLY geometries this device is not (e.g. 2x64 alone) matches
+    // nothing and is correctly reported as no firmware for this hardware.
+    for (int pass = 0; pass < 2; pass++)
     {
-        const char* name = asset["name"];
-        const char* url = asset["browser_download_url"];
-        int size = asset["size"] | 0;
+        const OtaAssetMatch want = (pass == 0) ? OtaAssetMatch::Display : OtaAssetMatch::Bare;
 
-        if (name && url && size > 0)
+        for (JsonObject asset : assets)
         {
-            // Check if it's a .bin file
-            size_t nameLen = strlen(name);
-            if (nameLen > 4 && strcmp(name + nameLen - 4, ".bin") == 0)
+            const char* name = asset["name"];
+            const char* url = asset["browser_download_url"];
+            int size = asset["size"] | 0;
+
+            if (!name || !url || size <= 0)
             {
-                // Validate filename format and variant match
-                if (validateFirmwareFilename(name))
-                {
-                    // Found matching firmware for this hardware
-                    strlcpy(outName, name, 64);
-                    strlcpy(outUrl, url, 256);
-                    outSize = size;
-                    return true;
-                }
-                // If validation fails, continue checking other .bin files
-                // (they might be for different hardware variants)
+                continue;
             }
+
+            OtaAssetInfo info = otaClassifyAsset(name, VARIANT_NAME);
+            if (info.match != want)
+            {
+                continue;
+            }
+            if (want == OtaAssetMatch::Display && strcmp(info.display, DISPLAY_VARIANT_NAME) != 0)
+            {
+                continue;
+            }
+
+            logTimestamp();
+            Serial.print("Selected asset: ");
+            Serial.print(name);
+            Serial.println(want == OtaAssetMatch::Display ? " (exact display match)" : " (bare)");
+
+            strlcpy(outName, name, 64);
+            strlcpy(outUrl, url, 256);
+            outSize = size;
+            return true;
         }
     }
 
@@ -247,12 +234,38 @@ GitHubOTA::ReleaseInfo GitHubOTA::checkForUpdate(const char* currentRelease)
         return result;
     }
 
-    // Parse JSON response
-    String payload = http.getString();
+    // Read with a cap (getString() had none) and parse through a filter that
+    // keeps only the fields below. Without the filter the document grows with
+    // every asset a release carries and silently starts returning NoMemory --
+    // measured at four assets against the old 8KB buffer.
+    String payload = readHttpResponse(http, JSON_READ_CAP);
     http.end();
 
+    // Sized with margin and checked, because a filter document that overflows
+    // does so SILENTLY: it simply drops its last keys, and the fields it drops
+    // then read back as null from every asset. At 192 bytes this dropped
+    // browser_download_url and size -- the two fields findBinaryAsset requires
+    // -- which presents as "no firmware for this hardware", not as a parse
+    // error. 256 is the measured requirement on a 64-bit host; slots are
+    // smaller on the ESP32, so this is generous on purpose.
+    StaticJsonDocument<512> filter;
+    filter["tag_name"] = true;
+    filter["name"] = true;
+    filter["body"] = true;
+    filter["assets"][0]["name"] = true;
+    filter["assets"][0]["browser_download_url"] = true;
+    filter["assets"][0]["size"] = true;
+
+    if (filter.overflowed())
+    {
+        logTimestamp();
+        Serial.println("FATAL: OTA filter document overflowed - update check cannot be trusted");
+        setError(result, "Internal filter error");
+        return result;
+    }
+
     DynamicJsonDocument doc(JSON_BUFFER_SIZE);
-    DeserializationError error = deserializeJson(doc, payload);
+    DeserializationError error = deserializeJson(doc, payload, DeserializationOption::Filter(filter));
 
     if (error)
     {
@@ -348,25 +361,23 @@ bool GitHubOTA::downloadAndInstall(const char* assetUrl, size_t expectedSize, Pr
     const char* lastSlash = strrchr(assetUrl, '/');
     const char* filename = lastSlash ? lastSlash + 1 : assetUrl;
 
-    // Validate hardware variant matches firmware
-    char fileVariant[32] = {0};
-    if (!extractVariantFromFilename(filename, fileVariant, sizeof(fileVariant)))
-    {
-        logTimestamp();
-        Serial.println("Download Error: Invalid firmware filename format");
-        return false;
-    }
-
-    if (strcmp(fileVariant, VARIANT_NAME) != 0)
+    // Re-validate independently of the selection pass. This is the gate that
+    // matters: it also covers a URL that did not come from findBinaryAsset.
+    // It MUST use the same grammar as selection -- checking the raw variant
+    // token against VARIANT_NAME here would reject every display-suffixed
+    // asset the selector had just legitimately chosen.
+    if (!validateFirmwareFilename(filename))
     {
         logTimestamp();
         Serial.println("===========================================");
         Serial.println("DOWNLOAD BLOCKED: HARDWARE MISMATCH!");
         Serial.println("===========================================");
-        Serial.print("Firmware file is for: ");
-        Serial.println(fileVariant);
+        Serial.print("Firmware file: ");
+        Serial.println(filename);
         Serial.print("Your hardware is: ");
-        Serial.println(VARIANT_DISPLAY_NAME);
+        Serial.print(VARIANT_NAME);
+        Serial.print(" / ");
+        Serial.println(DISPLAY_VARIANT_NAME);
         Serial.println("");
         Serial.println("Flashing wrong firmware could damage hardware.");
         Serial.println("Download cancelled for safety.");

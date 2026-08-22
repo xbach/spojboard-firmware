@@ -33,6 +33,18 @@
 // Export variant info
 #define FIRMWARE_VARIANT HARDWARE_VARIANT
 #define VARIANT_NAME HARDWARE_NAME
+
+// Display geometry this binary is built for, as it appears in a release asset
+// name: spojboard-<VARIANT_NAME>_<DISPLAY_VARIANT_NAME>-r<n>-<id>.bin
+//
+// Every publicly released board is 2x32 (two 64x32 panels). Geometry is still
+// chosen at RUNTIME here via config.panelRows -- this constant only tells the
+// OTA matcher which suffixed asset to prefer if a future release publishes
+// per-display binaries, and is deliberately NOT wired to panelRows. When
+// geometry moves to build time (TA-0269) this becomes a per-env build flag.
+#ifndef DISPLAY_VARIANT_NAME
+#define DISPLAY_VARIANT_NAME "2x32"
+#endif
 #define VARIANT_DISPLAY_NAME HARDWARE_DISPLAY_NAME
 
 // ============================================================================
