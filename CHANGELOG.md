@@ -15,6 +15,7 @@ All notable changes to SpojBoard firmware will be documented in this file.
 - Desktop test suite covering firmware-file naming and update parsing
 
 ### Changed
+- The board now appears on your network as `spojboard-9B9D2C` instead of `esp32s3-9B9D2C`, so it is recognisable in a router's device list; the name is shown on the System tab and matches the setup network name the board creates
 - Firmware build IDs are now the git commit they were built from, so a board reports exactly which source it runs; builds from uncommitted changes are labelled `-dirty`
 - Exact toolchain and library versions are pinned, so a given release always rebuilds to the same firmware
 - Removed telnet logging; the debug-mode setting now controls detailed logging on the serial console

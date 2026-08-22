@@ -1,5 +1,6 @@
 #include "MqttAPI.h"
 #include "../utils/Logger.h"
+#include "../network/WiFiManager.h"
 #include <Arduino.h>
 #include <WiFi.h>
 
@@ -256,11 +257,10 @@ bool MqttAPI::connectToBroker(const Config& config)
         return true;
     }
 
-    // Generate unique client ID from MAC address
-    uint8_t mac[6];
-    WiFi.macAddress(mac);
-    char clientId[32];
-    snprintf(clientId, sizeof(clientId), "spojboard-%02X%02X%02X", mac[3], mac[4], mac[5]);
+    // Same name the device announces to DHCP, from the same MAC read -- the broker's
+    // client list and the router's client list now agree instead of being two
+    // independently-derived strings that happened to match.
+    const char* clientId = WiFiManager::getHostname();
 
     logTimestamp();
     debugPrint("MQTT: Connecting to ");

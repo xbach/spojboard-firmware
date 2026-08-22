@@ -2,6 +2,7 @@
 #include "../utils/Logger.h"
 #include "../display/DisplayColors.h"
 #include <esp_random.h>
+#include <esp_mac.h>
 
 WiFiManager::WiFiManager() : apModeActive(false)
 {
@@ -16,6 +17,14 @@ bool WiFiManager::connectSTA(const Config& config, int maxAttempts, int delayMs)
     logTimestamp();
     debugPrintln(msg);
 
+    // ORDER IS LOAD-BEARING: the hostname must be set BEFORE WiFi.mode(WIFI_STA).
+    // WiFi.setHostname() only writes a global string; the core copies that string
+    // into the STA netif exactly once, on the transition INTO STA mode
+    // (WiFiGeneric.cpp calls esp_netif_set_hostname when STA was not previously
+    // enabled). Set it afterwards and it silently does nothing for the rest of the
+    // session -- WiFi.getHostname() reports the new value while DHCP keeps
+    // announcing the core default -- which reads as "setHostname is broken".
+    WiFi.setHostname(getHostname());
     WiFi.mode(WIFI_STA);
     WiFi.begin(config.wifiSsid, config.wifiPassword);
 
@@ -126,10 +135,37 @@ void WiFiManager::attemptReconnect()
 
 void WiFiManager::generateAPName()
 {
-    // Create unique AP name using last 4 chars of MAC
-    uint8_t mac[6];
-    WiFi.macAddress(mac);
-    snprintf(apSSID, sizeof(apSSID), "%s%02X%02X", AP_SSID_PREFIX, mac[4], mac[5]);
+    // Last 4 chars of the 6-char device code == the old mac[4],mac[5] pair, so the
+    // SSID is byte-identical to what shipped before -- but it now comes from the
+    // same MAC read as the hostname and the MQTT client ID instead of a separate
+    // WiFi.macAddress() call that only works once the STA netif exists.
+    snprintf(apSSID, sizeof(apSSID), "%s%s", AP_SSID_PREFIX, getDeviceCode() + 2);
+}
+
+const char* WiFiManager::getDeviceCode()
+{
+    static char code[7] = {0}; // 6 hex chars + null
+
+    if (code[0] == '\0')
+    {
+        uint8_t mac[6] = {0};
+        esp_read_mac(mac, ESP_MAC_WIFI_STA);
+        snprintf(code, sizeof(code), "%02X%02X%02X", mac[3], mac[4], mac[5]);
+    }
+
+    return code;
+}
+
+const char* WiFiManager::getHostname()
+{
+    static char hostname[32] = {0}; // esp_netif_set_hostname caps at 32 bytes
+
+    if (hostname[0] == '\0')
+    {
+        snprintf(hostname, sizeof(hostname), "%s%s", HOSTNAME_PREFIX, getDeviceCode());
+    }
+
+    return hostname;
 }
 
 void WiFiManager::generateRandomPassword()

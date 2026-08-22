@@ -1,5 +1,6 @@
 #include "SystemTab.h"
 #include "../WebUtils.h"
+#include "../../WiFiManager.h"
 #include <WiFi.h>
 
 String buildSystemTab(const Config* config, bool apModeActive, size_t freeHeap, const char* stopName,
@@ -34,6 +35,15 @@ String buildSystemTab(const Config* config, bool apModeActive, size_t freeHeap, 
         html += "<div class='info-row'>";
         html += "<span class='info-label'>WiFi:</span>";
         html += "<span class='info-value'>" + WiFi.localIP().toString() + "</span>";
+        html += "</div>";
+
+        // Hostname: what this device announces over DHCP, i.e. how it appears in a
+        // router's client list. Not resolvable as a name yet -- there is no mDNS
+        // responder -- so it is shown bare, without a ".local" suffix that would not
+        // actually work.
+        html += "<div class='info-row'>";
+        html += "<span class='info-label'>Hostname:</span>";
+        html += "<span class='info-value'>" + String(WiFiManager::getHostname()) + "</span>";
         html += "</div>";
 
         // Transit provider
