@@ -3,7 +3,12 @@
 
 String buildCheckUpdateJson(const GitHubOTA::ReleaseInfo& info, const char* currentDisplay)
 {
-    String json = "{";
+    String json;
+    // Built by repeated += with a String temporary per escaped field. With a
+    // full option list that is dozens of reallocations on a heap this firmware
+    // keeps for weeks; reserve once instead.
+    json.reserve(1024 + (size_t)info.optionCount * 384);
+    json = "{";
 
     if (info.hasError)
     {

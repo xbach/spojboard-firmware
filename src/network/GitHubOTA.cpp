@@ -162,7 +162,12 @@ int GitHubOTA::collectAssetOptions(JsonDocument& doc, AssetOption* out, int maxO
 void GitHubOTA::checkForUpdate(const char* currentRelease, ReleaseInfo& out)
 {
     ReleaseInfo& result = out;
-    result = ReleaseInfo{};
+
+    // memset, NOT `result = ReleaseInfo{}`. That assignment materialises a
+    // ~3.1KB temporary on the caller's stack -- this runs on the loop task,
+    // whose 8KB is already carrying WebServer's frames, which is the whole
+    // reason this function takes an out-parameter instead of returning one.
+    memset(&result, 0, sizeof(result));
     result.available = false;
     result.hasError = false;
 
@@ -227,8 +232,32 @@ void GitHubOTA::checkForUpdate(const char* currentRelease, ReleaseInfo& out)
     // keeps only the fields below. Without the filter the document grows with
     // every asset a release carries and silently starts returning NoMemory --
     // measured at four assets against the old 8KB buffer.
+    const int contentLength = http.getSize();
     String payload = readHttpResponse(http, JSON_READ_CAP);
     http.end();
+
+    // A short read and a malformed body both surface from deserializeJson as a
+    // generic parse failure, which sends you looking at the JSON when the real
+    // problem is transport. Separate them here while the evidence still exists.
+    if (payload.length() >= JSON_READ_CAP)
+    {
+        logTimestamp();
+        Serial.print("GitHub release payload exceeded ");
+        Serial.print((unsigned)JSON_READ_CAP);
+        Serial.println(" bytes and was truncated");
+        setError(result, "Release payload too large");
+        return;
+    }
+    if (contentLength > 0 && payload.length() < (size_t)contentLength)
+    {
+        logTimestamp();
+        Serial.print("Short read from GitHub: got ");
+        Serial.print(payload.length());
+        Serial.print(" of ");
+        Serial.println(contentLength);
+        setError(result, "Incomplete response from GitHub");
+        return;
+    }
 
     // Sized with margin and checked, because a filter document that overflows
     // does so SILENTLY: it simply drops its last keys, and the fields it drops

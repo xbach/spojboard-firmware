@@ -2,6 +2,23 @@
 
 All notable changes to SpojBoard firmware will be documented in this file.
 
+## [r9] - Unreleased
+
+### Fixed
+- Weather now shows rain, not snow, during rain showers
+- Long text is measured correctly again, fixing scroll positions that could jump a line
+- A display that fails to start no longer stops WiFi, the web interface and updates from working, so a board with a panel fault stays reachable
+- Update checks no longer fail on releases that offer several downloads
+
+### Added
+- Choose which panel layout to install when a release offers more than one, preselected to match the current setting
+- Desktop test suite covering firmware-file naming and update parsing
+
+### Changed
+- Firmware build IDs are now the git commit they were built from, so a board reports exactly which source it runs; builds from uncommitted changes are labelled `-dirty`
+- Exact toolchain and library versions are pinned, so a given release always rebuilds to the same firmware
+- Removed telnet logging; the debug-mode setting now controls detailed logging on the serial console
+
 ## [r8] - 2026-06-24
 
 ### Added
