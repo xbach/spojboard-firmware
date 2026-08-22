@@ -11,50 +11,52 @@ const size_t PREFIX_LEN = sizeof(PREFIX) - 1;
 const char SUFFIX[] = ".bin";
 const size_t SUFFIX_LEN = sizeof(SUFFIX) - 1;
 
+const int MAX_FIELDS = 8;
+
+struct Field
+{
+    const char* begin;
+    size_t len;
+};
+
 bool isDigit(char c) { return c >= '0' && c <= '9'; }
 
-/**
- * Is `s` (length `len`) a display token, i.e. <digits>x<digits>?
- * "2x32" yes, "2x" no, "x32" no, "n8r2" no, "12x128" yes.
- */
-bool isDisplayToken(const char* s, size_t len)
+bool fieldEquals(const Field& f, const char* s)
 {
-    const char* x = (const char*)memchr(s, 'x', len);
-    if (!x || x == s || x == s + len - 1)
+    return strlen(s) == f.len && strncmp(f.begin, s, f.len) == 0;
+}
+
+/** Is this field exactly r<digits>? Writes the number out on success. */
+bool isReleaseField(const Field& f, int* releaseOut)
+{
+    if (f.len < 2 || f.begin[0] != 'r')
         return false;
-    for (const char* p = s; p < x; p++)
-        if (!isDigit(*p))
+    for (size_t i = 1; i < f.len; i++)
+        if (!isDigit(f.begin[i]))
             return false;
-    for (const char* p = x + 1; p < s + len; p++)
-        if (!isDigit(*p))
-            return false;
+    char buf[12];
+    size_t n = f.len - 1;
+    if (n >= sizeof(buf))
+        return false;
+    memcpy(buf, f.begin + 1, n);
+    buf[n] = '\0';
+    *releaseOut = atoi(buf);
     return true;
 }
 
-/**
- * Find the release marker "-r<digits>-" scanning RIGHT TO LEFT within
- * [begin, end). Returns a pointer to the '-' that starts it, or nullptr.
- * On success *releaseOut holds the parsed number.
- */
-const char* findReleaseMarker(const char* begin, const char* end, int* releaseOut)
+/** A geometry token: <digits>x<digits>, e.g. 2x32. */
+bool isDisplayField(const Field& f)
 {
-    for (const char* p = end - 2; p >= begin; p--)
-    {
-        if (p[0] != '-' || p[1] != 'r')
-            continue;
-        const char* d = p + 2;
-        if (!isDigit(*d))
-            continue;
-        const char* q = d;
-        while (q < end && isDigit(*q))
-            q++;
-        // Must be followed by the '-' that separates it from the build id.
-        if (q >= end || *q != '-')
-            continue;
-        *releaseOut = atoi(d);
-        return p;
-    }
-    return nullptr;
+    const char* x = (const char*)memchr(f.begin, 'x', f.len);
+    if (!x || x == f.begin || x == f.begin + f.len - 1)
+        return false;
+    for (const char* p = f.begin; p < x; p++)
+        if (!isDigit(*p))
+            return false;
+    for (const char* p = x + 1; p < f.begin + f.len; p++)
+        if (!isDigit(*p))
+            return false;
+    return true;
 }
 
 } // namespace
@@ -77,49 +79,53 @@ OtaAssetInfo otaClassifyAsset(const char* filename, const char* boardVariant)
     if (strcmp(filename + len - SUFFIX_LEN, SUFFIX) != 0)
         return info;
 
-    const char* tokenBegin = filename + PREFIX_LEN;
-    const char* tail = filename + len - SUFFIX_LEN;
+    // Split the part between "spojboard-" and ".bin" on dashes.
+    const char* p = filename + PREFIX_LEN;
+    const char* end = filename + len - SUFFIX_LEN;
 
-    int release = -1;
-    const char* marker = findReleaseMarker(tokenBegin, tail, &release);
-    if (!marker)
-        return info;
-
-    // token = "<board>" or "<board>_<display>"
-    const size_t tokenLen = (size_t)(marker - tokenBegin);
-    const size_t boardLen = strlen(boardVariant);
-    if (tokenLen < boardLen)
-        return info;
-    if (strncmp(tokenBegin, boardVariant, boardLen) != 0)
-        return info;
-
-    info.release = release;
-
-    if (tokenLen == boardLen)
+    Field fields[MAX_FIELDS];
+    int count = 0;
+    while (p < end)
     {
+        const char* dash = (const char*)memchr(p, '-', (size_t)(end - p));
+        const char* stop = dash ? dash : end;
+        if (count >= MAX_FIELDS)
+            return info; // absurdly many fields; not a name we produce
+        fields[count].begin = p;
+        fields[count].len = (size_t)(stop - p);
+        if (fields[count].len == 0)
+            return info; // empty field, e.g. a doubled dash
+        count++;
+        p = dash ? dash + 1 : end;
+    }
+
+    // Minimum shape: <board> r<n> <buildid>
+    if (count < 3)
+        return info;
+
+    // Field 0 is the board and must match this device exactly.
+    if (!fieldEquals(fields[0], boardVariant))
+        return info;
+
+    // Field 1 is either the release marker (bare) or the display token.
+    int release = -1;
+    if (isReleaseField(fields[1], &release))
+    {
+        info.release = release;
         info.match = OtaAssetMatch::Bare;
         return info;
     }
 
-    // Anything after the board must be exactly "_<display>".
-    const char* rest = tokenBegin + boardLen;
-    const size_t restLen = tokenLen - boardLen;
-    if (rest[0] != '_' || restLen < 2)
-    {
-        info.release = -1;
-        return info; // e.g. board "esp32_s3" vs token "esp32_s3_n8r2" -> not ours
-    }
-
-    const char* disp = rest + 1;
-    const size_t dispLen = restLen - 1;
-    if (dispLen >= sizeof(info.display) || !isDisplayToken(disp, dispLen))
-    {
-        info.release = -1;
+    if (!isDisplayField(fields[1]))
         return info;
-    }
+    if (count < 4 || !isReleaseField(fields[2], &release))
+        return info;
+    if (fields[1].len >= sizeof(info.display))
+        return info;
 
-    memcpy(info.display, disp, dispLen);
-    info.display[dispLen] = '\0';
+    memcpy(info.display, fields[1].begin, fields[1].len);
+    info.display[fields[1].len] = '\0';
+    info.release = release;
     info.match = OtaAssetMatch::Display;
     return info;
 }

@@ -58,26 +58,17 @@ bool GitHubOTA::validateFirmwareFilename(const char* filename)
         return false;
     }
 
-    // New format: spojboard-<board>[_<display>]-r<n>-<id>.bin
+    // New format: spojboard-<board>-[<display>-]r<n>-<id>.bin
+    //
+    // ANY geometry for THIS board is accepted here, deliberately. Installing a
+    // different geometry build is a supported action -- it is how a user moves
+    // a board to a different panel arrangement -- so the user's explicit choice
+    // is not second-guessed at download time. Installing another BOARD's build
+    // is never supported and is what this gate exists to stop.
     OtaAssetInfo info = otaClassifyAsset(filename, VARIANT_NAME);
-    if (info.match == OtaAssetMatch::Bare)
+    if (info.match == OtaAssetMatch::Bare || info.match == OtaAssetMatch::Display)
     {
         return true;
-    }
-    if (info.match == OtaAssetMatch::Display)
-    {
-        // A display-suffixed build is only ours if the geometry matches too.
-        if (strcmp(info.display, DISPLAY_VARIANT_NAME) == 0)
-        {
-            return true;
-        }
-        logTimestamp();
-        Serial.print("Firmware display mismatch: file is for '");
-        Serial.print(info.display);
-        Serial.print("', this build is '");
-        Serial.print(DISPLAY_VARIANT_NAME);
-        Serial.println("'");
-        return false;
     }
 
     // Couldn't extract variant - check if it's old format (spojboard-r{num}-{hash}.bin)
@@ -105,34 +96,37 @@ bool GitHubOTA::validateFirmwareFilename(const char* filename)
     return false;
 }
 
-bool GitHubOTA::findBinaryAsset(JsonDocument& doc, char* outUrl, char* outName, size_t& outSize)
+int GitHubOTA::collectAssetOptions(JsonDocument& doc, AssetOption* out, int maxOptions)
 {
-    // Find .bin asset matching current hardware variant
     JsonArray assets = doc["assets"];
     if (assets.isNull())
     {
-        return false;
+        return 0;
     }
 
-    // TWO PASSES, most specific first. A release may carry a bare asset per
-    // board, per-display assets, or both, and the order GitHub lists them in is
-    // upload order -- not something to depend on. Taking the first validating
-    // asset would let a bare build win over an exact geometry match purely
-    // because it was uploaded earlier.
+    // TWO PASSES, most specific first, so options[0] is the best default and a
+    // caller that ignores the rest still behaves sensibly. GitHub lists assets
+    // in upload order, which is not something to depend on.
     //
-    //   pass 1: spojboard-<board>_<DISPLAY_VARIANT_NAME>-...   exact geometry
-    //   pass 2: spojboard-<board>-...                          bare, any geometry
+    //   pass 0: spojboard-<board>-<display>-r<n>-<id>.bin   geometry builds
+    //   pass 1: spojboard-<board>-r<n>-<id>.bin             bare build
     //
-    // So a release with no display suffixes at all still updates every device,
-    // and one that adds them routes each device to its own build. A release
-    // carrying ONLY geometries this device is not (e.g. 2x64 alone) matches
-    // nothing and is correctly reported as no firmware for this hardware.
-    for (int pass = 0; pass < 2; pass++)
+    // A release with no geometry builds yields one bare option and updates
+    // every device. A release with geometry builds yields several and the user
+    // chooses -- an r9 binary works at any geometry (panelRows is runtime
+    // config), so there is nothing here that could pick correctly for them.
+    int count = 0;
+    for (int pass = 0; pass < 2 && count < maxOptions; pass++)
     {
         const OtaAssetMatch want = (pass == 0) ? OtaAssetMatch::Display : OtaAssetMatch::Bare;
 
         for (JsonObject asset : assets)
         {
+            if (count >= maxOptions)
+            {
+                break;
+            }
+
             const char* name = asset["name"];
             const char* url = asset["browser_download_url"];
             int size = asset["size"] | 0;
@@ -147,33 +141,28 @@ bool GitHubOTA::findBinaryAsset(JsonDocument& doc, char* outUrl, char* outName, 
             {
                 continue;
             }
-            if (want == OtaAssetMatch::Display && strcmp(info.display, DISPLAY_VARIANT_NAME) != 0)
-            {
-                continue;
-            }
 
-            logTimestamp();
-            Serial.print("Selected asset: ");
-            Serial.print(name);
-            Serial.println(want == OtaAssetMatch::Display ? " (exact display match)" : " (bare)");
-
-            strlcpy(outName, name, 64);
-            strlcpy(outUrl, url, 256);
-            outSize = size;
-            return true;
+            strlcpy(out[count].name, name, sizeof(out[count].name));
+            strlcpy(out[count].url, url, sizeof(out[count].url));
+            strlcpy(out[count].display, info.display, sizeof(out[count].display));
+            out[count].size = (size_t)size;
+            count++;
         }
     }
 
-    // No matching firmware found for current hardware variant
     logTimestamp();
-    Serial.print("No firmware found for hardware variant: ");
-    Serial.println(VARIANT_NAME);
-    return false;
+    Serial.print("Assets for ");
+    Serial.print(VARIANT_NAME);
+    Serial.print(": ");
+    Serial.println(count);
+
+    return count;
 }
 
-GitHubOTA::ReleaseInfo GitHubOTA::checkForUpdate(const char* currentRelease)
+void GitHubOTA::checkForUpdate(const char* currentRelease, ReleaseInfo& out)
 {
-    ReleaseInfo result = {};
+    ReleaseInfo& result = out;
+    result = ReleaseInfo{};
     result.available = false;
     result.hasError = false;
 
@@ -181,7 +170,7 @@ GitHubOTA::ReleaseInfo GitHubOTA::checkForUpdate(const char* currentRelease)
     if (!currentRelease || strlen(currentRelease) == 0)
     {
         setError(result, "Invalid current release");
-        return result;
+        return;
     }
 
     // Parse current release number
@@ -189,7 +178,7 @@ GitHubOTA::ReleaseInfo GitHubOTA::checkForUpdate(const char* currentRelease)
     if (currentReleaseNum <= 0)
     {
         setError(result, "Invalid current release number");
-        return result;
+        return;
     }
 
     logTimestamp();
@@ -231,7 +220,7 @@ GitHubOTA::ReleaseInfo GitHubOTA::checkForUpdate(const char* currentRelease)
 
         setError(result, errorMsg);
         http.end();
-        return result;
+        return;
     }
 
     // Read with a cap (getString() had none) and parse through a filter that
@@ -261,7 +250,7 @@ GitHubOTA::ReleaseInfo GitHubOTA::checkForUpdate(const char* currentRelease)
         logTimestamp();
         Serial.println("FATAL: OTA filter document overflowed - update check cannot be trusted");
         setError(result, "Internal filter error");
-        return result;
+        return;
     }
 
     DynamicJsonDocument doc(JSON_BUFFER_SIZE);
@@ -273,7 +262,7 @@ GitHubOTA::ReleaseInfo GitHubOTA::checkForUpdate(const char* currentRelease)
         Serial.print("JSON Parse Error: ");
         Serial.println(error.c_str());
         setError(result, "Failed to parse GitHub response");
-        return result;
+        return;
     }
 
     // Extract tag name
@@ -281,7 +270,7 @@ GitHubOTA::ReleaseInfo GitHubOTA::checkForUpdate(const char* currentRelease)
     if (!tagName)
     {
         setError(result, "No tag_name in release");
-        return result;
+        return;
     }
 
     // Parse release number from tag
@@ -292,7 +281,7 @@ GitHubOTA::ReleaseInfo GitHubOTA::checkForUpdate(const char* currentRelease)
         Serial.print("Invalid tag format: ");
         Serial.println(tagName);
         setError(result, "Invalid release tag format");
-        return result;
+        return;
     }
 
     // Store tag name
@@ -322,11 +311,18 @@ GitHubOTA::ReleaseInfo GitHubOTA::checkForUpdate(const char* currentRelease)
     }
 
     // Find .bin asset
-    if (!findBinaryAsset(doc, result.assetUrl, result.assetName, result.assetSize))
+    result.optionCount = collectAssetOptions(doc, result.options, MAX_ASSET_OPTIONS);
+    if (result.optionCount == 0)
     {
         setError(result, "No firmware file found in release");
-        return result;
+        return;
     }
+
+    // options[0] is the most specific build available; mirror it into the
+    // single-asset fields so callers that do not offer a choice still work.
+    strlcpy(result.assetUrl, result.options[0].url, sizeof(result.assetUrl));
+    strlcpy(result.assetName, result.options[0].name, sizeof(result.assetName));
+    result.assetSize = result.options[0].size;
 
     // Compare versions
     if (githubReleaseNum > currentReleaseNum)
@@ -345,7 +341,7 @@ GitHubOTA::ReleaseInfo GitHubOTA::checkForUpdate(const char* currentRelease)
         Serial.println("Already up to date");
     }
 
-    return result;
+    return;
 }
 
 bool GitHubOTA::downloadAndInstall(const char* assetUrl, size_t expectedSize, ProgressCallback onProgress)
@@ -362,7 +358,7 @@ bool GitHubOTA::downloadAndInstall(const char* assetUrl, size_t expectedSize, Pr
     const char* filename = lastSlash ? lastSlash + 1 : assetUrl;
 
     // Re-validate independently of the selection pass. This is the gate that
-    // matters: it also covers a URL that did not come from findBinaryAsset.
+    // matters: it also covers a URL that did not come from collectAssetOptions.
     // It MUST use the same grammar as selection -- checking the raw variant
     // token against VARIANT_NAME here would reject every display-suffixed
     // asset the selector had just legitimately chosen.
@@ -375,9 +371,7 @@ bool GitHubOTA::downloadAndInstall(const char* assetUrl, size_t expectedSize, Pr
         Serial.print("Firmware file: ");
         Serial.println(filename);
         Serial.print("Your hardware is: ");
-        Serial.print(VARIANT_NAME);
-        Serial.print(" / ");
-        Serial.println(DISPLAY_VARIANT_NAME);
+        Serial.println(VARIANT_NAME);
         Serial.println("");
         Serial.println("Flashing wrong firmware could damage hardware.");
         Serial.println("Download cancelled for safety.");

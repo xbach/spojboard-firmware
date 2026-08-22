@@ -9,6 +9,6 @@
  * @param info Release info from GitHubOTA
  * @return JSON string
  */
-String buildCheckUpdateJson(const GitHubOTA::ReleaseInfo& info);
+String buildCheckUpdateJson(const GitHubOTA::ReleaseInfo& info, const char* currentDisplay);
 
 #endif // API_HANDLERS_H

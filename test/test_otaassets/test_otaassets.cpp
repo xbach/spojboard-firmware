@@ -20,8 +20,9 @@ void test_bare_matches_own_board(void)
     TEST_ASSERT_EQUAL_STRING("", i.display);
 }
 
-// The underscore trap: a naive "split on the last _" reads this board's own
-// bare name as board=esp32_s3 + display=n8r2.
+// Board names contain underscores. With dash-separated fields this is a
+// non-event, but it was the whole difficulty under the old <board>_<display>
+// packing, so keep asserting it.
 void test_bare_underscored_board_is_not_split(void)
 {
     OtaAssetInfo i = otaClassifyAsset("spojboard-esp32_s3_n8r2-r9-1a2b3c4d.bin", N8);
@@ -51,39 +52,41 @@ void test_board_prefix_is_not_a_match(void)
 
 void test_display_suffix_parsed(void)
 {
-    OtaAssetInfo i = otaClassifyAsset("spojboard-matrixportal_s3_2x32-r10-1a2b3c4d.bin", MP);
+    OtaAssetInfo i = otaClassifyAsset("spojboard-matrixportal_s3-2x32-r10-1a2b3c4d.bin", MP);
     TEST_ASSERT_TRUE(i.match == OtaAssetMatch::Display);
     TEST_ASSERT_EQUAL_STRING("2x32", i.display);
     TEST_ASSERT_EQUAL_INT(10, i.release);
 
-    OtaAssetInfo j = otaClassifyAsset("spojboard-esp32_s3_n8r2_2x64-r10-1a2b3c4d.bin", N8);
+    OtaAssetInfo j = otaClassifyAsset("spojboard-esp32_s3_n8r2-2x64-r10-1a2b3c4d.bin", N8);
     TEST_ASSERT_TRUE(j.match == OtaAssetMatch::Display);
     TEST_ASSERT_EQUAL_STRING("2x64", j.display);
 }
 
 void test_display_suffix_of_other_board_rejected(void)
 {
-    TEST_ASSERT_TRUE(otaClassifyAsset("spojboard-esp32_s3_n8r2_2x32-r10-1a2b3c4d.bin", MP).match
+    TEST_ASSERT_TRUE(otaClassifyAsset("spojboard-esp32_s3_n8r2-2x32-r10-1a2b3c4d.bin", MP).match
                      == OtaAssetMatch::None);
 }
 
-// THE "-r" TRAP. A suffix starting with 'r' must never let the board name
-// truncate. Left-to-right "first -r" would read board="matrixportal_s3" here
-// and accept the file.
+// THE "-r" TRAP. r8 takes the text up to the FIRST "-r", so it reads this as
+// board="matrixportal_s3" and accepts it. Our parser identifies the release
+// field by position and exact r<digits> shape, so "rgb" is just an unknown
+// field and the name is rejected.
 void test_r_prefixed_suffix_does_not_truncate_board(void)
 {
-    OtaAssetInfo i = otaClassifyAsset("spojboard-matrixportal_s3_rgb-r10-1a2b3c4d.bin", MP);
+    OtaAssetInfo i = otaClassifyAsset("spojboard-matrixportal_s3-rgb-r10-1a2b3c4d.bin", MP);
     TEST_ASSERT_TRUE(i.match == OtaAssetMatch::None);
 }
 
-// Only <digits>x<digits> counts as a display token; anything else is not ours.
+// Field 1 must be either r<digits> or a <digits>x<digits> geometry token.
+// Anything else is a name we did not produce.
 void test_non_display_suffix_rejected(void)
 {
     const char* bad[] = {
-        "spojboard-matrixportal_s3_beta-r10-1a2b3c4d.bin",
-        "spojboard-matrixportal_s3_2x-r10-1a2b3c4d.bin",
-        "spojboard-matrixportal_s3_x32-r10-1a2b3c4d.bin",
-        "spojboard-matrixportal_s3_-r10-1a2b3c4d.bin",
+        "spojboard-matrixportal_s3-beta-r10-1a2b3c4d.bin",
+        "spojboard-matrixportal_s3-2x-r10-1a2b3c4d.bin",
+        "spojboard-matrixportal_s3-x32-r10-1a2b3c4d.bin",
+        "spojboard-matrixportal_s3--r10-1a2b3c4d.bin",
     };
     for (unsigned k = 0; k < sizeof(bad) / sizeof(bad[0]); k++)
         TEST_ASSERT_TRUE(otaClassifyAsset(bad[k], MP).match == OtaAssetMatch::None);
@@ -126,6 +129,69 @@ void test_legacy_and_junk_rejected(void)
     TEST_ASSERT_TRUE(otaClassifyAsset(nullptr, MP).match == OtaAssetMatch::None);
 }
 
+// ------------------------------------------------- selection policy ordering
+
+// Mirrors GitHubOTA::collectAssetOptions: geometry builds first, then bare, so
+// options[0] is the most specific build available and a caller that ignores the
+// rest still behaves sensibly.
+static int collectPolicy(const char* const* names, int n, const char* board,
+                         const char** out, int maxOut)
+{
+    int count = 0;
+    for (int pass = 0; pass < 2 && count < maxOut; pass++)
+    {
+        OtaAssetMatch want = (pass == 0) ? OtaAssetMatch::Display : OtaAssetMatch::Bare;
+        for (int i = 0; i < n && count < maxOut; i++)
+            if (otaClassifyAsset(names[i], board).match == want)
+                out[count++] = names[i];
+    }
+    return count;
+}
+
+void test_geometry_builds_are_offered_before_bare(void)
+{
+    // Bare deliberately listed FIRST, as upload order might well put it there.
+    const char* release[] = {
+        "spojboard-matrixportal_s3-r10-1a2b3c4d.bin",
+        "spojboard-matrixportal_s3-2x32-r10-1a2b3c4d.bin",
+        "spojboard-matrixportal_s3-4x32-r10-1a2b3c4d.bin",
+        "spojboard-esp32_s3_n8r2-r10-1a2b3c4d.bin",
+        "spojboard-esp32_s3_n8r2-2x32-r10-1a2b3c4d.bin",
+    };
+    const char* got[6];
+    int n = collectPolicy(release, 5, MP, got, 6);
+
+    TEST_ASSERT_EQUAL_INT(3, n); // the other board's two are excluded
+    TEST_ASSERT_EQUAL_STRING("spojboard-matrixportal_s3-2x32-r10-1a2b3c4d.bin", got[0]);
+    TEST_ASSERT_EQUAL_STRING("spojboard-matrixportal_s3-4x32-r10-1a2b3c4d.bin", got[1]);
+    TEST_ASSERT_EQUAL_STRING("spojboard-matrixportal_s3-r10-1a2b3c4d.bin", got[2]);
+}
+
+// A release with no geometry builds still updates every device.
+void test_bare_only_release_yields_one_option(void)
+{
+    const char* release[] = {
+        "spojboard-matrixportal_s3-r10-1a2b3c4d.bin",
+        "spojboard-esp32_s3_n8r2-r10-1a2b3c4d.bin",
+    };
+    const char* got[6];
+    TEST_ASSERT_EQUAL_INT(1, collectPolicy(release, 2, MP, got, 6));
+    TEST_ASSERT_EQUAL_STRING("spojboard-matrixportal_s3-r10-1a2b3c4d.bin", got[0]);
+}
+
+// Board lock is the one hard gate: a release entirely for the other board
+// offers nothing, however many geometries it carries.
+void test_other_board_release_offers_nothing(void)
+{
+    const char* release[] = {
+        "spojboard-esp32_s3_n8r2-r10-1a2b3c4d.bin",
+        "spojboard-esp32_s3_n8r2-2x32-r10-1a2b3c4d.bin",
+        "spojboard-esp32_s3_n8r2-4x32-r10-1a2b3c4d.bin",
+    };
+    const char* got[6];
+    TEST_ASSERT_EQUAL_INT(0, collectPolicy(release, 3, MP, got, 6));
+}
+
 int main(int, char**)
 {
     UNITY_BEGIN();
@@ -141,5 +207,8 @@ int main(int, char**)
     RUN_TEST(test_multi_digit_release);
     RUN_TEST(test_release_marker_is_rightmost_valid_one);
     RUN_TEST(test_legacy_and_junk_rejected);
+    RUN_TEST(test_geometry_builds_are_offered_before_bare);
+    RUN_TEST(test_bare_only_release_yields_one_option);
+    RUN_TEST(test_other_board_release_offers_nothing);
     return UNITY_END();
 }

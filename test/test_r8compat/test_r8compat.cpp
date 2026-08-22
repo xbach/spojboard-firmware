@@ -84,12 +84,15 @@ void test_r8_still_rejects_the_other_board(void)
 }
 
 // If r10 carries display-suffixed assets, r8 devices must ignore them rather
-// than flash one. They extract "matrixportal_s3_2x32", which != VARIANT_NAME.
+// than flash one. r8 takes the text up to the first "-r", which for
+// "spojboard-matrixportal_s3-2x32-r10-..." is "matrixportal_s3-2x32" -- not
+// equal to VARIANT_NAME, so it declines. This is the property that lets r10
+// add geometry builds without endangering devices we can no longer change.
 void test_r8_ignores_display_suffixed_assets(void)
 {
-    TEST_ASSERT_FALSE(r8_accepts("spojboard-matrixportal_s3_2x32-r10-1a2b3c4d.bin", MP));
-    TEST_ASSERT_FALSE(r8_accepts("spojboard-matrixportal_s3_2x64-r10-1a2b3c4d.bin", MP));
-    TEST_ASSERT_FALSE(r8_accepts("spojboard-esp32_s3_n8r2_2x32-r10-1a2b3c4d.bin", N8));
+    TEST_ASSERT_FALSE(r8_accepts("spojboard-matrixportal_s3-2x32-r10-1a2b3c4d.bin", MP));
+    TEST_ASSERT_FALSE(r8_accepts("spojboard-matrixportal_s3-2x64-r10-1a2b3c4d.bin", MP));
+    TEST_ASSERT_FALSE(r8_accepts("spojboard-esp32_s3_n8r2-2x32-r10-1a2b3c4d.bin", N8));
 }
 
 // So an r10 that publishes ONLY display-suffixed assets is invisible to r8
@@ -98,8 +101,8 @@ void test_r8_ignores_display_suffixed_assets(void)
 void test_r8_needs_a_bare_asset_to_survive_r10(void)
 {
     const char* onlyComposites[] = {
-        "spojboard-matrixportal_s3_2x32-r10-1a2b3c4d.bin",
-        "spojboard-matrixportal_s3_2x64-r10-1a2b3c4d.bin",
+        "spojboard-matrixportal_s3-2x32-r10-1a2b3c4d.bin",
+        "spojboard-matrixportal_s3-2x64-r10-1a2b3c4d.bin",
     };
     bool any = false;
     for (unsigned k = 0; k < 2; k++)

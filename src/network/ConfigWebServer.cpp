@@ -938,6 +938,26 @@ void ConfigWebServer::githubOtaProgressCallback(size_t progress, size_t total)
     }
 }
 
+// Geometry token for the panel arrangement this device is configured for, in
+// the same vocabulary as a release asset name (<panels>x<panel height>).
+//
+// Only used to PRESELECT an option in the update UI -- an r9 binary runs at any
+// geometry, so nothing here gates what can be installed.
+//
+// NOTE panelRows counts ROWS of 64x32 panels, so 2 rows is FOUR panels: 4x32,
+// not 2x64. Both are 128x64 pixels, which is exactly why the pixel size alone
+// cannot identify the hardware. "2x64" (two 64x64 panels) is a different panel
+// type that this firmware's config cannot express at all, so it is never
+// preselected here -- a user moving to that hardware picks it explicitly.
+static const char* currentDisplayToken(const Config* cfg)
+{
+    if (!cfg)
+    {
+        return "";
+    }
+    return (cfg->panelRows >= 2) ? "4x32" : "2x32";
+}
+
 void ConfigWebServer::handleCheckUpdate()
 {
     // Block if in AP mode
@@ -950,11 +970,13 @@ void ConfigWebServer::handleCheckUpdate()
     logTimestamp();
     Serial.println("Checking for GitHub updates...");
 
-    // Check for updates
-    GitHubOTA::ReleaseInfo info = githubOTA->checkForUpdate(FIRMWARE_RELEASE);
+    // static: ReleaseInfo is ~3KB with its options array and this runs on the
+    // loop task, whose 8KB stack already carries WebServer's frames.
+    static GitHubOTA::ReleaseInfo info;
+    githubOTA->checkForUpdate(FIRMWARE_RELEASE, info);
 
     // Build JSON response using ApiHandlers
-    String json = buildCheckUpdateJson(info);
+    String json = buildCheckUpdateJson(info, currentDisplayToken(currentConfig));
 
     server->send(200, "application/json", json);
 }

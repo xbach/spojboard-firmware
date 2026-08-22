@@ -24,16 +24,45 @@ async function checkForUpdate(event) {
         }
 
         if (data.available) {
+            // A release may ship one build for this board, or several -- one per
+            // panel geometry. With one there is nothing to choose. With several
+            // the firmware deliberately does not choose: this build runs at any
+            // geometry, so picking is the user's call, and changing panels is
+            // done exactly this way. Preselect what the device is configured for.
+            const opts = data.options || [];
+            let chooser = '';
+            if (opts.length > 1) {
+                const preferred = opts.findIndex(o => o.display && o.display === data.currentDisplay);
+                const selected = preferred >= 0 ? preferred : 0;
+                chooser = `
+                    <p style='margin-bottom:4px;'><strong>Panel layout:</strong></p>
+                    <select id='updateVariant' style='width:100%; padding:8px; margin-bottom:10px;'>
+                        ${opts.map((o, i) => `
+                            <option value='${i}' ${i === selected ? 'selected' : ''}>
+                                ${o.display ? escapeHtml(o.display) : 'any layout'} - ${formatBytes(o.size)}
+                            </option>`).join('')}
+                    </select>
+                    <p style='font-size:0.85em; margin-top:0;'>
+                        Preselected to match this device's current setting${data.currentDisplay ? ` (${escapeHtml(data.currentDisplay)})` : ''}.
+                        Choose a different layout only if you have changed the panels.
+                    </p>
+                `;
+            }
+
+            window.__updateOptions = opts.length ? opts
+                : [{ url: data.assetUrl, size: data.fileSize, name: data.fileName, display: '' }];
+
             status.innerHTML = `
                 <div class='card' style='background: #2ed573; color: #000;'>
                     <h3 style='margin-top:0;'>Update Available!</h3>
                     <p><strong>Version:</strong> ${data.releaseName}</p>
-                    <p><strong>File:</strong> ${data.fileName} (${formatBytes(data.fileSize)})</p>
+                    ${opts.length > 1 ? '' : `<p><strong>File:</strong> ${data.fileName} (${formatBytes(data.fileSize)})</p>`}
                     <details style='margin: 10px 0;'>
                         <summary style='cursor:pointer; font-weight:bold;'>Release Notes</summary>
                         <div style='margin-top:10px; white-space:pre-wrap; font-size:0.9em;'>${escapeHtml(data.releaseNotes)}</div>
                     </details>
-                    <button onclick="downloadUpdate('${data.assetUrl}', ${data.fileSize})"
+                    ${chooser}
+                    <button onclick="downloadSelectedUpdate()"
                             style='background:#ff6b6b; color:#fff;'>
                         Download & Install
                     </button>
@@ -54,6 +83,20 @@ async function checkForUpdate(event) {
         btn.disabled = false;
         btn.innerText = 'Check for Updates';
     }
+}
+
+// Resolve the chosen option, then hand off. The selected index is read from the
+// <select> value, never from rendered text.
+function downloadSelectedUpdate() {
+    const opts = window.__updateOptions || [];
+    const sel = document.getElementById('updateVariant');
+    const idx = sel ? parseInt(sel.value, 10) : 0;
+    const opt = opts[isNaN(idx) ? 0 : idx];
+    if (!opt) {
+        alert('No firmware selected.');
+        return;
+    }
+    downloadUpdate(opt.url, opt.size);
 }
 
 async function downloadUpdate(url, size) {

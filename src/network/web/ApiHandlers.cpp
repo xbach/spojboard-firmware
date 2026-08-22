@@ -1,7 +1,7 @@
 #include "ApiHandlers.h"
 #include "WebUtils.h"
 
-String buildCheckUpdateJson(const GitHubOTA::ReleaseInfo& info)
+String buildCheckUpdateJson(const GitHubOTA::ReleaseInfo& info, const char* currentDisplay)
 {
     String json = "{";
 
@@ -18,7 +18,28 @@ String buildCheckUpdateJson(const GitHubOTA::ReleaseInfo& info)
         json += "\"releaseNotes\":\"" + escapeJsonString(info.releaseNotes) + "\",";
         json += "\"fileName\":\"" + escapeJsonString(info.assetName) + "\",";
         json += "\"fileSize\":" + String(info.assetSize) + ",";
-        json += "\"assetUrl\":\"" + escapeJsonString(info.assetUrl) + "\"";
+        json += "\"assetUrl\":\"" + escapeJsonString(info.assetUrl) + "\",";
+
+        // The geometry this device is currently configured for, so the client
+        // can preselect the matching build. Empty when unknown.
+        json += "\"currentDisplay\":\"" + escapeJsonString(currentDisplay ? currentDisplay : "") + "\",";
+
+        // Every build in this release for this board. One entry means there is
+        // nothing to choose and the UI installs it directly; more than one means
+        // the release ships per-geometry builds and the user picks.
+        json += "\"options\":[";
+        for (int i = 0; i < info.optionCount; i++)
+        {
+            if (i)
+            {
+                json += ",";
+            }
+            json += "{\"name\":\"" + escapeJsonString(info.options[i].name) + "\",";
+            json += "\"url\":\"" + escapeJsonString(info.options[i].url) + "\",";
+            json += "\"display\":\"" + escapeJsonString(info.options[i].display) + "\",";
+            json += "\"size\":" + String(info.options[i].size) + "}";
+        }
+        json += "]";
     }
     else
     {

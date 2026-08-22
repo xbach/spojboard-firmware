@@ -17,6 +17,17 @@
 class GitHubOTA
 {
   public:
+    // Most geometry builds a single release could plausibly carry for ONE board.
+    static constexpr int MAX_ASSET_OPTIONS = 6;
+
+    struct AssetOption
+    {
+        char name[64];    // Asset filename
+        char url[256];    // Download URL
+        char display[16]; // Geometry token, "" for a bare (geometry-agnostic) build
+        size_t size;      // File size in bytes
+    };
+
     struct ReleaseInfo
     {
         bool available; // Is update available?
@@ -26,6 +37,18 @@ class GitHubOTA
         char tagName[32]; // Tag name (e.g., "r1", "r2")
         char releaseName[64]; // Human-readable name (e.g., "Release 1")
         char releaseNotes[512]; // Truncated release body
+
+        // Every asset in the release built for THIS board, bare and geometry
+        // builds alike. A release with no geometry builds yields exactly one
+        // option and the UI installs it directly; a release with geometry
+        // builds yields several and the user picks, because an r9 binary is
+        // geometry-agnostic (panelRows is runtime config) and must not choose
+        // on their behalf.
+        AssetOption options[MAX_ASSET_OPTIONS];
+        int optionCount;
+
+        // Convenience view of options[0] so existing single-asset callers and
+        // the JSON builder keep working when there is nothing to choose.
         char assetUrl[256]; // Download URL for .bin file
         char assetName[64]; // Filename
         size_t assetSize; // File size in bytes
@@ -43,7 +66,12 @@ class GitHubOTA
      * @param currentRelease Current firmware release number string
      * @return ReleaseInfo with update availability and details
      */
-    ReleaseInfo checkForUpdate(const char* currentRelease);
+    // Fills `out` rather than returning by value: ReleaseInfo is ~3KB with the
+    // options array, and this is called from the loop task, whose 8KB stack
+    // already carries WebServer's frames. A returned temporary plus the
+    // caller's copy would be the larger half of that budget. Callers should
+    // keep their ReleaseInfo static (.bss is the abundant resource here).
+    void checkForUpdate(const char* currentRelease, ReleaseInfo& out);
 
     /**
      * Download and install firmware from GitHub release
@@ -79,14 +107,15 @@ class GitHubOTA
     int parseReleaseNumber(const char* tagName);
 
     /**
-     * Find .bin asset in release
+     * Collect every .bin asset in the release built for this board.
+     * Geometry builds are listed before bare ones, so the default offered is
+     * the most specific available.
      * @param doc ArduinoJson document with release data
-     * @param outUrl Output buffer for download URL
-     * @param outName Output buffer for filename
-     * @param outSize Output for file size
-     * @return true if .bin asset found
+     * @param out Output array
+     * @param maxOptions Capacity of `out`
+     * @return number of options written
      */
-    bool findBinaryAsset(JsonDocument& doc, char* outUrl, char* outName, size_t& outSize);
+    int collectAssetOptions(JsonDocument& doc, AssetOption* out, int maxOptions);
 
     /**
      * Validate firmware filename format
