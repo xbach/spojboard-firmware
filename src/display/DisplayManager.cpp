@@ -252,7 +252,17 @@ bool DisplayManager::begin(int brightness, int panelRows)
     // coordinates that are already correct.
 #if DISPLAY_VARIANT == 2
     {
-        // 4x 64x32 as 2 rows x 2 cols, serpentine chain
+        // 4x 64x32 as 2 rows x 2 cols, serpentine chain.
+        //
+        // TOP_RIGHT is a statement about PHYSICAL ASSEMBLY, not about the driver:
+        // SpojBoard mounts its controller at the top right viewed from the front.
+        // BeerBoard mounts top left (bar wiring) and its grid variant needs
+        // CHAIN_BOTTOM_RIGHT_UP -- so this constant is NOT portable between the
+        // two repos even though they share this file's ancestry. See DE-0021.
+        //
+        // Getting it wrong swaps panels on an assembled unit and nothing in the
+        // test suite can see it. Verify against hardware, never against a doc:
+        // CLAUDE.md named CHAIN_TOP_LEFT_DOWN here for a long time and was wrong.
         virtualDisplay = new VirtualMatrixPanel_T<CHAIN_TOP_RIGHT_DOWN>(
             2, 2, PANEL_WIDTH, PANEL_HEIGHT);
         virtualDisplay->setDisplay(*dmaDisplay);
