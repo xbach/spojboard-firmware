@@ -37,7 +37,7 @@
 #define VARIANT_DISPLAY_NAME HARDWARE_DISPLAY_NAME
 
 // ============================================================================
-// Display Variant Identification  (TA-0269 SS3)
+// Display Variant Identification  (TA-0269 §3)
 // ============================================================================
 // Panel GEOMETRY is a build-time property, not a runtime setting. Panel height
 // changes the address-line count and, on the MatrixPortal, the G/B pin order --

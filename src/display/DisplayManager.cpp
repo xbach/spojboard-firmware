@@ -181,9 +181,9 @@ DisplayManager::~DisplayManager()
 
 bool DisplayManager::begin(int brightness, int panelRows)
 {
-    // Geometry is a BUILD-TIME property (TA-0269 SS3). The argument is retained
+    // Geometry is a BUILD-TIME property (TA-0269 §3). The argument is retained
     // only so the call site and Config field can be removed in one later pass
-    // (SS9); it is deliberately ignored, because a binary built for 64-high
+    // (§9); it is deliberately ignored, because a binary built for 64-high
     // panels cannot render on 32-high ones whatever NVS says.
     panelRows = DISPLAY_PANEL_ROWS;
 

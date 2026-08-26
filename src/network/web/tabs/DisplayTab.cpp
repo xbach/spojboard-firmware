@@ -226,7 +226,7 @@ String buildDisplayTab(const Config* config)
     html += "</select>";
     html += "<div class='help-text'>Changing display size will reboot the device. Only select 128x64 if 4 panels are connected.</div>";
 #else
-    // Geometry-specific build (TA-0269 SS3): the panel arrangement is compiled in,
+    // Geometry-specific build (TA-0269 §3): the panel arrangement is compiled in,
     // so this is reported, not chosen. The control stays a <select> carrying the
     // one legal value rather than becoming static text, so the form still posts
     // panel_rows and parseDisplaySettings needs no special case -- and the value

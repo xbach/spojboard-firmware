@@ -66,7 +66,7 @@ void loadConfig(Config& config)
     // the stored value only decides how many rows the user gets, and it cannot
     // be allowed to disagree with the panel that is physically attached.
     //
-    // Deliberately NOT applied on the default 2x32 build. TA-0269 SS7 detects a
+    // Deliberately NOT applied on the default 2x32 build. TA-0269 §7 detects a
     // 4-panel owner who landed on a 2x32 image by exactly one condition --
     // compiled variant is 2x32 AND stored panelRows == 2 -- and saveConfig()
     // writes this field back, so forcing it here on a 2x32 build would erase the

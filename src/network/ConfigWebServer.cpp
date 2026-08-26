@@ -944,7 +944,7 @@ void ConfigWebServer::githubOtaProgressCallback(size_t progress, size_t total)
 // Only used to PRESELECT an option in the update UI -- an r9 binary runs at any
 // geometry, so nothing here gates what can be installed.
 //
-// Since TA-0269 SS3 this is the BUILD's own geometry, not a guess derived from
+// Since TA-0269 §3 this is the BUILD's own geometry, not a guess derived from
 // config. That closes the gap the old note described: panelRows counts ROWS of
 // 64x32 panels, so panelRows == 2 means FOUR panels (4x32) and could never
 // express 2x64 (two 64x64 panels) at all -- both are 128x64 pixels, so the
