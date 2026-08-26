@@ -37,6 +37,48 @@
 #define VARIANT_DISPLAY_NAME HARDWARE_DISPLAY_NAME
 
 // ============================================================================
+// Display Variant Identification  (TA-0269 SS3)
+// ============================================================================
+// Panel GEOMETRY is a build-time property, not a runtime setting. Panel height
+// changes the address-line count and, on the MatrixPortal, the G/B pin order --
+// and a runtime selector cannot express a pin map. Guessing wrong gives a dead
+// display, with no working display left to diagnose it on.
+//
+//   1 = 2x32   2x 64x32 chained horizontally     128x32
+//   2 = 4x32   4x 64x32 in a 2x2 serpentine      128x64
+//   3 = 2x64   2x 64x64 chained horizontally     128x64
+//
+// The token is <panel count>x<panel height>, so it describes the hardware
+// rather than the pixel size: 4x32 and 2x64 are BOTH 128x64 and cannot be told
+// apart by resolution alone.
+//
+// NO DISPLAY TOKEN MAY EVER BEGIN WITH 'r'. r8's OTA parser takes the asset
+// name up to the FIRST "-r", so a token like "rgb" truncates the board field
+// and makes an r8 device accept another board's firmware. r9+ finds the release
+// field by exact r<digits> shape, but r8 devices are in the field and cannot be
+// changed, so the constraint is permanent. Pinned by test/test_r8compat.
+#ifndef DISPLAY_VARIANT
+#define DISPLAY_VARIANT 1 // Default: 2x32, the geometry every release has shipped
+#endif
+
+#if DISPLAY_VARIANT == 3
+#define DISPLAY_VARIANT_NAME "2x64"
+#define PANEL_HEIGHT 64
+#define PANELS_NUMBER 2
+#define DISPLAY_PANEL_ROWS 2 // 128x64
+#elif DISPLAY_VARIANT == 2
+#define DISPLAY_VARIANT_NAME "4x32"
+#define PANEL_HEIGHT 32
+#define PANELS_NUMBER 4
+#define DISPLAY_PANEL_ROWS 2 // 128x64
+#else
+#define DISPLAY_VARIANT_NAME "2x32"
+#define PANEL_HEIGHT 32
+#define PANELS_NUMBER 2
+#define DISPLAY_PANEL_ROWS 1 // 128x32
+#endif
+
+// ============================================================================
 // GitHub OTA Configuration
 // ============================================================================
 #define GITHUB_REPO_OWNER "xbach"
@@ -51,8 +93,7 @@
 // Hardware Configuration (HUB75 Display)
 // ============================================================================
 #define PANEL_WIDTH 64
-#define PANEL_HEIGHT 32
-#define PANELS_NUMBER 2 // 128x32 total
+// PANEL_HEIGHT / PANELS_NUMBER / DISPLAY_PANEL_ROWS come from DISPLAY_VARIANT above.
 #define MAX_POSSIBLE_DISPLAY_ROWS 7 // Maximum departure rows for largest supported display (128x64)
 
 // ============================================================================
@@ -63,7 +104,26 @@
 //
 // This allows users to use standard HUB75 cables without rewiring
 
-#if HARDWARE_VARIANT == 1
+#if HARDWARE_VARIANT == 1 && DISPLAY_VARIANT == 3
+// ----------------------------------------------------------------------------
+// MatrixPortal ESP32-S3 driving 64-HIGH panels (2x64) -- STANDARD HUB75 order
+// ----------------------------------------------------------------------------
+// The MatrixPortal's G/B reversal below is a property of how 64x32 panels are
+// wired to its connector, NOT of the connector alone: BeerBoard 30c2451 found
+// that keeping the reversal on 64x64 panels renders green and blue swapped
+// (orange->pink, sky->teal, yellow->violet). 64-high panels want the standard
+// order on the same board.
+//
+// UNVERIFIED ON HARDWARE -- carried over from BeerBoard's finding. If a 2x64
+// build shows swapped green/blue, this block is the first thing to try.
+#define R1_PIN 42
+#define G1_PIN 41
+#define B1_PIN 40
+#define R2_PIN 38
+#define G2_PIN 39
+#define B2_PIN 37
+
+#elif HARDWARE_VARIANT == 1
 // ────────────────────────────────────────────────────────────────────────────
 // Adafruit MatrixPortal ESP32-S3 (Non-standard HUB75 connector)
 // ────────────────────────────────────────────────────────────────────────────
@@ -104,6 +164,12 @@
 #define B_PIN 36
 #define C_PIN 48
 #define D_PIN 35
+// E_PIN is the 5th address line. 32-high panels use 4 address bits and drive it
+// LOW permanently, so on every release through r9 this pin has been defined and
+// passed to the driver but never actually toggled. 64-high panels (2x64) NEED
+// it. Whether the MatrixPortal's HUB75 connector physically carries E is the
+// open hardware question on this variant -- if a 2x64 build renders the top and
+// bottom halves of the panel identically, E is not reaching the panel.
 #define E_PIN 21
 
 #define LAT_PIN 47

@@ -181,9 +181,11 @@ DisplayManager::~DisplayManager()
 
 bool DisplayManager::begin(int brightness, int panelRows)
 {
-    // Compute display layout from panel configuration
-    if (panelRows < 1) panelRows = 1;
-    if (panelRows > 2) panelRows = 2;
+    // Geometry is a BUILD-TIME property (TA-0269 SS3). The argument is retained
+    // only so the call site and Config field can be removed in one later pass
+    // (SS9); it is deliberately ignored, because a binary built for 64-high
+    // panels cannot render on 32-high ones whatever NVS says.
+    panelRows = DISPLAY_PANEL_ROWS;
 
     layout.displayWidth = 128;
     layout.displayHeight = panelRows * 32;
@@ -191,7 +193,7 @@ bool DisplayManager::begin(int brightness, int panelRows)
     layout.maxDepartureRows = (layout.displayHeight / layout.rowHeight) - 1;
     layout.statusBarY = layout.displayHeight - layout.rowHeight;
     layout.statusBarBaseline = layout.displayHeight - 1;
-    layout.panelCount = panelRows * 2;
+    layout.panelCount = PANELS_NUMBER;
 
     HUB75_I2S_CFG::i2s_pins _pins = {
         R1_PIN, G1_PIN, B1_PIN, R2_PIN, G2_PIN, B2_PIN,
@@ -207,10 +209,14 @@ bool DisplayManager::begin(int brightness, int panelRows)
     mxconfig.clkphase = false;
     mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M;
 
-    // 4-panel (128x64) doubles the DMA framebuffer (~64KB internal). The transit
-    // display uses flat colors, so dropping color depth from the default 8 to 5
-    // bits is visually negligible but frees ~24KB of internal RAM — needed so the
-    // HTTPS/TLS handshake fits without any PSRAM tricks. Single-panel keeps 8-bit.
+    // Any 128x64 geometry doubles the DMA framebuffer (~64KB internal). The
+    // transit display uses flat colors, so dropping color depth from the default
+    // 8 to 5 bits is visually negligible but frees ~24KB of internal RAM —
+    // needed so the HTTPS/TLS handshake fits without any PSRAM tricks. 128x32
+    // keeps 8-bit.
+    //
+    // 4x32 and 2x64 allocate an IDENTICAL 64KB here (32 rows x 128px vs 16 rows
+    // x 256px), so this applies unchanged to both.
     if (panelRows > 1)
     {
         mxconfig.setPixelColorDepthBits(5);
@@ -238,26 +244,33 @@ bool DisplayManager::begin(int brightness, int panelRows)
     dmaDisplay->setBrightness8(brightness);
     dmaDisplay->clearScreen();
 
-    // Set up drawing surface
-    if (panelRows > 1)
+    // Set up drawing surface.
+    //
+    // Only the 2x2 SERPENTINE grid (4x32) needs coordinate remapping. A purely
+    // horizontal chain -- 2x32 and 2x64 alike -- is already presented by the DMA
+    // driver as one wide framebuffer, so VirtualMatrixPanel would remap
+    // coordinates that are already correct.
+#if DISPLAY_VARIANT == 2
     {
-        // Multi-row: use VirtualMatrixPanel for coordinate remapping
-        // 2 rows x 2 cols of 64x32 panels, serpentine chain
+        // 4x 64x32 as 2 rows x 2 cols, serpentine chain
         virtualDisplay = new VirtualMatrixPanel_T<CHAIN_TOP_RIGHT_DOWN>(
-            panelRows, 2, PANEL_WIDTH, PANEL_HEIGHT);
+            2, 2, PANEL_WIDTH, PANEL_HEIGHT);
         virtualDisplay->setDisplay(*dmaDisplay);
         gfx = virtualDisplay;
-        Serial.printf("Display initialized: %dx%d (%d panels, virtual)\n",
-                      layout.displayWidth, layout.displayHeight, layout.panelCount);
+        Serial.printf("Display initialized: %dx%d (%s, %d panels, virtual)\n",
+                      layout.displayWidth, layout.displayHeight,
+                      DISPLAY_VARIANT_NAME, layout.panelCount);
     }
-    else
+#else
     {
-        // Single row: draw directly to DMA display
+        // Horizontal chain: draw directly to the DMA display
         virtualDisplay = nullptr;
         gfx = dmaDisplay;
-        Serial.printf("Display initialized: %dx%d (%d panels)\n",
-                      layout.displayWidth, layout.displayHeight, layout.panelCount);
+        Serial.printf("Display initialized: %dx%d (%s, %d panels)\n",
+                      layout.displayWidth, layout.displayHeight,
+                      DISPLAY_VARIANT_NAME, layout.panelCount);
     }
+#endif
 
     // Adafruit_GFX constructs with wrap=true, which snaps any cursor at or beyond
     // the right edge back to x=0 one yAdvance down -- and getTextBounds() carries

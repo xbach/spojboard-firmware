@@ -61,6 +61,18 @@ void loadConfig(Config& config)
     config.minDepartureTime = constrain(preferences.getInt("minDepTime", 3), 0, 30);
     config.brightness = constrain(preferences.getInt("brightness", 90), 0, 255);
     config.panelRows = constrain(preferences.getInt("panelRows", 1), 1, 2);
+#if DISPLAY_VARIANT != 1
+    // Geometry-specific build: the compiled panel arrangement is the truth, so
+    // the stored value only decides how many rows the user gets, and it cannot
+    // be allowed to disagree with the panel that is physically attached.
+    //
+    // Deliberately NOT applied on the default 2x32 build. TA-0269 SS7 detects a
+    // 4-panel owner who landed on a 2x32 image by exactly one condition --
+    // compiled variant is 2x32 AND stored panelRows == 2 -- and saveConfig()
+    // writes this field back, so forcing it here on a 2x32 build would erase the
+    // only surviving evidence of what hardware the device actually has.
+    config.panelRows = DISPLAY_PANEL_ROWS;
+#endif
     int maxDeps = (config.panelRows * 32 / 8) - 1; // 3 for 128x32, 7 for 128x64
     config.numDepartures = constrain(preferences.getInt("numDeps", 3), 1, maxDeps);
     strlcpy(config.lineColorMap, preferences.getString("lineColorMap", DEFAULT_LINE_COLOR_MAP).c_str(), sizeof(config.lineColorMap));
