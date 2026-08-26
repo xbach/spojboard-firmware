@@ -13,7 +13,8 @@ set -e
 # ones build here: r8 devices parse the release JSON unfiltered into an 8KB
 # document that overflows at FOUR assets, so a release carrying every variant is
 # invisible to them. See TA-0269 "Left" item 1.
-VARIANTS=("matrixportal_s3" "matrixportal_s3_4x32" "matrixportal_s3_2x64" "esp32_s3_n8r2")
+VARIANTS=("matrixportal_s3" "matrixportal_s3_4x32" "matrixportal_s3_2x64" \
+          "esp32_s3_n8r2" "esp32_s3_n8r2_4x32" "esp32_s3_n8r2_2x64")
 
 # Parse arguments
 BUILD_VARIANT=""
@@ -38,6 +39,8 @@ while [[ $# -gt 0 ]]; do
             echo "                        matrixportal_s3_4x32   128x64, 4x 64x32"
             echo "                        matrixportal_s3_2x64   128x64, 2x 64x64"
             echo "                        esp32_s3_n8r2          128x32, 2x 64x32 (bare asset name)"
+            echo "                        esp32_s3_n8r2_4x32     128x64, 4x 64x32"
+            echo "                        esp32_s3_n8r2_2x64     128x64, 2x 64x64"
             echo "  -c, --clean         Clean dist/ before building"
             echo "  -h, --help          Show this help"
             echo ""
