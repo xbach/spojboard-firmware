@@ -217,7 +217,8 @@ bool DisplayManager::begin(int brightness, int panelRows)
     //
     // 4x32 and 2x64 allocate an IDENTICAL 64KB here (32 rows x 128px vs 16 rows
     // x 256px), so this applies unchanged to both.
-    if (panelRows > 1)
+    layout.reducedColorDepth = (panelRows > 1);
+    if (layout.reducedColorDepth)
     {
         mxconfig.setPixelColorDepthBits(5);
     }
@@ -681,11 +682,17 @@ void DisplayManager::drawDeparture(int row, const Departure &dep)
         else
             snprintf(eta2Text, sizeof(eta2Text), "%d'", dep.secondEta);
 
-        // The 4-panel display runs at 5-bit color depth (see begin()), where a low
-        // neutral gray quantizes to a muddy/flickery cast. Use a brighter gray there
-        // so it stays clean; single-panel (8-bit) keeps the dimmer gray for contrast.
-        gfx->setTextColor(layout.panelCount > 2 ? color565(150, 150, 150)
-                                                : color565(90, 90, 90));
+        // A 5-bit display (any 128x64 geometry, see begin()) quantizes a low neutral
+        // gray to a muddy/flickery cast, so use a brighter one there; 8-bit 128x32
+        // keeps the dimmer gray for contrast.
+        //
+        // This used to test `panelCount > 2`, which was a PROXY for 5-bit that held
+        // only while 4x32 was the sole 128x64 geometry. TA-0269 §3 added 2x64 --
+        // 128x64, therefore 5-bit, but PANELS_NUMBER == 2 -- and the proxy silently
+        // inverted, handing the dim gray to exactly the display it exists to avoid.
+        // Read the flag begin() actually set, not a panel count that correlates.
+        gfx->setTextColor(layout.reducedColorDepth ? color565(150, 150, 150)
+                                                  : color565(90, 90, 90));
         drawRightAligned(eta2Text, this->layout.displayWidth - 19);
 
         // Primary ETA — fontMedium, urgency-colored, right edge at displayWidth-1

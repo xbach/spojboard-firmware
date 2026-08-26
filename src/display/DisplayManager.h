@@ -60,6 +60,7 @@ struct DisplayLayout {
     int statusBarY;         // Y coordinate of status bar top edge
     int statusBarBaseline;  // Y baseline for status bar text
     int panelCount;         // Number of physical panels (2 or 4)
+    bool reducedColorDepth; // true when the HUB75 driver runs at 5-bit (any 128x64)
 };
 
 // ============================================================================
