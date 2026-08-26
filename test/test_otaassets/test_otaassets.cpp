@@ -3,6 +3,7 @@
 // it is tested exhaustively here where a run costs nothing.
 #include <unity.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "../../src/network/OtaAssetName.h"
 #include "../../src/network/OtaAssetName.cpp"
@@ -192,9 +193,59 @@ void test_other_board_release_offers_nothing(void)
     TEST_ASSERT_EQUAL_INT(0, collectPolicy(release, 3, MP, got, 6));
 }
 
+// ------------------------------------------- shipped display tokens (TA-0269)
+//
+// The tests above prove the GRAMMAR handles display tokens. This one pins the
+// TOKENS THE BUILD ACTUALLY EMITS -- platformio.ini's custom_display_variant
+// values -- against that grammar, so the producer and the consumer cannot drift
+// apart silently. Adding a fourth geometry means adding it here.
+//
+// Keep in sync with: platformio.ini (custom_display_variant) and the
+// DISPLAY_VARIANT block in src/config/AppConfig.h.
+static const char* SHIPPED_DISPLAY_TOKENS[] = {"2x32", "4x32", "2x64"};
+static const int SHIPPED_DISPLAY_TOKEN_COUNT = 3;
+
+// THE PERMANENT NAMING CONSTRAINT. r8's parser reads the board field as the text
+// up to the FIRST "-r", so a display token beginning with 'r' truncates the board
+// name and makes an r8 device accept another board's firmware -- a silent
+// mis-flash. r9+ is immune by construction, but r8 devices are in the field and
+// cannot be changed, so this binds forever. scripts/post_build.py refuses such a
+// token at build time; this asserts the rule itself so it survives a refactor of
+// that script. test_r8compat proves the trap is real against r8's own parser.
+void test_no_shipped_display_token_begins_with_r(void)
+{
+    for (int i = 0; i < SHIPPED_DISPLAY_TOKEN_COUNT; i++)
+    {
+        TEST_ASSERT_TRUE_MESSAGE(SHIPPED_DISPLAY_TOKENS[i][0] != 'r',
+                                 "display token must not begin with 'r' (r8 mis-flash trap)");
+    }
+}
+
+void test_shipped_display_tokens_round_trip(void)
+{
+    for (int i = 0; i < SHIPPED_DISPLAY_TOKEN_COUNT; i++)
+    {
+        char name[96];
+        snprintf(name, sizeof(name), "spojboard-matrixportal_s3-%s-r10-1a2b3c4d.bin",
+                 SHIPPED_DISPLAY_TOKENS[i]);
+
+        OtaAssetInfo mine = otaClassifyAsset(name, MP);
+        TEST_ASSERT_TRUE(mine.match == OtaAssetMatch::Display);
+        TEST_ASSERT_EQUAL_STRING(SHIPPED_DISPLAY_TOKENS[i], mine.display);
+        TEST_ASSERT_EQUAL_INT(10, mine.release);
+
+        // The board gate is what stops a wrong-pin-map flash, and it must hold
+        // for every geometry, not just the ones that existed when it was written.
+        OtaAssetInfo theirs = otaClassifyAsset(name, N8);
+        TEST_ASSERT_TRUE(theirs.match == OtaAssetMatch::None);
+    }
+}
+
 int main(int, char**)
 {
     UNITY_BEGIN();
+    RUN_TEST(test_no_shipped_display_token_begins_with_r);
+    RUN_TEST(test_shipped_display_tokens_round_trip);
     RUN_TEST(test_bare_matches_own_board);
     RUN_TEST(test_bare_underscored_board_is_not_split);
     RUN_TEST(test_other_board_rejected);
