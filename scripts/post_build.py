@@ -21,22 +21,38 @@ def post_program_action(source, target, env):
 
     # A dirty build is NOT the commit its ID names, so it must not be able to
     # masquerade as a release artifact in dist/. The suffix goes on the build-ID
-    # field, after the "-r<release>-" marker, so the variant is still the text
-    # between "spojboard-" and the first "-r" -- the grammar GitHubOTA.cpp parses.
+    # field, which is the LAST field, so it cannot be mistaken for any other.
     if env.get("FIRMWARE_BUILD_DIRTY"):
         build_id = f"{build_id}-dirty"
 
     # Get hardware variant from project environment
     variant = env.GetProjectOption("custom_hardware_variant", "unknown")
 
+    # Optional display-geometry field (TA-0269 SS3). Absent on the 2x32 envs, which
+    # keep emitting the legacy bare name.
+    display = env.GetProjectOption("custom_display_variant", "")
+
     # Source firmware path
     firmware_source = str(target[0])
 
-    # Destination: dist/spojboard-{variant}-r{release}-{build}.bin
+    # Destination, per src/network/OtaAssetName.h:
+    #     spojboard-<board>-[<display>-]r<release>-<buildid>[-dirty].bin
+    #
+    # NO DISPLAY TOKEN MAY BEGIN WITH 'r'. r8's parser reads the board field as
+    # the text up to the FIRST "-r", so a token like "rgb" would truncate the
+    # board name and let an r8 device accept another board's firmware. r8 is in
+    # the field and cannot be fixed, so this constraint is permanent.
+    if display.startswith("r"):
+        raise ValueError(
+            f"custom_display_variant '{display}' begins with 'r' -- this makes r8 "
+            f"devices accept firmware built for a different board. Rename it."
+        )
+
     dist_dir = os.path.join(env.get("PROJECT_DIR"), "dist")
     os.makedirs(dist_dir, exist_ok=True)
 
-    firmware_name = f"spojboard-{variant}-r{release_num}-{build_id}.bin"
+    display_field = f"{display}-" if display else ""
+    firmware_name = f"spojboard-{variant}-{display_field}r{release_num}-{build_id}.bin"
     firmware_dest = os.path.join(dist_dir, firmware_name)
 
     # Copy firmware
@@ -44,6 +60,7 @@ def post_program_action(source, target, env):
 
     print(f"\n✓ Firmware copied to: dist/{firmware_name}")
     print(f"  Variant: {variant}")
+    print(f"  Display: {display or '(bare/legacy)'}")
     print(f"  Release: {release_num}")
     print(f"  Build ID: {build_id}\n")
 
