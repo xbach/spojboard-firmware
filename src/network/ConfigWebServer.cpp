@@ -944,18 +944,15 @@ void ConfigWebServer::githubOtaProgressCallback(size_t progress, size_t total)
 // Only used to PRESELECT an option in the update UI -- an r9 binary runs at any
 // geometry, so nothing here gates what can be installed.
 //
-// NOTE panelRows counts ROWS of 64x32 panels, so 2 rows is FOUR panels: 4x32,
-// not 2x64. Both are 128x64 pixels, which is exactly why the pixel size alone
-// cannot identify the hardware. "2x64" (two 64x64 panels) is a different panel
-// type that this firmware's config cannot express at all, so it is never
-// preselected here -- a user moving to that hardware picks it explicitly.
+// Since TA-0269 SS3 this is the BUILD's own geometry, not a guess derived from
+// config. That closes the gap the old note described: panelRows counts ROWS of
+// 64x32 panels, so panelRows == 2 means FOUR panels (4x32) and could never
+// express 2x64 (two 64x64 panels) at all -- both are 128x64 pixels, so the
+// pixel size alone cannot identify the hardware. A compiled-in token can.
 static const char* currentDisplayToken(const Config* cfg)
 {
-    if (!cfg)
-    {
-        return "";
-    }
-    return (cfg->panelRows >= 2) ? "4x32" : "2x32";
+    (void)cfg;
+    return DISPLAY_VARIANT_NAME;
 }
 
 void ConfigWebServer::handleCheckUpdate()

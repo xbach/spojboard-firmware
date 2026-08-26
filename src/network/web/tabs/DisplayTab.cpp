@@ -215,6 +215,7 @@ String buildDisplayTab(const Config* config)
     html += "<div class='form-group'>";
     html += "<div class='form-group-title'>Panel Configuration</div>";
     html += "<label for='panelRows'>DISPLAY SIZE</label>";
+#if DISPLAY_VARIANT == 1
     html += "<select id='panelRows' name='panel_rows'>";
     html += "<option value='1'";
     if (config->panelRows == 1) html += " selected";
@@ -224,6 +225,20 @@ String buildDisplayTab(const Config* config)
     html += ">128x64 (4 panels)</option>";
     html += "</select>";
     html += "<div class='help-text'>Changing display size will reboot the device. Only select 128x64 if 4 panels are connected.</div>";
+#else
+    // Geometry-specific build (TA-0269 SS3): the panel arrangement is compiled in,
+    // so this is reported, not chosen. The control stays a <select> carrying the
+    // one legal value rather than becoming static text, so the form still posts
+    // panel_rows and parseDisplaySettings needs no special case -- and the value
+    // it posts is the only one this binary can drive.
+    html += "<select id='panelRows' name='panel_rows'>";
+    html += "<option value='" + String(DISPLAY_PANEL_ROWS) + "' selected>";
+    html += String(128) + "x" + String(DISPLAY_PANEL_ROWS * 32) + " (" + String(PANELS_NUMBER);
+    html += " panels, " + String(DISPLAY_VARIANT_NAME) + ")</option>";
+    html += "</select>";
+    html += "<div class='help-text'>Fixed by this firmware build (" + String(DISPLAY_VARIANT_NAME);
+    html += "). To change panel hardware, install the matching build from the System tab.</div>";
+#endif
     html += "</div>"; // End form-group
 
     // Basic Display Settings
