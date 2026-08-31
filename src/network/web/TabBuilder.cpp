@@ -83,12 +83,6 @@ String buildTabBar(bool apModeActive)
         html += "<span class=\"tab-icon\">⭐</span>";
         html += "<span class=\"tab-label\">Optional</span>";
         html += "</button>";
-
-        // Tab 5: System (STA mode only)
-        html += "<button class=\"tab\" data-tab=\"system\">";
-        html += "<span class=\"tab-icon\">⚙</span>";
-        html += "<span class=\"tab-label\">System</span>";
-        html += "</button>";
     }
 
     // Hardware tab: panel wiring (TA-0302). Deliberately OUTSIDE the STA-only
@@ -97,6 +91,16 @@ String buildTabBar(bool apModeActive)
     html += "<button class=\"tab\" data-tab=\"hardware\">";
     html += "<span class=\"tab-icon\">\xF0\x9F\x94\x8C</span>";
     html += "<span class=\"tab-label\">Hardware</span>";
+    html += "</button>";
+
+    // System tab: also outside the STA-only block, for the same reason and one
+    // more (TA-0307). Factory reset and config import/export are RECOVERY
+    // tools, and a device is most likely to need them in exactly the state
+    // where it has dropped to AP mode. The tab gates its own contents -- WiFi
+    // status and OTA stay hidden here -- so this only exposes what works.
+    html += "<button class=\"tab\" data-tab=\"system\">";
+    html += "<span class=\"tab-icon\">\xE2\x9A\x99</span>";
+    html += "<span class=\"tab-label\">System</span>";
     html += "</button>";
 
     html += "</div>"; // tabs

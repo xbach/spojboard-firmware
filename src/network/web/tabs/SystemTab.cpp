@@ -100,6 +100,49 @@ String buildSystemTab(const Config* config, bool apModeActive, size_t freeHeap, 
         html += "</div>"; // End firmware updates form-group
     }
 
+    // Configuration Backup (TA-0307). Rendered in BOTH modes: restoring a
+    // config and resetting to factory are what a user reaches for when the
+    // device has dropped to AP mode, so gating them on STA would put the
+    // recovery tools behind the failure they recover from.
+    html += "<div class='form-group'>";
+    html += "<div class='form-group-title'>Configuration Backup</div>";
+
+    html += "<div>";
+    html += "<button type='button' class='secondary' onclick='exportConfig()'>Download Backup</button>";
+    // The plaintext warning belongs HERE, next to the button that produces the
+    // file -- not in the docs, which the person about to paste it into a GitHub
+    // issue will not have read.
+    html += "<div class='help-text'>Saves every setting as a JSON file. <strong style='color:#fcd34d;'>Includes your "
+            "WiFi password and API keys in plain text</strong> &mdash; treat the file as a secret and do not paste it "
+            "into a bug report.</div>";
+    html += "</div>";
+
+    html += "<div style='margin-top:15px;'>";
+    html += "<label class='form-label' for='cfgFile'>Restore from backup</label>";
+    html += "<input type='file' id='cfgFile' accept='.json,application/json'>";
+
+    // Both default OFF. A restore must not be able to scramble a working panel
+    // by surprise; the two are separate because they describe different things
+    // -- the panels, and the wiring to this particular controller.
+    html += "<div style='margin-top:10px;'>";
+    html += "<label style='display:flex;align-items:center;gap:8px;font-size:13px;color:#bbb;'>";
+    html += "<input type='checkbox' id='cfgGeom'> Also restore panel arrangement</label>";
+    html += "<label style='display:flex;align-items:center;gap:8px;font-size:13px;color:#bbb;margin-top:6px;'>";
+    html += "<input type='checkbox' id='cfgWiring'> Also restore panel wiring "
+            "<span style='color:#666;'>(same board only)</span></label>";
+    html += "</div>";
+
+    html += "<div style='margin-top:12px;'>";
+    html += "<button type='button' class='secondary' onclick='importConfig()' id='cfgImportBtn'>Restore &amp; "
+            "Reboot</button>";
+    html += "</div>";
+    html += "<div class='help-text'>Settings the file does not contain keep their current value. Nothing is written "
+            "unless the whole file is valid.</div>";
+    html += "<div id='cfgImportStatus' style='margin-top:10px;font-size:13px;'></div>";
+    html += "</div>";
+
+    html += "</div>"; // End configuration backup form-group
+
     // System Actions
     html += "<div class='form-group'>";
     html += "<div class='form-group-title'>System Actions</div>";
@@ -110,10 +153,20 @@ String buildSystemTab(const Config* config, bool apModeActive, size_t freeHeap, 
     html += "<div class='help-text'>Restart the device (takes ~10 seconds)</div>";
     html += "</div>";
 
-    // Factory reset button
+    // Factory reset: type-to-confirm rather than two confirm() dialogs, which
+    // are dismissed reflexively. The typed word is also required by the SERVER
+    // (POST /clear-config needs confirm=RESET), so the guard is not merely
+    // cosmetic -- a stray fetch cannot wipe the device.
     html += "<div style='margin-top:15px;'>";
-    html += "<button type='button' class='danger' onclick='factoryReset()'>Factory Reset</button>";
-    html += "<div class='help-text'>⚠ Erase all settings and return to setup mode</div>";
+    html += "<label class='form-label' for='resetConfirm'>Factory Reset</label>";
+    html += "<div class='help-text' style='margin-top:0;'>Erases every setting and reboots into setup mode. "
+            "<strong style='color:#fb7185;'>Panel arrangement and wiring are erased too</strong> &mdash; if you run "
+            "64px panels or custom wiring the display will be wrong until you set it again on the Hardware tab, which "
+            "is reachable in setup mode. Download a backup first if you have not.</div>";
+    html += "<input type='text' id='resetConfirm' placeholder='Type RESET to confirm' autocomplete='off' "
+            "oninput='onResetConfirmInput()' style='margin-top:8px;'>";
+    html += "<button type='button' class='danger' id='resetBtn' onclick='factoryReset()' disabled "
+            "style='margin-top:8px;opacity:0.5;'>Erase Everything</button>";
     html += "</div>";
 
     html += "</div>"; // End system actions form-group

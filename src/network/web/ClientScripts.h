@@ -587,17 +587,102 @@ function rebootDevice() {
     }
 }
 
-function factoryReset() {
-    if (confirm('⚠ WARNING: This will erase ALL settings and reboot into setup mode. Continue?')) {
-        if (confirm('Are you absolutely sure? This cannot be undone!')) {
-            fetch('/clear-config', { method: 'POST' })
-                .then(() => {
-                    alert('Settings erased. Device is rebooting into setup mode...');
-                    setTimeout(() => window.location.href = '/', 20000);
-                })
-                .catch(error => { alert('Error: ' + error.message); });
-        }
+// Config backup (TA-0307). The export is a plain GET: the server sets
+// Content-Disposition, so the browser saves it without any script help.
+function exportConfig() {
+    window.location.href = '/config-export';
+}
+
+// The file is read in the BROWSER and POSTed as a raw JSON body, deliberately
+// not as a multipart form. urlencoding a 4KB config would roughly double it on
+// the wire and make the device build three large heap buffers to decode it;
+// a raw body arrives once and is read straight from arg("plain").
+function importConfig() {
+    var f = document.getElementById('cfgFile');
+    var s = document.getElementById('cfgImportStatus');
+    if (!f || !f.files || f.files.length === 0) {
+        s.style.color = '#fcd34d';
+        s.textContent = 'Choose a backup file first.';
+        return;
     }
+    var geom = document.getElementById('cfgGeom').checked ? '1' : '0';
+    var wiring = document.getElementById('cfgWiring').checked ? '1' : '0';
+    var btn = document.getElementById('cfgImportBtn');
+    var reader = new FileReader();
+    reader.onerror = function() {
+        s.style.color = '#fb7185';
+        s.textContent = 'Could not read that file.';
+    };
+    reader.onload = function() {
+        s.style.color = '#999';
+        s.textContent = 'Validating...';
+        if (btn) btn.disabled = true;
+        fetch('/config-import?geometry=' + geom + '&wiring=' + wiring, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: reader.result
+        })
+        .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }); })
+        .then(function(res) {
+            if (btn) btn.disabled = false;
+            if (!res.ok || !res.j.ok) {
+                s.style.color = '#fb7185';
+                s.textContent = (res.j.error || 'Import failed') + ' Nothing was changed.';
+                return;
+            }
+            var msg = 'Restored ' + res.j.fields + ' settings.';
+            if (res.j.boardMismatch) {
+                msg += ' File came from ' + res.j.fileBoard + '.';
+            }
+            if (res.j.wiringRefused) {
+                msg += ' Panel wiring was NOT restored \u2014 it belongs to a different board.';
+            }
+            if (res.j.geometryApplied) { msg += ' Panel arrangement restored.'; }
+            if (res.j.wiringApplied) { msg += ' Panel wiring restored.'; }
+            s.style.color = '#4ade80';
+            s.textContent = msg + ' Rebooting...';
+            setTimeout(function() { window.location.href = '/'; }, 15000);
+        })
+        .catch(function(e) {
+            if (btn) btn.disabled = false;
+            s.style.color = '#fb7185';
+            s.textContent = 'Error: ' + e.message;
+        });
+    };
+    reader.readAsText(f.files[0]);
+}
+
+// Type-to-confirm. The button is driven from the field's VALUE, and the same
+// word is required by the server -- the disabled attribute here is a courtesy,
+// not the guard.
+function onResetConfirmInput() {
+    var v = document.getElementById('resetConfirm');
+    var b = document.getElementById('resetBtn');
+    if (!v || !b) { return; }
+    var ok = (v.value === 'RESET');
+    b.disabled = !ok;
+    b.style.opacity = ok ? '1' : '0.5';
+}
+
+function factoryReset() {
+    var v = document.getElementById('resetConfirm');
+    if (!v || v.value !== 'RESET') { return; }
+    var b = document.getElementById('resetBtn');
+    if (b) { b.disabled = true; b.textContent = 'Erasing...'; }
+    fetch('/clear-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: 'confirm=RESET'
+    })
+        .then(function(r) {
+            if (!r.ok) { throw new Error('refused (HTTP ' + r.status + ')'); }
+            if (b) { b.textContent = 'Erased \u2014 rebooting into setup mode'; }
+            setTimeout(function() { window.location.href = '/'; }, 20000);
+        })
+        .catch(function(error) {
+            if (b) { b.disabled = false; b.textContent = 'Erase Everything'; }
+            alert('Error: ' + error.message);
+        });
 }
 </script>
 )rawliteral";

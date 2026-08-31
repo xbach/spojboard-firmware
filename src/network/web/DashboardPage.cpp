@@ -87,11 +87,11 @@ void sendDashboardPage(
         sendChunk(server, tabs2);
     }
 
-    // Chunk 4: System tab (STA mode only, ~5KB)
-    if (!apModeActive)
-    {
-        sendChunk(server, buildSystemTab(config, apModeActive, ESP.getFreeHeap(), stopName, departureCount));
-    }
+    // Chunk 4: System tab (~5KB). BOTH modes since TA-0307 -- config
+    // import/export and factory reset are recovery tools, and AP mode is
+    // exactly when they are needed. The tab itself hides everything that
+    // cannot work without a network.
+    sendChunk(server, buildSystemTab(config, apModeActive, ESP.getFreeHeap(), stopName, departureCount));
 
     // Chunk 5: Core scripts (~6KB)
     {
@@ -99,6 +99,7 @@ void sendDashboardPage(
         scripts += FPSTR(SCRIPT_CITY_SWITCH);
         scripts += FPSTR(SCRIPT_DISPLAY_TAB);
         scripts += FPSTR(SCRIPT_HARDWARE); // both modes -- recovery must work in AP
+        scripts += FPSTR(SCRIPT_SYSTEM_ACTIONS); // both modes -- reset/export/import are recovery
         scripts += FPSTR(SCRIPT_CONFIG_SAVE);
         sendChunk(server, scripts);
     }
@@ -109,7 +110,6 @@ void sendDashboardPage(
         String optScripts = FPSTR(SCRIPT_OPTIONAL_TAB);
         optScripts += FPSTR(SCRIPT_PLATFORM_SYMBOLS);
         optScripts += FPSTR(SCRIPT_REST_MODE_TOGGLE);
-        optScripts += FPSTR(SCRIPT_SYSTEM_ACTIONS);
         optScripts += FPSTR(SCRIPT_GITHUB_UPDATE);
         sendChunk(server, optScripts);
     }
