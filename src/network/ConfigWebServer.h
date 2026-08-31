@@ -153,7 +153,9 @@ class ConfigWebServer
     void handleSave();
     void handleRefresh();
     void handleReboot();
-    void handleClearConfig(); // POST: clear all settings (factory reset)
+    void handleClearConfig(); // POST: clear all settings (factory reset), requires confirm=RESET
+    void handleConfigExport(); // GET: download the whole config as JSON (TA-0307)
+    void handleConfigImport(); // POST: apply a config JSON body, then reboot (TA-0307)
     void handleUpdate(); // GET: show OTA upload form
     void handleUpdateProgress(); // POST: handle firmware upload chunks
     void handleUpdateComplete(); // POST: handle firmware upload completion

@@ -1,5 +1,7 @@
 #include "ConfigWebServer.h"
 #include "TabDispatch.h"
+#include "WiFiManager.h"      // getDeviceCode() for the export filename
+#include "../config/ConfigJson.h" // config <-> JSON backup/restore (TA-0307)
 #include "../core/AppState.h" // departures[]/departureCount/apiDataMutex (shared state)
 #include "../utils/Logger.h"
 #include "../display/DisplayManager.h"
@@ -81,6 +83,13 @@ bool ConfigWebServer::begin()
                { handleResetDisplayPins(); });
     server->on("/clear-config", HTTP_POST, [this]()
                { handleClearConfig(); });
+    // Config backup (TA-0307). Both available in AP mode, for the same reason
+    // the Hardware tab is: these are the tools that get a broken device back,
+    // and AP mode is where a broken device ends up.
+    server->on("/config-export", HTTP_GET, [this]()
+               { handleConfigExport(); });
+    server->on("/config-import", HTTP_POST, [this]()
+               { handleConfigImport(); });
     server->on("/update", HTTP_GET, [this]()
                { handleUpdate(); });
     server->on("/update", HTTP_POST,
@@ -924,6 +933,16 @@ void ConfigWebServer::handleReboot()
 
 void ConfigWebServer::handleClearConfig()
 {
+    // Type-to-confirm, enforced SERVER-side (TA-0307). The disabled button in
+    // the UI is a courtesy; THIS is the guard. A destructive endpoint whose
+    // only protection is a dialog in the page that calls it is protected
+    // against nothing -- any stray POST wipes the device.
+    if (server->arg("confirm") != "RESET")
+    {
+        server->send(400, "application/json", "{\"ok\":false,\"error\":\"Factory reset requires confirm=RESET\"}");
+        return;
+    }
+
     String html = FPSTR(HTML_HEADER);
 
     // Header
@@ -1009,6 +1028,146 @@ void ConfigWebServer::handleClearConfig()
 
     // Reboot after a short delay
     delay(10000);
+    ESP.restart();
+}
+
+// ============================================================================
+// Config backup: export / import (TA-0307)
+// ============================================================================
+
+void ConfigWebServer::handleConfigExport()
+{
+    if (currentConfig == nullptr)
+    {
+        server->send(500, "application/json", "{\"ok\":false,\"error\":\"No configuration loaded\"}");
+        return;
+    }
+
+    // HEAP, not stack. This runs on the loop task, whose stack is 8KB, and
+    // sizeof(Config) alone is 2,464 bytes of it -- putting a multi-KB buffer
+    // beside that is the documented BeerBoard near-miss. Measured worst case
+    // for the document is 3,557 bytes; the cap gives 2.3x headroom.
+    char* buf = (char*)malloc(CONFIG_JSON_MAX_BYTES);
+    if (buf == nullptr)
+    {
+        server->send(503, "application/json", "{\"ok\":false,\"error\":\"Out of memory\"}");
+        return;
+    }
+
+    const size_t written = configToJson(*currentConfig, VARIANT_NAME, FIRMWARE_RELEASE, buf, CONFIG_JSON_MAX_BYTES);
+    if (written == 0)
+    {
+        free(buf);
+        server->send(500, "application/json", "{\"ok\":false,\"error\":\"Could not serialize configuration\"}");
+        return;
+    }
+
+    // Name the file after the device, so a drawer full of backups from several
+    // units stays tellable apart. Same device code as the hostname and AP SSID.
+    char disposition[96];
+    snprintf(disposition, sizeof(disposition), "attachment; filename=\"spojboard-%s-config.json\"",
+             WiFiManager::getDeviceCode());
+    server->sendHeader("Content-Disposition", disposition);
+    server->send(200, "application/json", buf);
+    free(buf);
+
+    logTimestamp();
+    debugPrintln("Config exported");
+}
+
+void ConfigWebServer::handleConfigImport()
+{
+    if (currentConfig == nullptr)
+    {
+        server->send(500, "application/json", "{\"ok\":false,\"error\":\"No configuration loaded.\"}");
+        return;
+    }
+
+    // The body arrives as a raw JSON document, NOT a form. WebServer stores an
+    // unrecognised content type whole under "plain" (Parsing.cpp), which is
+    // what avoids urlencoding roughly doubling a 4KB config on the wire and
+    // building three large heap buffers to decode it again.
+    const String body = server->arg("plain");
+    if (body.length() == 0)
+    {
+        server->send(400, "application/json", "{\"ok\":false,\"error\":\"Empty request body.\"}");
+        return;
+    }
+    if (body.length() > CONFIG_JSON_MAX_BYTES)
+    {
+        // Note this cannot PREVENT the allocation -- WebServer mallocs the body
+        // during request parsing, before any handler runs. It prevents the far
+        // larger one that parsing it would need.
+        server->send(413, "application/json", "{\"ok\":false,\"error\":\"Backup file is too large.\"}");
+        return;
+    }
+
+    // Opt-ins ride in the query string because the body is the document itself.
+    ConfigImportOptions options = {};
+    options.restoreGeometry = (server->arg("geometry") == "1");
+    options.restoreWiring = (server->arg("wiring") == "1");
+
+    // STATIC, not a local: 2,464 bytes on an 8KB task stack, beneath WebServer's
+    // own frames, is how BeerBoard's handleSave() nearly overflowed. It lives in
+    // .bss and does not fragment the heap.
+    static Config incoming;
+
+    // Start from what the device has NOW, so any field the file omits keeps its
+    // current value rather than reverting to a default.
+    incoming = *currentConfig;
+
+    const ConfigImportResult result = configFromJson(body.c_str(), incoming, VARIANT_NAME, options);
+
+    if (result.status != ConfigImportStatus::Ok)
+    {
+        // Nothing has been written: configFromJson applied onto a COPY, and we
+        // only reach saveConfig() below on Ok. NVS is byte-identical here.
+        const char* reason = "Could not read that file.";
+        switch (result.status)
+        {
+        case ConfigImportStatus::ParseFailed:
+            reason = "That file is not valid JSON, or is truncated or too large.";
+            break;
+        case ConfigImportStatus::NotAnObject:
+            reason = "That file is valid JSON but is not a SpojBoard configuration.";
+            break;
+        case ConfigImportStatus::SchemaTooNew:
+            reason = "That backup was written by a newer firmware than this one.";
+            break;
+        default:
+            break;
+        }
+        String err = "{\"ok\":false,\"error\":\"";
+        err += reason;
+        err += "\"}";
+        server->send(400, "application/json", err);
+        return;
+    }
+
+    saveConfig(incoming);
+
+    String json = "{\"ok\":true,\"fields\":";
+    json += String(result.fieldsApplied);
+    json += ",\"boardMismatch\":";
+    json += result.boardMismatch ? "true" : "false";
+    json += ",\"wiringRefused\":";
+    json += result.wiringRefused ? "true" : "false";
+    json += ",\"geometryApplied\":";
+    json += result.geometryApplied ? "true" : "false";
+    json += ",\"wiringApplied\":";
+    json += result.wiringApplied ? "true" : "false";
+    json += ",\"fileBoard\":\"";
+    json += result.fileBoard;
+    json += "\"}";
+    server->send(200, "application/json", json);
+
+    logTimestamp();
+    debugPrintln("Config imported - rebooting to apply");
+
+    // Reboot rather than applying live: loadConfig() is the only validator, and
+    // a reboot is what guarantees every imported value goes through it before
+    // anything reads it.
+    delay(2000);
     ESP.restart();
 }
 
