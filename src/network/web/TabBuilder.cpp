@@ -81,6 +81,14 @@ String buildTabBar(bool apModeActive)
         html += "</button>";
     }
 
+    // Hardware tab: panel wiring (TA-0302). Deliberately OUTSIDE the STA-only
+    // block -- a panel blanked by a bad pin map is a plausible reason the user
+    // is in AP mode, so the fix has to be reachable from there.
+    html += "<button class=\"tab\" data-tab=\"hardware\">";
+    html += "<span class=\"tab-icon\">\xF0\x9F\x94\x8C</span>";
+    html += "<span class=\"tab-label\">Hardware</span>";
+    html += "</button>";
+
     html += "</div>"; // tabs
 
     return html;

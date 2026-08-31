@@ -219,6 +219,20 @@ const char HTML_HEADER[] PROGMEM = R"rawliteral(
             background: #333;
             border-radius: 3px;
         }
+        .pin-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(72px, 1fr));
+            gap: 8px;
+            margin-top: 10px;
+        }
+        .pin-cell label {
+            font-size: 11px;
+            margin-bottom: 2px;
+        }
+        .pin-cell input {
+            width: 100%;
+            box-sizing: border-box;
+        }
         .help-text {
             color: #666;
             font-size: 11px;

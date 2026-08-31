@@ -7,6 +7,7 @@
 #include "tabs/DisplayTab.h"
 #include "tabs/OptionalTab.h"
 #include "tabs/SystemTab.h"
+#include "tabs/HardwareTab.h"
 #include <WiFi.h>
 
 // Send a chunk safely: skip empty strings (which would terminate chunked transfer)
@@ -69,6 +70,9 @@ void sendDashboardPage(
             tabs2 += buildDisplayTab(config);
             tabs2 += buildOptionalTab(config);
         }
+        // Hardware tab in both modes -- see the note in buildTabBar().
+        tabs2 += buildHardwareTab(config);
+
         tabs2 += "<div class='form-actions'>";
         if (apModeActive)
         {

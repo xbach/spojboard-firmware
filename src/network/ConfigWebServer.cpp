@@ -295,11 +295,21 @@ void ConfigWebServer::handleSave()
     {
         parseOptionalSettings(&newConfig);
     }
+    bool hardwareChanged = false;
+    if (tab == "hardware" || tab == "all")
+    {
+        const HwProfile before = newConfig.hwProfile;
+        parseHardwareSettings(&newConfig);
+        // The wiring reaches the driver once, in DisplayManager::begin(), so a
+        // change only takes effect on the next boot. Reuse the existing
+        // restart-required page rather than pretending it applied live.
+        hardwareChanged = (memcmp(&before, &newConfig.hwProfile, sizeof(HwProfile)) != 0);
+    }
 
     newConfig.configured = true;
 
     // If in AP mode, WiFi changed, city changed, or display size changed, show restart message
-    if (apModeActive || wifiChanged || cityChanged || displaySizeChanged)
+    if (apModeActive || wifiChanged || cityChanged || displaySizeChanged || hardwareChanged)
     {
         String html = FPSTR(HTML_HEADER);
 
@@ -520,6 +530,65 @@ void ConfigWebServer::parseDisplaySettings(Config* config)
                                 : "";
         strlcpy(config->platformSymbolMap, symbolMapValue.c_str(), sizeof(config->platformSymbolMap));
     }
+}
+
+void ConfigWebServer::parseHardwareSettings(Config* config)
+{
+    // Panel wiring (TA-0302). Nothing here is trusted: an out-of-range order
+    // would index past the permutation table, and an invalid pin map is dropped
+    // by hwResolvePins() at boot rather than reaching the driver.
+    if (server->hasArg("hw_rgb_order"))
+    {
+        const int order = server->arg("hw_rgb_order").toInt();
+        if (order >= 0 && order <= (int)RgbOrder::BGR)
+        {
+            config->hwProfile.order = (RgbOrder)order;
+        }
+    }
+
+    if (server->hasArg("hw_driver"))
+    {
+        const int drv = server->arg("hw_driver").toInt();
+        if (drv >= 0 && drv <= 5)
+        {
+            config->hwProfile.driver = (uint8_t)drv;
+        }
+    }
+
+    // A checkbox absent from the POST means unchecked -- correct here, because
+    // the whole tab is submitted together.
+    config->hwProfile.useCustomPins = server->hasArg("hw_custom_pins");
+
+    struct PinArg
+    {
+        const char* name;
+        int8_t HubPins::*field;
+    };
+    static const PinArg PIN_ARGS[] = {
+        {"hw_r1", &HubPins::r1}, {"hw_g1", &HubPins::g1}, {"hw_b1", &HubPins::b1},
+        {"hw_r2", &HubPins::r2}, {"hw_g2", &HubPins::g2}, {"hw_b2", &HubPins::b2},
+        {"hw_a", &HubPins::a},   {"hw_b", &HubPins::b},   {"hw_c", &HubPins::c},
+        {"hw_d", &HubPins::d},   {"hw_e", &HubPins::e},   {"hw_lat", &HubPins::lat},
+        {"hw_oe", &HubPins::oe}, {"hw_clk", &HubPins::clk},
+    };
+
+    HubPins pins = config->hwProfile.pins;
+    for (const PinArg& pa : PIN_ARGS)
+    {
+        if (server->hasArg(pa.name))
+        {
+            const int v = server->arg(pa.name).toInt();
+            if (v >= 0 && v <= 48)
+            {
+                pins.*(pa.field) = (int8_t)v;
+            }
+        }
+    }
+
+    // Store what the user typed either way -- the form must show it back on the
+    // next render so a typo is visible and fixable. Whether it is USED is
+    // decided at boot by hwResolvePins(), which falls back to the compiled map.
+    config->hwProfile.pins = pins;
 }
 
 void ConfigWebServer::parseOptionalSettings(Config* config)

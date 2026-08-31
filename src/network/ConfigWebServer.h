@@ -178,6 +178,7 @@ class ConfigWebServer
     void parseBerlinSettings(Config* config);
     void parseMqttSettings(Config* config);
     void parseDisplaySettings(Config* config);
+    void parseHardwareSettings(Config* config); // panel wiring (TA-0302)
     void parseOptionalSettings(Config* config);
 
     // OTA progress callbacks (static for use as function pointers)
