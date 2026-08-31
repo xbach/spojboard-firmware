@@ -113,22 +113,24 @@ Bottom Row (Pins 9-16):
 
 ## Panel Geometry
 
-Panel arrangement is chosen at **build time** — panel height changes how many address lines the
-driver uses, so each arrangement is a separate firmware binary:
+Panel arrangement is a **setting**, not a separate firmware build. One binary per board drives every
+arrangement; pick yours under **Display → Panel arrangement** and the device reboots into it.
 
-| Build | Panels | Pixels | Notes |
-|---|---|---|---|
-| `matrixportal_s3` / `esp32_s3_n8r2` | 2x 64x32 chained | 128x32 | The default, and what every release has shipped |
-| `..._4x32` | 4x 64x32 in a 2x2 serpentine | 128x64 | Needs the coordinate remapper |
-| `..._2x64` | 2x 64x64 chained | 128x64 | Plain horizontal chain; uses the E address line |
+| Setting | Panels | Pixels |
+|---|---|---|
+| `128x32 - 2x 64x32 panels, chained` | 2x 64x32 side by side | 128x32 |
+| `128x64 - 4x 64x32 panels, 2x2 grid` | 4x 64x32 in a 2x2 serpentine | 128x64 |
+| `128x64 - 2x 64x64 chained, or one 128x64 module` | 2x 64x64 side by side, **or** a single 128x64 module | 128x64 |
 
-`4x32` and `2x64` are both 128x64 pixels, so resolution alone does not tell you which build you
-need — count the panels.
+**Two of the three are 128x64, so the pixel size does not tell you which one you have — count the
+panels.** Picking the wrong one gives a scrambled or half-lit display; change the setting and reboot,
+nothing is damaged.
 
-### A single 128x64 module uses the `2x64` build
+### A single 128x64 module uses the 2x 64x64 setting
 
 If your display is **one** 128x64 module with a single HUB75 connector rather than two chained
-64x64 panels, flash `2x64`. No separate build exists, and none is needed.
+64x64 panels, choose the **`2x 64x64 chained, or one 128x64 module`** setting. There is no separate
+option, and none is needed.
 
 The reason is that the driver only ever uses the panel width and the chain length **multiplied
 together**. Both descriptions produce the same numbers:
@@ -144,7 +146,7 @@ shift-register chain the panel sees is the same length either way.
 
 **The one exception is scan type, not panel count.** A minority of 128x64 modules use a
 non-standard internal scan map (typically 1/16-scan "outdoor" panels) and need a scan remap that
-this firmware does not currently apply for `2x64`. You cannot identify these from the pixel
+this firmware does not currently apply. You cannot identify these from the pixel
 dimensions. The symptom is distinctive: **interleaved or garbled rows** — the image is there but
 shredded across the panel — as opposed to wrong colours (channel order) or the top and bottom
 halves showing the same content (the E address line not reaching the panel). If you see that,
