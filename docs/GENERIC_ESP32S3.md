@@ -32,7 +32,14 @@ valid-but-wrong map leaves the panel dark, **Restore built-in wiring** (also on 
 available in setup mode) puts it back without a USB cable.
 
 The **panel arrangement** — 2× 64×32, 4× 64×32 in a 2×2 grid, or 2× 64×64 / one 128×64 module — is a
-setting too, under Display.
+setting too, on the same **Hardware** tab, and likewise applies on reboot.
+
+**If you are wiring for 64-high panels, the E line is not optional.** 32-high panels address 16 rows
+with four address bits (A–D) and hold E low permanently, so a 13-wire harness happens to work. A
+64-high panel — `2× 64×64`, or a single 128×64 module — addresses 32 rows and **needs all five**.
+Omit E and the panel lights up looking plausible, with the top and bottom halves showing the same
+content; it reads as a firmware or arrangement fault rather than a missing wire. E is GPIO 21 in the
+built-in map. The `4× 64×32` grid does *not* need it: those are 32-high panels, chained.
 
 ### Creating a custom hardware variant (rarely needed now)
 
@@ -58,13 +65,13 @@ Those macros are only the **factory default** a device falls back to; the stored
 - **ESP32-S3-DevKitC-1** (8MB/16MB flash version) - Native support via `esp32_s3_n8r2` variant
 - **LOLIN S3** (16MB flash)
 - **ESP32-S3-WROOM** based boards
-- Any ESP32-S3 board with ≥8MB flash and 13+ free GPIOs
+- Any ESP32-S3 board with ≥8MB flash and 14 free GPIOs (13 will do for 32-high panels only — see the E line note above)
 
 ### Pin Selection Guidelines
 
 **Safe to use:**
 - GPIO 1-18 (most are safe for general use)
-- GPIO 21
+- GPIO 21 (the E address line in the built-in map — required for 64-high panels)
 - GPIO 33-48
 
 **Avoid these pins:**

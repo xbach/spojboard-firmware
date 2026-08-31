@@ -23,8 +23,14 @@ Save configuration settings. Uses form-encoded data with a `tab` parameter to sc
 | `connection` | `ssid`, `password`, `city` (Prague/Berlin/MQTT) |
 | `transit` | `refresh` (10-300s), `min_dep_time` (0-30), `prague_stops`, `berlin_stops`, `api_key`, MQTT fields |
 | `display` | `brightness` (0-255), `num_deps` (1 to 3 or 7 depending on arrangement), `language`, `show_platform`, `scroll_enabled`, `show_multi_times`, `line_color_map`, `platform_symbol_map` |
-| `optional` | `debug_mode`, `weather_enabled`, `weather_lat`, `weather_lon`, `weather_refresh`, `rest_periods` |
+| `optional` | `debug_mode`, `weather_enabled`, `weather_lat`, `weather_lon`, `weather_refresh` (5-120 min), `rest_periods` |
 | `hardware` | `panel_geom` (1-3, see below), `hw_rgb_order` (0-5), `hw_driver` (0-5), `hw_custom_pins` (checkbox), `hw_r1` … `hw_clk` (GPIO 0-48) |
+
+Every range above is enforced in exactly one place — `configClamp()` in `src/config/ConfigJson.h` —
+which the boot load, this save path and the JSON importer all call. The per-parser copies that used
+to do it drifted: `weather_refresh` rendered as `min=5 max=120` while saves were silently narrowed
+to 10-60, so the form advertised a range it refused to keep. Values outside a range are clamped, not
+rejected; the response is still `200`.
 
 **`panel_geom`** names the panel ARRANGEMENT, not the pixel size — two of the three are 128×64.
 It sits on the **hardware** tab with the wiring: both describe the attached panels rather than what

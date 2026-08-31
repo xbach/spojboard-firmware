@@ -130,7 +130,7 @@ Common issues and solutions when using SpojBoard.
 **Symptoms:** Nothing on the panel, heavy ghosting, interleaved rows, or the top and bottom halves showing the same thing.
 
 **Solutions:**
-- **Wrong panel arrangement** is the first thing to check: **Display → Panel arrangement** must match the panels you actually have. Two of the three options are 128×64 pixels but different hardware, so count the panels. Picking wrong scrambles the image; nothing is damaged
+- **Wrong panel arrangement** is the first thing to check: **Hardware → Panel arrangement** must match the panels you actually have. Two of the three options are 128×64 pixels but different hardware, so count the panels. Picking wrong scrambles the image; nothing is damaged
 - **Blank or ghosting** can be a driver chip that needs its own init sequence — try **Hardware → Panel driver chip** (FM6126A and ICN2038S are the common ones)
 - **Top and bottom halves identical** on a 64-high panel means the E address line is not reaching it — check that wire
 - **Interleaved or shredded rows** on a single 128×64 module means it uses a non-standard internal scan map, which needs firmware support. Open an issue with a photo
@@ -143,8 +143,8 @@ Common issues and solutions when using SpojBoard.
 **Solutions:**
 - Check HUB75 cable connections between panels
 - Verify panel chain order (panels must be connected in sequence)
-- Ensure power supply can handle the current draw
-- Try reducing brightness to see if power supply is insufficient
+- Ensure power supply can handle the current draw — see [Power Supply Requirements](../README.MD#power-supply-requirements). The same 2A minimum / 3A recommended covers every panel arrangement; current tracks lit LEDs rather than panel count
+- Try reducing brightness to see if power supply is insufficient. If flickering or colour shifts clear up at lower brightness, the supply is the problem, not the panel
 - Check for loose solder joints on panel connectors
 
 ## Firmware Update Issues
@@ -228,10 +228,26 @@ If your issue isn't covered here:
    - Use demo mode to verify hardware is functioning
    - If demo works but live data doesn't, issue is with API/configuration
 
-4. **Factory Reset**
-   - Use the factory reset button in web interface
-   - This clears all configuration and starts fresh
+4. **Back Up Your Configuration First**
+   - System tab → Configuration Backup → **Download Backup**
+   - Saves every setting as a JSON file you can restore later, which makes the reset below
+     recoverable instead of final
+   - The file contains your **WiFi password and API keys in plain text** — keep it private, and do
+     not attach it to a bug report
 
-5. **Report Issues**
+5. **Factory Reset**
+   - System tab → type `RESET` in the confirmation field
+   - Clears all configuration and starts fresh
+   - Two optional tick-boxes soften it when you do not want a full wipe:
+     - **Keep WiFi credentials** — the device rejoins your network on the same address instead of
+       starting a hotspot, so you can carry on from the same browser tab
+     - **Keep panel arrangement and wiring** — the display comes back looking the same. Worth
+       ticking on 64px panels or custom wiring, where a full reset leaves the panel wrong *and* the
+       device in setup mode at once
+   - Both start unticked, so a plain reset is still a full factory reset
+   - Either way the display settings can be restored afterwards from a backup, or re-entered on the
+     Hardware tab, which is reachable in setup mode
+
+6. **Report Issues**
    - GitHub Issues: [github.com/xbach/spojboard-firmware/issues](https://github.com/xbach/spojboard-firmware/issues)
    - Include serial output, device logs, and steps to reproduce

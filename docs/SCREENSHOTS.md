@@ -39,7 +39,7 @@ Web-based configuration interface showing:
 - **Transit Data tab**: API-specific settings (API keys, stop IDs, refresh interval)
 - **Display tab**: Brightness, line colors, dual ETA toggle, scrolling options
 - **Optional tab**: Weather display, rest mode periods, debug mode
-- **System tab**: Device info, firmware updates, actions (refresh, reboot, factory reset)
+- **System tab**: Device info, configuration backup (download/restore), firmware updates, actions (refresh, reboot, reset)
 
 ### Configuration Details
 

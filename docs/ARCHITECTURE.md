@@ -317,7 +317,8 @@ Layered architecture with zero circular dependencies:
 ┌─────────────────────────────────────────────────────────┐
 │ Layer 2: Data Layer                                     │
 │   AppConfig, DepartureData                              │
-│   PanelGeometry, HardwareProfile  (pure, host-tested)   │
+│   PanelGeometry, HardwareProfile, ConfigJson            │
+│                                   (pure, host-tested)   │
 └─────────────────────────────────────────────────────────┘
                         ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -331,8 +332,19 @@ Layered architecture with zero circular dependencies:
 - **Zero Circular Dependencies**: Lower layers never depend on higher layers
 - **Single Responsibility**: Each module has one clear purpose
 - **Callback Pattern**: Modules communicate upward via callbacks
-  - Example: `ConfigWebServer` → `main.cpp` via `onSaveConfig` callback
+  - Example: `ConfigWebServer` → `core/AppCallbacks` via the `onConfigSave` callback
 - **Pure Data Structures**: Config passed as parameter, not stored in modules
+- **One Definition Per Rule**: where two code paths must agree, they call the same function rather
+  than keeping two copies in step. `configClamp()` (`config/ConfigJson.h`) is the worked example —
+  it defines every field's valid range, and all three paths that produce a `Config` call it: the
+  boot load, the JSON importer, and the web save. The web parsers used to clamp their own, and the
+  copies drifted: the weather-refresh field advertised `min=5 max=120` while saves were silently
+  narrowed to 10–60. What the parsers still own is form *semantics* (an absent checkbox meaning
+  off), which is a different question from a range.
+- **Desktop-Testable Cores**: logic worth trusting is extracted into modules free of Arduino and
+  network headers, then tested natively (`pio test -e native`). `AppConfig.h` deliberately does not
+  include `<Preferences.h>` for this reason — it is what lets `Config` be built and inspected on a
+  host, which is how `ConfigJson` is tested at all.
 - **Static Allocation**: No dynamic allocation in main loop for stability
 
 ### Module Communication

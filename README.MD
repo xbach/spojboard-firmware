@@ -41,6 +41,8 @@ Standalone operation with web-based configuration, no external server required f
 - **Custom Line Colors**: Configure custom colors for specific lines via web interface with exact and pattern matching
 - **Demo Mode**: Preview custom departure data on the display before API configuration - available in both setup and normal modes
 - **Firmware Updates**: GitHub-based OTA updates with user confirmation - check for new releases directly from the web interface
+- **Configuration Backup**: Download every setting as a JSON file and restore it - before a firmware update, to set up a second unit without retyping a 300-character API key, or just to keep a copy of a working setup. A restore only changes the settings the file actually contains, and nothing is written unless the whole file is valid. Panel arrangement and wiring restore only if you ask for them, so a backup from another unit cannot rearrange your display. **The file contains your WiFi password and API keys in plain text** - keep it private
+- **Selective Reset**: A factory reset can optionally keep your WiFi credentials (so the device rejoins your network instead of starting a hotspot) and your panel arrangement and wiring (so the display comes back looking the same). Both off by default, and the reset asks you to type RESET
 - **Optional Telnet Logging**: Remote debugging via telnet (port 23) when debug mode is enabled - mirrors all logs over WiFi
 - **Weather Display**: Optional weather info in status bar showing temperature and condition icon from Open-Meteo API (free, no API key required)
 - **Infotext Display**: Service alerts scroll through the status bar as a ticker, with datetime elements revealing char-by-char as the text passes. Manual infotext injection via web UI or REST API
@@ -86,14 +88,20 @@ SpojBoard supports two hardware variants. The firmware configures the correct pi
 
 HUB75 LED matrix panels require external 5V power.
 
-**Measured power consumption (real-world testing):**
+**Measured power consumption (real-world testing)**, on a 128×32 with typical content:
 - **Normal operation** (brightness 90, default): ~0.3A average
 - **Maximum brightness** (brightness 255): ~0.65A average, 0.7A peak
 - **Transient spikes**: Up to 1.6A during WiFi connection, OTA updates, or boot
 
+**Larger arrangements do not need a larger supply.** Panel current tracks the number of LEDs actually
+*lit*, not the number of panels fitted, and a departure board is mostly dark — adding panels spreads
+sparse text over more area rather than lighting more of it. The same recommendation below covers every
+arrangement.
+
 **Recommended power supply:**
 - **5V 2A minimum** (provides 2.8× headroom over normal peaks, adequate for all conditions)
 - **5V 3A recommended** (extra safety margin for simultaneous WiFi/OTA/display load)
+- Undersized supplies usually show up as flickering, colour shifts at high brightness, or brownout reboots under load rather than as an outright failure to start
 
 **Compatible supplies:**
 - **USB-C**: Any quality 5V 2A+ phone charger or USB PD adapter (10W+)
@@ -154,10 +162,10 @@ The built-in web server provides a tabbed configuration interface with per-tab s
   - Berlin: Stop IDs
   - MQTT: Broker, topics, field mappings - see [MQTT Guide](docs/MQTT.md)
   - Refresh interval, minimum departure time, number of departures
-- **Display Tab** (🖥): Panel arrangement, brightness, custom line colors with wildcard patterns and restore-to-defaults, dual ETA toggle, scrolling
+- **Display Tab** (🖥): Brightness, custom line colors with wildcard patterns and restore-to-defaults, dual ETA toggle, scrolling
 - **Optional Tab** (⭐): Weather display, rest mode periods, debug mode (STA mode only)
-- **Hardware Tab** (🔌): RGB channel order, panel driver chip, optional custom pin map, panel test pattern, restore built-in wiring. **Also shown in AP mode** - a panel blanked by a bad pin map is a plausible reason to be there
-- **System Tab** (⚙): System info, firmware updates, actions (STA mode only)
+- **Hardware Tab** (🔌): Panel arrangement, RGB channel order, panel driver chip, optional custom pin map, panel test pattern, restore built-in wiring. **Also shown in AP mode** - a panel blanked by a bad pin map is a plausible reason to be there. Arrangement lives here rather than on Display because it describes the panels you attached, not what is drawn on them, and both it and the wiring only take effect at boot - so changing them together costs one restart
+- **System Tab** (⚙): System info, configuration backup, firmware updates (STA only), reboot and reset. **Also shown in AP mode** - restoring a backup and resetting are what you reach for when a device has dropped into setup mode, so they no longer sit behind the problem they fix
 - **Action Bar**: Force refresh, demo mode, rest mode toggle (context-aware per mode)
 - **Status Banners**: AP mode, demo mode, rest mode (manual/scheduled), API errors
 
@@ -171,7 +179,10 @@ The built-in web server provides a tabbed configuration interface with per-tab s
 | Display | Shows AP credentials | Shows departures |
 | Web UI | Setup focused | Full dashboard |
 | Demo Mode | Available | Available |
-| Panel wiring (Hardware tab) | Available | Available |
+| Panel arrangement + wiring (Hardware tab) | Available | Available |
+| Config backup / restore (System tab) | Available | Available |
+| Reset, with optional keep-WiFi / keep-panel | Available | Available |
+| Firmware updates (OTA) | Unavailable | Available |
 
 ## Getting Your Stop ID
 
