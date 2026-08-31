@@ -288,6 +288,26 @@ void ConfigWebServer::handleSave()
         parseWifiSettings(&newConfig, &wifiChanged);
         parseConnectionSettings(&newConfig, &cityChanged);
     }
+    // HARDWARE BEFORE DISPLAY, and it must stay that way. The panel arrangement
+    // lives on the hardware tab (it is a boot-only property of the attached
+    // panels, same as the wiring, and the two now cost one reboot between them),
+    // and parseDisplaySettings() clamps num_deps against config->geometry. In the
+    // other order a single tab == "all" post would clamp the new row count against
+    // the OLD arrangement -- silently, and only on the AP-mode path that posts
+    // every field at once.
+    bool hardwareChanged = false;
+    if (tab == "hardware" || tab == "all")
+    {
+        const HwProfile before = newConfig.hwProfile;
+        parseHardwareSettings(&newConfig);
+        // Arrangement and wiring both reach the driver once, in
+        // DisplayManager::begin(), so either only takes effect on the next boot.
+        // Reuse the existing restart-required page rather than pretending they
+        // applied live -- and note these are TWO reasons, tracked separately,
+        // because the restart page names each one it acted on.
+        displaySizeChanged = (newConfig.geometry != currentConfig->geometry);
+        hardwareChanged = (memcmp(&before, &newConfig.hwProfile, sizeof(HwProfile)) != 0);
+    }
     if (tab == "transit" || tab == "all")
     {
         parseTransitSettings(&newConfig);
@@ -298,21 +318,10 @@ void ConfigWebServer::handleSave()
     if (tab == "display" || tab == "all")
     {
         parseDisplaySettings(&newConfig);
-        displaySizeChanged = (newConfig.geometry != currentConfig->geometry);
     }
     if (tab == "optional" || tab == "all")
     {
         parseOptionalSettings(&newConfig);
-    }
-    bool hardwareChanged = false;
-    if (tab == "hardware" || tab == "all")
-    {
-        const HwProfile before = newConfig.hwProfile;
-        parseHardwareSettings(&newConfig);
-        // The wiring reaches the driver once, in DisplayManager::begin(), so a
-        // change only takes effect on the next boot. Reuse the existing
-        // restart-required page rather than pretending it applied live.
-        hardwareChanged = (memcmp(&before, &newConfig.hwProfile, sizeof(HwProfile)) != 0);
     }
 
     newConfig.configured = true;
@@ -500,18 +509,6 @@ void ConfigWebServer::parseTransitSettings(Config* config)
 
 void ConfigWebServer::parseDisplaySettings(Config* config)
 {
-    if (server->hasArg("panel_geom"))
-    {
-        // Names the ARRANGEMENT, not the pixel size -- 4x 64x32 and 2x 64x64 are
-        // both 128x64 and are not interchangeable (TA-0303).
-        const int g = server->arg("panel_geom").toInt();
-        if (g >= 1 && g <= 3)
-        {
-            config->geometry = (PanelGeometry)g;
-            config->panelRows = geometryPanelRows(config->geometry);
-        }
-    }
-
     if (server->hasArg("brightness"))
     {
         config->brightness = server->arg("brightness").toInt();
@@ -574,6 +571,22 @@ void ConfigWebServer::parseDisplaySettings(Config* config)
 
 void ConfigWebServer::parseHardwareSettings(Config* config)
 {
+    // Panel arrangement (TA-0303). It sits on the hardware tab rather than the
+    // display tab because it describes the PANELS, not what is drawn on them --
+    // it is set once at assembly and, like the wiring below, only read at boot.
+    // Keeping the two together means changing both costs one reboot, not two.
+    if (server->hasArg("panel_geom"))
+    {
+        // Names the ARRANGEMENT, not the pixel size -- 4x 64x32 and 2x 64x64 are
+        // both 128x64 and are not interchangeable (TA-0303).
+        const int g = server->arg("panel_geom").toInt();
+        if (g >= 1 && g <= 3)
+        {
+            config->geometry = (PanelGeometry)g;
+            config->panelRows = geometryPanelRows(config->geometry);
+        }
+    }
+
     // Panel wiring (TA-0302). Nothing here is trusted: an out-of-range order
     // would index past the permutation table, and an invalid pin map is dropped
     // by hwResolvePins() at boot rather than reaching the driver.

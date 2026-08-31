@@ -211,35 +211,6 @@ String buildDisplayTab(const Config* config)
     String html = "";
     html += "<div id='tab-display' class='tab-content'>";
 
-    // Panel Configuration (requires restart)
-    html += "<div class='form-group'>";
-    html += "<div class='form-group-title'>Panel Configuration</div>";
-    html += "<label for='panelGeom'>PANEL ARRANGEMENT</label>";
-    // Every supported arrangement, named by the PANELS -- not by the pixel size.
-    // Two of the three are 128x64, so resolution alone cannot tell the user
-    // which one they have; they have to count panels. The 2x 64x64 entry also
-    // covers a single 128x64 module, which is the identical configuration in
-    // code (see PanelGeometry.h and docs/WIRING.md).
-    html += "<select id='panelGeom' name='panel_geom'>";
-
-    html += "<option value='1'";
-    if (config->geometry == PanelGeometry::Chain2x32) html += " selected";
-    html += ">128x32 - 2x 64x32 panels, chained</option>";
-
-    html += "<option value='2'";
-    if (config->geometry == PanelGeometry::Grid4x32) html += " selected";
-    html += ">128x64 - 4x 64x32 panels, 2x2 grid</option>";
-
-    html += "<option value='3'";
-    if (config->geometry == PanelGeometry::Chain2x64) html += " selected";
-    html += ">128x64 - 2x 64x64 chained, or one 128x64 module</option>";
-
-    html += "</select>";
-    html += "<div class='help-text'>Changing this reboots the device. Pick the one that matches the "
-            "PANELS you have: both 128x64 options are the same pixel size but different hardware. "
-            "If the colours look wrong afterwards, set the channel order on the Hardware tab.</div>";
-    html += "</div>"; // End form-group
-
     // Basic Display Settings
     html += "<div class='form-group'>";
     html += "<div class='form-group-title'>Display Settings</div>";

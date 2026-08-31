@@ -13,6 +13,7 @@ All notable changes to SpojBoard firmware will be documented in this file.
 - **Panel arrangement is chosen in the settings again**, and now names the panels instead of counting rows: 2x 64x32 chained (128x32), 4x 64x32 in a 2x2 grid (128x64), or 2x 64x64 chained (128x64). Both 128x64 options are the same pixel size but different hardware, so the list says which panels each one means
 - A **single 128x64 module** is supported by the 2x 64x64 setting — the two are identical as far as the display driver is concerned, so no separate firmware is needed
 - Existing settings carry over: a display set to 128x32 stays 128x32, and one set to 128x64 becomes the 4-panel grid, which is what that option has always meant
+- The **panel arrangement setting moved to the Hardware tab**, next to the wiring. Both describe the panels you attached rather than what is drawn on them, and both only take effect at boot, so changing them together now costs one restart instead of two. It is also reachable during setup (AP) mode, where the Display tab is not shown
 
 ### Fixed
 - Saving a wiring change now actually restarts the device. It used to save the setting, announce a restart, and not perform one — so the new channel order or pin map sat unapplied until the next power cycle

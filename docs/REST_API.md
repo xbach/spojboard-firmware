@@ -22,11 +22,14 @@ Save configuration settings. Uses form-encoded data with a `tab` parameter to sc
 |-----|-----------|
 | `connection` | `ssid`, `password`, `city` (Prague/Berlin/MQTT) |
 | `transit` | `refresh` (10-300s), `min_dep_time` (0-30), `prague_stops`, `berlin_stops`, `api_key`, MQTT fields |
-| `display` | `panel_geom` (1-3, see below), `brightness` (0-255), `num_deps` (1 to 3 or 7 depending on arrangement), `language`, `show_platform`, `scroll_enabled`, `show_multi_times`, `line_color_map`, `platform_symbol_map` |
+| `display` | `brightness` (0-255), `num_deps` (1 to 3 or 7 depending on arrangement), `language`, `show_platform`, `scroll_enabled`, `show_multi_times`, `line_color_map`, `platform_symbol_map` |
 | `optional` | `debug_mode`, `weather_enabled`, `weather_lat`, `weather_lon`, `weather_refresh`, `rest_periods` |
-| `hardware` | `hw_rgb_order` (0-5), `hw_driver` (0-5), `hw_custom_pins` (checkbox), `hw_r1` … `hw_clk` (GPIO 0-48) |
+| `hardware` | `panel_geom` (1-3, see below), `hw_rgb_order` (0-5), `hw_driver` (0-5), `hw_custom_pins` (checkbox), `hw_r1` … `hw_clk` (GPIO 0-48) |
 
-**`panel_geom`** names the panel ARRANGEMENT, not the pixel size — two of the three are 128×64:
+**`panel_geom`** names the panel ARRANGEMENT, not the pixel size — two of the three are 128×64.
+It sits on the **hardware** tab with the wiring: both describe the attached panels rather than what
+is drawn on them, both are read only at boot, so changing both costs one reboot instead of two. It is
+therefore also settable in **AP mode**, where the hardware tab renders and the display tab does not.
 
 | Value | Panels | Pixels |
 |-------|--------|--------|
