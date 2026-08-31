@@ -65,9 +65,26 @@ Factory reset: erases all NVS settings and reboots into AP mode. Available in AP
 **Requires `confirm=RESET`.** The confirmation is enforced here, not only in the UI — a destructive
 endpoint whose sole protection is a dialog in the page that calls it is protected against nothing.
 
+Two optional keep-flags, both defaulting to off, so an unqualified call is still a full reset:
+
+| Param | Effect |
+|---|---|
+| `keep_wifi=1` | preserve `wifiSsid` / `wifiPass`. The device rejoins the network on the same address instead of starting a hotspot — AP mode is entered when `connectSTA()` *fails*, so keeping the credentials is the whole mechanism |
+| `keep_display=1` | preserve the panel arrangement **and** wiring (`dispGeom`, `panelRows`, `hwCustom`, `hwPins`, `hwRgbOrder`, `hwDriver`), so the display comes back looking the same |
+
+One flag covers arrangement and wiring together, unlike the import's two: there is no
+board-portability question on a reset, both simply describe the panel in front of you.
+
 ```bash
+# full factory reset
 curl -X POST -d 'confirm=RESET' http://<device>/clear-config
+
+# wipe settings but stay reachable and keep the panel working
+curl -X POST -d 'confirm=RESET&keep_wifi=1&keep_display=1' http://<device>/clear-config
 ```
+
+`configured` is cleared either way, so the device shows **Setup Required** until a transit source is
+configured again — reachable over the network rather than a hotspot when `keep_wifi=1`.
 
 Without it, `400`:
 
@@ -75,10 +92,10 @@ Without it, `400`:
 {"ok": false, "error": "Factory reset requires confirm=RESET"}
 ```
 
-`hw_variant` survives the wipe: it records which board this is, and a reset does not change that.
-Everything else goes, **including panel arrangement and wiring** — on 64px panels or a custom pin
-map the display comes back wrong until it is set again on the Hardware tab, which is reachable in AP
-mode for exactly this reason.
+`hw_variant` survives any reset: it records which board this is, and a reset does not change that.
+Everything else goes unless a keep-flag says otherwise — **including panel arrangement and wiring**,
+so on 64px panels or a custom pin map the display comes back wrong until it is set again on the
+Hardware tab (reachable in AP mode for exactly this reason) or `keep_display=1` is passed.
 
 #### `POST /hw-test`
 Draw the panel colour test: three bars labelled R, G and B. If a letter sits on the wrong colour, the RGB channel order is wrong. The pattern stays on the panel until something else repaints it. Available in AP mode.

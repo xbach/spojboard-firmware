@@ -162,7 +162,20 @@ String buildSystemTab(const Config* config, bool apModeActive, size_t freeHeap, 
     html += "<div class='help-text' style='margin-top:0;'>Erases every setting and reboots into setup mode. "
             "<strong style='color:#fb7185;'>Panel arrangement and wiring are erased too</strong> &mdash; if you run "
             "64px panels or custom wiring the display will be wrong until you set it again on the Hardware tab, which "
-            "is reachable in setup mode. Download a backup first if you have not.</div>";
+            "is reachable in setup mode. Download a backup first if you have not, or keep them below.</div>";
+
+    // Opt-ins to KEEP, mirroring the import's opt-ins to RESTORE. Both default
+    // off, so the unqualified action is still a full factory reset -- a reset
+    // that quietly preserved things would be the more surprising default.
+    html += "<div style='margin-top:10px;'>";
+    html += "<label style='display:flex;align-items:center;gap:8px;font-size:13px;color:#bbb;'>";
+    html += "<input type='checkbox' id='keepWifi'> Keep WiFi credentials "
+            "<span style='color:#666;'>(stays on your network instead of starting a hotspot)</span></label>";
+    html += "<label style='display:flex;align-items:center;gap:8px;font-size:13px;color:#bbb;margin-top:6px;'>";
+    html += "<input type='checkbox' id='keepDisplay'> Keep panel arrangement and wiring "
+            "<span style='color:#666;'>(display comes back looking the same)</span></label>";
+    html += "</div>";
+
     html += "<input type='text' id='resetConfirm' placeholder='Type RESET to confirm' autocomplete='off' "
             "oninput='onResetConfirmInput()' style='margin-top:8px;'>";
     html += "<button type='button' class='danger' id='resetBtn' onclick='factoryReset()' disabled "

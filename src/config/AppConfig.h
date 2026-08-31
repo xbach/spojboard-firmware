@@ -232,10 +232,21 @@ void loadConfig(Config &config);
 void saveConfig(const Config &config);
 
 /**
- * Clear all configuration from NVS flash storage
- * Resets device to factory defaults - will boot into AP mode on next restart
+ * Clear configuration from NVS flash storage.
+ *
+ * `keepWifi`    - preserve wifiSsid/wifiPass, so the device rejoins the network
+ *                 instead of dropping to AP mode. AP mode is entered when
+ *                 connectSTA() FAILS, not from a flag, so keeping the
+ *                 credentials is the whole mechanism.
+ * `keepDisplay` - preserve the panel arrangement AND wiring (dispGeom, panelRows,
+ *                 hwCustom, hwPins, hwRgbOrder, hwDriver). One flag, not two:
+ *                 unlike an import there is no board-portability question here,
+ *                 both just describe the panel in front of you.
+ *
+ * With both false this is a true factory reset. `hw_variant` survives either way
+ * -- it is identity, not configuration.
  */
-void clearConfig();
+void clearConfig(bool keepWifi, bool keepDisplay);
 
 /**
  * Verify that firmware matches hardware variant

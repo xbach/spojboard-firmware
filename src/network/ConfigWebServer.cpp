@@ -936,47 +936,111 @@ void ConfigWebServer::handleClearConfig()
         return;
     }
 
+    // Opt-ins to KEEP, mirroring the import's opt-ins to RESTORE. Both default
+    // off, so an unqualified reset is still a full factory reset.
+    const bool keepWifi = (server->arg("keep_wifi") == "1");
+    const bool keepDisplay = (server->arg("keep_display") == "1");
+
     String html = FPSTR(HTML_HEADER);
 
     // Header
     html += "<div class='header'><div class='header-top'>";
     html += "<div class='header-title'><h1>SpojBoard</h1>";
-    html += "<div class='header-subtitle'>Factory Reset</div></div></div></div>";
+    html += "<div class='header-subtitle'>";
+    html += (keepWifi || keepDisplay) ? "Settings Reset" : "Factory Reset";
+    html += "</div></div></div></div>";
 
     html += "<div class='content'>";
 
     // Warning banner
     html += "<div class='banner banner-error' style='margin-bottom:24px;'>";
     html += "<div class='status-dot' style='animation: pulse 1.5s ease-in-out infinite;'></div>";
-    html += "<div style='flex:1;'><strong>Erasing all settings...</strong></div>";
+    html += "<div style='flex:1;'><strong>";
+    html += (keepWifi || keepDisplay) ? "Erasing settings..." : "Erasing all settings...";
+    html += "</strong></div>";
     html += "</div>";
 
     // Reset details card
     html += "<div class='card' style='border:2px solid #fb7185;'>";
-    html += "<h2 style='margin-top:0; color:#fb7185; font-size:18px;'>⚠️ Factory Reset in Progress</h2>";
-    html += "<p style='margin:12px 0; font-size:14px; color:#f5f5f5;'>All configuration data has been <strong style='color:#fb7185;'>permanently erased</strong> from flash memory.</p>";
-    html += "<p style='color:#999; font-size:13px;'>The device will reboot into AP (setup) mode. You'll need to reconfigure everything from scratch.</p>";
+    html += "<h2 style='margin-top:0; color:#fb7185; font-size:18px;'>⚠️ ";
+    html += (keepWifi || keepDisplay) ? "Reset in Progress" : "Factory Reset in Progress";
+    html += "</h2>";
+    if (keepWifi || keepDisplay)
+    {
+        html += "<p style='margin:12px 0; font-size:14px; color:#f5f5f5;'>Settings have been <strong "
+                "style='color:#fb7185;'>permanently erased</strong> from flash memory, except the ones listed as "
+                "kept below.</p>";
+        html += "<p style='color:#999; font-size:13px;'>The device will reboot and you will need to reconfigure "
+                "everything else from scratch.</p>";
+    }
+    else
+    {
+        html += "<p style='margin:12px 0; font-size:14px; color:#f5f5f5;'>All configuration data has been <strong "
+                "style='color:#fb7185;'>permanently erased</strong> from flash memory.</p>";
+        html += "<p style='color:#999; font-size:13px;'>The device will reboot into AP (setup) mode. You'll need to "
+                "reconfigure everything from scratch.</p>";
+    }
     html += "</div>";
 
     // What was cleared
     html += "<div class='card' style='background:#0a0a0a; border:1px solid #333;'>";
     html += "<h3 style='margin-top:0; font-size:14px; color:#999; text-transform:uppercase; letter-spacing:0.5px;'>Settings Cleared</h3>";
     html += "<ul style='margin:8px 0; padding-left:20px; color:#999; font-size:13px; line-height:1.8;'>";
-    html += "<li><strong style='color:#fb7185;'>WiFi credentials</strong> (network name and password)</li>";
+    if (!keepWifi)
+    {
+        html += "<li><strong style='color:#fb7185;'>WiFi credentials</strong> (network name and password)</li>";
+    }
     html += "<li><strong style='color:#fb7185;'>Transit provider settings</strong> (API keys, stop IDs)</li>";
     html += "<li><strong style='color:#fb7185;'>Display preferences</strong> (brightness, colors, language)</li>";
+    if (!keepDisplay)
+    {
+        html += "<li><strong style='color:#fb7185;'>Panel arrangement and wiring</strong></li>";
+    }
     html += "<li><strong style='color:#fb7185;'>All custom configurations</strong></li>";
     html += "</ul>";
     html += "</div>";
+
+    // Say what SURVIVED, not only what went. After a partial reset the difference
+    // decides whether the user should be looking for a hotspot or for the old IP.
+    if (keepWifi || keepDisplay)
+    {
+        html += "<div class='card' style='background:#0a0a0a; border:1px solid #333;'>";
+        html += "<h3 style='margin-top:0; font-size:14px; color:#999; text-transform:uppercase; "
+                "letter-spacing:0.5px;'>Kept</h3>";
+        html += "<ul style='margin:8px 0; padding-left:20px; color:#999; font-size:13px; line-height:1.8;'>";
+        if (keepWifi)
+        {
+            html += "<li><strong style='color:#4ade80;'>WiFi credentials</strong> &mdash; the device rejoins your "
+                    "network instead of starting a hotspot</li>";
+        }
+        if (keepDisplay)
+        {
+            html += "<li><strong style='color:#4ade80;'>Panel arrangement and wiring</strong> &mdash; the display "
+                    "comes back looking the same</li>";
+        }
+        html += "</ul>";
+        html += "</div>";
+    }
 
     // What to expect
     html += "<div class='card' style='background:#0a0a0a; border:1px solid #333;'>";
     html += "<h3 style='margin-top:0; font-size:14px; color:#999; text-transform:uppercase; letter-spacing:0.5px;'>What to Expect</h3>";
     html += "<ul style='margin:8px 0; padding-left:20px; color:#999; font-size:13px; line-height:1.8;'>";
     html += "<li>Device reboots in <strong style='color:#f5f5f5;'>~10 seconds</strong></li>";
-    html += "<li>Boots into <strong style='color:#fcd34d;'>AP (setup) mode</strong></li>";
-    html += "<li>Creates WiFi hotspot: <strong style='color:#67e8f9;'>SpojBoard-XXXX</strong></li>";
-    html += "<li>Connect to hotspot and configure from scratch</li>";
+    if (keepWifi)
+    {
+        html += "<li>Rejoins <strong style='color:#67e8f9;'>" + escapeHtml(currentConfig->wifiSsid)
+                + "</strong> on the same address as before</li>";
+        html += "<li>Shows <strong style='color:#fcd34d;'>Setup Required</strong> until a transit source is "
+                "configured</li>";
+        html += "<li>Reopen this page at that address to finish setup</li>";
+    }
+    else
+    {
+        html += "<li>Boots into <strong style='color:#fcd34d;'>AP (setup) mode</strong></li>";
+        html += "<li>Creates WiFi hotspot: <strong style='color:#67e8f9;'>SpojBoard-XXXX</strong></li>";
+        html += "<li>Connect to hotspot and configure from scratch</li>";
+    }
     html += "</ul>";
     html += "</div>";
 
@@ -992,10 +1056,24 @@ void ConfigWebServer::handleClearConfig()
     html += "<div id='ap-instructions' style='display:none; margin-top:24px;'>";
     html += "<div class='banner banner-warning'>";
     html += "<div style='flex:1;'>";
-    html += "<strong>Device is now in AP mode</strong><br>";
-    html += "<span style='font-size:12px; opacity:0.8;'>Look for WiFi network: <strong>SpojBoard-XXXX</strong></span>";
+    if (keepWifi)
+    {
+        html += "<strong>Device is back on your network</strong><br>";
+        html += "<span style='font-size:12px; opacity:0.8;'>Same address as before &mdash; reload this page to "
+                "finish setup</span>";
+    }
+    else
+    {
+        html += "<strong>Device is now in AP mode</strong><br>";
+        html += "<span style='font-size:12px; opacity:0.8;'>Look for WiFi network: "
+                "<strong>SpojBoard-XXXX</strong></span>";
+    }
     html += "</div></div>";
-    html += "<p style='text-align:center; margin-top:12px; color:#666; font-size:12px;'>Connect to the hotspot to begin setup</p>";
+    if (!keepWifi)
+    {
+        html += "<p style='text-align:center; margin-top:12px; color:#666; font-size:12px;'>Connect to the hotspot "
+                "to begin setup</p>";
+    }
     html += "</div>";
 
     html += "</div>"; // End content
@@ -1016,8 +1094,8 @@ void ConfigWebServer::handleClearConfig()
     html += FPSTR(HTML_FOOTER);
     server->send(200, "text/html", html);
 
-    // Clear all config from NVS
-    clearConfig();
+    // Clear config from NVS, honouring the keep-flags
+    clearConfig(keepWifi, keepDisplay);
 
     // Reboot after a short delay
     delay(10000);

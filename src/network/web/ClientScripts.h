@@ -669,14 +669,27 @@ function factoryReset() {
     if (!v || v.value !== 'RESET') { return; }
     var b = document.getElementById('resetBtn');
     if (b) { b.disabled = true; b.textContent = 'Erasing...'; }
+    var kw = document.getElementById('keepWifi');
+    var kd = document.getElementById('keepDisplay');
+    var body = 'confirm=RESET'
+             + '&keep_wifi=' + ((kw && kw.checked) ? '1' : '0')
+             + '&keep_display=' + ((kd && kd.checked) ? '1' : '0');
+    var staysOnNetwork = !!(kw && kw.checked);
     fetch('/clear-config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: 'confirm=RESET'
+        body: body
     })
         .then(function(r) {
             if (!r.ok) { throw new Error('refused (HTTP ' + r.status + ')'); }
-            if (b) { b.textContent = 'Erased \u2014 rebooting into setup mode'; }
+            // Keeping WiFi means the device comes back on THIS address, so the
+            // reload actually lands somewhere. Without it the page is about to
+            // become unreachable and saying "reloading" would be a lie.
+            if (b) {
+                b.textContent = staysOnNetwork
+                    ? 'Erased \u2014 rebooting, back shortly'
+                    : 'Erased \u2014 rebooting into setup mode';
+            }
             setTimeout(function() { window.location.href = '/'; }, 20000);
         })
         .catch(function(error) {

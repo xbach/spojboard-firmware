@@ -244,19 +244,46 @@ void saveConfig(const Config& config)
     debugPrintln("Config saved");
 }
 
-void clearConfig()
+void clearConfig(bool keepWifi, bool keepDisplay)
 {
     Preferences preferences;
     preferences.begin("transport", false); // Read-write
 
+    // Everything that must survive is read BEFORE the wipe and written back
+    // after. Reading first is what makes this safe to reason about: there is no
+    // partially-cleared window where a preserved key has been dropped but not
+    // yet restored, because the values are already in locals by then.
+
     // `hw_variant` is IDENTITY, not configuration: it records which board this
-    // device actually is, and a factory reset does not change that. Left to be
-    // wiped, verifyHardware() would treat the next boot as a first boot and
-    // re-stamp the variant of whatever firmware happens to be flashed --
-    // silently re-arming the firmware/hardware mismatch guard on a possibly
-    // WRONG value, which is the one thing that guard exists to prevent.
-    // Read it out, clear, put it back. (TA-0307)
+    // device actually is, and no kind of reset changes that. Left to be wiped,
+    // verifyHardware() would treat the next boot as a first boot and re-stamp
+    // the variant of whatever firmware is flashed -- silently re-arming the
+    // firmware/hardware mismatch guard on a possibly WRONG value, which is the
+    // one thing that guard exists to prevent.
     const int storedVariant = preferences.getInt("hw_variant", -1);
+
+    String wifiSsid, wifiPass;
+    if (keepWifi)
+    {
+        wifiSsid = preferences.getString("wifiSsid", "");
+        wifiPass = preferences.getString("wifiPass", "");
+    }
+
+    int dispGeom = 0, panelRows = 0, hwRgbOrder = 0, hwDriver = 0;
+    bool hwCustom = false;
+    HubPins hwPins;
+    bool hadGeom = false, hadPins = false;
+    if (keepDisplay)
+    {
+        hadGeom = preferences.isKey("dispGeom");
+        dispGeom = preferences.getInt("dispGeom", 0);
+        panelRows = preferences.getInt("panelRows", 0);
+        hwCustom = preferences.getBool("hwCustom", false);
+        hwRgbOrder = preferences.getInt("hwRgbOrder", -1);
+        hwDriver = preferences.getInt("hwDriver", -1);
+        hadPins = preferences.isKey("hwPins") &&
+                  preferences.getBytes("hwPins", &hwPins, sizeof(hwPins)) == sizeof(hwPins);
+    }
 
     // Clear all keys in the namespace
     preferences.clear();
@@ -266,10 +293,53 @@ void clearConfig()
         preferences.putInt("hw_variant", storedVariant);
     }
 
+    if (keepWifi && wifiSsid.length() > 0)
+    {
+        preferences.putString("wifiSsid", wifiSsid);
+        preferences.putString("wifiPass", wifiPass);
+    }
+
+    if (keepDisplay)
+    {
+        // Absent keys are restored as absent, not as zero. A device that never
+        // had `dispGeom` must still migrate from `panelRows` on the next boot
+        // (geometryFromLegacyPanelRows), and writing a 0 here would defeat that
+        // by making the key present but out of range.
+        if (hadGeom)
+        {
+            preferences.putInt("dispGeom", dispGeom);
+        }
+        if (panelRows > 0)
+        {
+            preferences.putInt("panelRows", panelRows);
+        }
+        preferences.putBool("hwCustom", hwCustom);
+        if (hadPins)
+        {
+            preferences.putBytes("hwPins", &hwPins, sizeof(hwPins));
+        }
+        if (hwRgbOrder >= 0)
+        {
+            preferences.putInt("hwRgbOrder", hwRgbOrder);
+        }
+        if (hwDriver >= 0)
+        {
+            preferences.putInt("hwDriver", hwDriver);
+        }
+    }
+
     preferences.end();
 
     logTimestamp();
-    debugPrintln("All configuration cleared - device will boot into AP mode on restart");
+    if (keepWifi || keepDisplay)
+    {
+        Serial.printf("Configuration cleared (kept:%s%s) - restarting\n", keepWifi ? " wifi" : "",
+                      keepDisplay ? " display" : "");
+    }
+    else
+    {
+        debugPrintln("All configuration cleared - device will boot into AP mode on restart");
+    }
 }
 
 bool verifyHardware()
