@@ -57,6 +57,25 @@ void loadConfig(Config& config)
         }
     }
 
+    // Display hardware profile (TA-0302). Absent keys mean a device updating
+    // from an older release boots on the compiled defaults, unchanged.
+    config.hwProfile.useCustomPins = preferences.getBool("hwCustom", false);
+    config.hwProfile.pins = hwCompiledDefaultPins();
+    if (preferences.isKey("hwPins"))
+    {
+        HubPins stored;
+        if (preferences.getBytes("hwPins", &stored, sizeof(stored)) == sizeof(stored))
+        {
+            config.hwProfile.pins = stored;
+        }
+    }
+    {
+        // An out-of-range stored order would index past the permutation table.
+        const int order = preferences.getInt("hwRgbOrder", (int)DEFAULT_RGB_ORDER);
+        config.hwProfile.order = (order >= 0 && order <= (int)RgbOrder::BGR) ? (RgbOrder)order : DEFAULT_RGB_ORDER;
+    }
+    config.hwProfile.driver = (uint8_t)constrain(preferences.getInt("hwDriver", 0), 0, 5);
+
     config.refreshInterval = constrain(preferences.getInt("refresh", 60), 10, 300);
     config.minDepartureTime = constrain(preferences.getInt("minDepTime", 3), 0, 30);
     config.brightness = constrain(preferences.getInt("brightness", 90), 0, 255);
@@ -169,6 +188,11 @@ void saveConfig(const Config& config)
     {
         preferences.remove("stopIds");
     }
+
+    preferences.putBool("hwCustom", config.hwProfile.useCustomPins);
+    preferences.putBytes("hwPins", &config.hwProfile.pins, sizeof(config.hwProfile.pins));
+    preferences.putInt("hwRgbOrder", (int)config.hwProfile.order);
+    preferences.putInt("hwDriver", config.hwProfile.driver);
 
     preferences.putInt("refresh", config.refreshInterval);
     preferences.putInt("numDeps", config.numDepartures);

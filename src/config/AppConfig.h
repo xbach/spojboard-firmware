@@ -4,6 +4,7 @@
 #include <Preferences.h>
 #include <cstdint>
 #include "../api/DepartureData.h" // STOP_IDS_BUF_SIZE (stop-ID list buffer)
+#include "HardwareProfile.h"     // HubPins / RgbOrder / HwProfile (TA-0302)
 
 // ============================================================================
 // Firmware Version
@@ -97,25 +98,14 @@
 #define MAX_POSSIBLE_DISPLAY_ROWS 7 // Maximum departure rows for largest supported display (128x64)
 
 // ============================================================================
-// Pin Mapping - Hardware Variant Specific
+// Pin Mapping (TA-0302)
 // ============================================================================
-// MatrixPortal S3 has non-standard HUB75 connector (green/blue reversed)
-// Generic ESP32-S3 boards use standard HUB75 pinout
-//
-// This allows users to use standard HUB75 cables without rewiring
-
-#if HARDWARE_VARIANT == 1 && DISPLAY_VARIANT == 3
-// ----------------------------------------------------------------------------
-// MatrixPortal ESP32-S3 driving 64-HIGH panels (2x64) -- STANDARD HUB75 order
-// ----------------------------------------------------------------------------
-// The MatrixPortal's G/B reversal below is a property of how 64x32 panels are
-// wired to its connector, NOT of the connector alone: BeerBoard 30c2451 found
-// that keeping the reversal on 64x64 panels renders green and blue swapped
-// (orange->pink, sky->teal, yellow->violet). 64-high panels want the standard
-// order on the same board.
-//
-// UNVERIFIED ON HARDWARE -- carried over from BeerBoard's finding. If a 2x64
-// build shows swapped green/blue, this block is the first thing to try.
+// These are the GPIOs wired to HUB75 connector POSITIONS 1..6, and they are the
+// same on every supported board -- the three per-variant blocks this replaced
+// were byte-identical apart from the green/blue pair. That difference was never
+// about pins: it is a CHANNEL ORDER, so it is expressed as one below and is now
+// a runtime setting (see HardwareProfile.h). The macros here are only the
+// factory default a device falls back to.
 #define R1_PIN 42
 #define G1_PIN 41
 #define B1_PIN 40
@@ -123,58 +113,55 @@
 #define G2_PIN 39
 #define B2_PIN 37
 
-#elif HARDWARE_VARIANT == 1
-// ────────────────────────────────────────────────────────────────────────────
-// Adafruit MatrixPortal ESP32-S3 (Non-standard HUB75 connector)
-// ────────────────────────────────────────────────────────────────────────────
-#define R1_PIN 42
-#define G1_PIN 40  // MatrixPortal: Green on pin position 2
-#define B1_PIN 41  // MatrixPortal: Blue on pin position 3
-#define R2_PIN 38
-#define G2_PIN 37  // MatrixPortal: Green on pin position 6
-#define B2_PIN 39  // MatrixPortal: Blue on pin position 7
-
-#elif HARDWARE_VARIANT == 2
-// ────────────────────────────────────────────────────────────────────────────
-// Generic ESP32-S3 N8R2 DevKit (Standard HUB75 pinout)
-// ────────────────────────────────────────────────────────────────────────────
-#define R1_PIN 42
-#define G1_PIN 41  // Standard: Green expects GPIO for blue position
-#define B1_PIN 40  // Standard: Blue expects GPIO for green position
-#define R2_PIN 38
-#define G2_PIN 39  // Standard: Green expects GPIO for blue position
-#define B2_PIN 37  // Standard: Blue expects GPIO for green position
-
-#else
-// ────────────────────────────────────────────────────────────────────────────
-// Fallback: Use MatrixPortal S3 pins
-// ────────────────────────────────────────────────────────────────────────────
-#define R1_PIN 42
-#define G1_PIN 40
-#define B1_PIN 41
-#define R2_PIN 38
-#define G2_PIN 37
-#define B2_PIN 39
-#endif
-
 // ============================================================================
-// Address and Control Pins (Same for all variants)
+// Address and Control Pins (same on every variant)
 // ============================================================================
 #define A_PIN 45
 #define B_PIN 36
 #define C_PIN 48
 #define D_PIN 35
 // E_PIN is the 5th address line. 32-high panels use 4 address bits and drive it
-// LOW permanently, so on every release through r9 this pin has been defined and
-// passed to the driver but never actually toggled. 64-high panels (2x64) NEED
-// it. Whether the MatrixPortal's HUB75 connector physically carries E is the
-// open hardware question on this variant -- if a 2x64 build renders the top and
-// bottom halves of the panel identically, E is not reaching the panel.
+// LOW permanently; 64-high panels (2x64) NEED it. Confirmed present on the
+// MatrixPortal's HUB75 connector on hardware, 2026-08-26.
 #define E_PIN 21
 
 #define LAT_PIN 47
 #define OE_PIN 14
 #define CLK_PIN 2
+
+// ============================================================================
+// Default RGB channel order
+// ============================================================================
+// The MatrixPortal's HUB75 connector presents green and blue transposed
+// relative to a standard cable -- but only for 32-HIGH panels. BeerBoard
+// 30c2451 found that keeping the transposition on 64x64 panels renders green
+// and blue swapped (orange->pink, sky->teal), so 64-high panels want the
+// standard order on the same board.
+//
+// Expressed as an order rather than a second pin table, this stops being a
+// special case: it is the default value of a setting the user can change, which
+// is what discussion #8 asked for.
+#if HARDWARE_VARIANT == 1 && DISPLAY_VARIANT != 3
+#define DEFAULT_RGB_ORDER RgbOrder::RBG
+#elif HARDWARE_VARIANT == 2
+#define DEFAULT_RGB_ORDER RgbOrder::RGB
+#elif HARDWARE_VARIANT == 1
+#define DEFAULT_RGB_ORDER RgbOrder::RGB
+#else
+#define DEFAULT_RGB_ORDER RgbOrder::RBG
+#endif
+
+// The factory pin map, in connector order. A device with no stored profile --
+// or with one that fails validation -- falls back to exactly this.
+inline HubPins hwCompiledDefaultPins()
+{
+    HubPins p;
+    p.r1 = R1_PIN; p.g1 = G1_PIN; p.b1 = B1_PIN;
+    p.r2 = R2_PIN; p.g2 = G2_PIN; p.b2 = B2_PIN;
+    p.a = A_PIN; p.b = B_PIN; p.c = C_PIN; p.d = D_PIN; p.e = E_PIN;
+    p.lat = LAT_PIN; p.oe = OE_PIN; p.clk = CLK_PIN;
+    return p;
+}
 
 // Default WiFi credentials (for initial setup)
 #define DEFAULT_WIFI_SSID "Your WiFi SSID"
@@ -242,6 +229,12 @@ struct Config
     char tickerInterval[8];        // Candle interval: "1h", "4h", "1day"
     char tickerApiKey[64];         // Twelve Data API key
     int tickerRefreshInterval;     // Seconds between fetches (120-600)
+
+    // Display hardware profile (TA-0302). The wiring is a runtime setting; the
+    // macros above are only the factory default. `hwProfile.pins` is always in
+    // connector order -- the channel order is applied on top of it, so a
+    // stock-wired panel with transposed channels needs no pin edits at all.
+    HwProfile hwProfile;
 
     bool configured;
 };

@@ -142,11 +142,16 @@ void setup()
     // below silently no-ops. Deliberately NOT reordered after WiFi: the boot
     // status screens ("Starting SpojBoard...", "WiFi Failed!") are the only
     // local output this device has.
+    // MUST precede begin(): the display hardware profile (pins, channel order,
+    // driver chip) is read from config while building the driver config, and
+    // setConfig() only stores the pointer. Reversed, begin() silently falls back
+    // to the compiled defaults and every hardware setting is a no-op (TA-0302).
+    displayManager.setConfig(&config);
+
     if (!displayManager.begin(config.brightness, config.panelRows))
     {
         debugPrintln("Display initialization failed - continuing headless!");
     }
-    displayManager.setConfig(&config);
     logMemory("display_init");
 
     displayManager.drawStatus("Starting SpojBoard...", "FW v" FIRMWARE_RELEASE, COLOR_WHITE);

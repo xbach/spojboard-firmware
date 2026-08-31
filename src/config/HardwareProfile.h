@@ -60,6 +60,11 @@ struct HwProfile
     bool useCustomPins;
     HubPins pins;
     RgbOrder order;
+    // Panel driver chip, as an OPAQUE index into the HUB75 driver's own
+    // shift_driver enum. Kept as a plain integer so this module stays free of
+    // driver headers; the one place that knows what the numbers mean is
+    // DisplayManager, which range-checks before casting.
+    uint8_t driver;
 };
 
 // The map that reaches the driver. Falls back to `compiledDefault` when the

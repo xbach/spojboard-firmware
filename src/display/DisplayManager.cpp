@@ -195,10 +195,29 @@ bool DisplayManager::begin(int brightness, int panelRows)
     layout.statusBarBaseline = layout.displayHeight - 1;
     layout.panelCount = PANELS_NUMBER;
 
+    // The wiring is a runtime setting (TA-0302). hwResolvePins() applies the
+    // configured channel order and falls back to the compiled default map if the
+    // stored one is absent or fails validation -- the driver must never be handed
+    // a map that validation rejects, because the panel is this device's only
+    // local output and a bad map leaves nothing to diagnose it on.
+    HwProfile profile;
+    if (config)
+    {
+        profile = config->hwProfile;
+    }
+    else
+    {
+        profile.useCustomPins = false;
+        profile.pins = hwCompiledDefaultPins();
+        profile.order = DEFAULT_RGB_ORDER;
+        profile.driver = 0;
+    }
+    const HubPins hp = hwResolvePins(profile, hwCompiledDefaultPins());
+
     HUB75_I2S_CFG::i2s_pins _pins = {
-        R1_PIN, G1_PIN, B1_PIN, R2_PIN, G2_PIN, B2_PIN,
-        A_PIN, B_PIN, C_PIN, D_PIN, E_PIN,
-        LAT_PIN, OE_PIN, CLK_PIN};
+        hp.r1, hp.g1, hp.b1, hp.r2, hp.g2, hp.b2,
+        hp.a, hp.b, hp.c, hp.d, hp.e,
+        hp.lat, hp.oe, hp.clk};
 
     HUB75_I2S_CFG mxconfig(
         PANEL_WIDTH,
@@ -208,6 +227,14 @@ bool DisplayManager::begin(int brightness, int panelRows)
 
     mxconfig.clkphase = false;
     mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M;
+
+    // Panel driver chip (TA-0302). Cheap panels that come up blank or ghosting
+    // usually need one of the FM/ICN/MBI init routines; SHIFTREG (0) is the
+    // plain shift register every panel shipped so far has used.
+    if (profile.driver <= (uint8_t)HUB75_I2S_CFG::DP3246)
+    {
+        mxconfig.driver = (HUB75_I2S_CFG::shift_driver)profile.driver;
+    }
 
     // Any 128x64 geometry doubles the DMA framebuffer (~64KB internal). The
     // transit display uses flat colors, so dropping color depth from the default
