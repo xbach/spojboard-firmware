@@ -1,4 +1,5 @@
 #include "ConfigWebServer.h"
+#include "TabDispatch.h"
 #include "../core/AppState.h" // departures[]/departureCount/apiDataMutex (shared state)
 #include "../utils/Logger.h"
 #include "../display/DisplayManager.h"
@@ -247,7 +248,7 @@ void ConfigWebServer::handleSave()
     String tab = server->hasArg("tab") ? server->arg("tab") : "all";
 
     // Validate stop count before parsing (only when transit tab is being saved)
-    if (tab == "transit" || tab == "all")
+    if (tabSubmitted(tab.c_str(), "transit", apModeActive))
     {
         if (server->hasArg("prague_stops"))
         {
@@ -279,11 +280,17 @@ void ConfigWebServer::handleSave()
         }
     }
 
-    // Parse configuration using tab-specific dispatch
-    // Only parse fields belonging to the active tab to avoid:
+    // Parse configuration using tab-specific dispatch.
+    // Only parse fields belonging to a tab that was actually SUBMITTED, to avoid:
     // 1. Wasting heap parsing fields that weren't sent
-    // 2. Resetting checkboxes (absent = false) from other tabs
-    if (tab == "connection" || tab == "all")
+    // 2. Resetting checkboxes (absent = false) from tabs that were never rendered
+    //
+    // (2) is not hypothetical: AP mode renders connection + hardware only and posts
+    // no `tab`, so it arrives as "all". Running every parser then cleared
+    // showPlatform, scrollEnabled, showMultipleTimes, debugMode and weatherEnabled
+    // on every setup save. tabSubmitted() is where that rule lives now, and it
+    // mirrors DashboardPage's rendering condition on purpose.
+    if (tabSubmitted(tab.c_str(), "connection", apModeActive))
     {
         parseWifiSettings(&newConfig, &wifiChanged);
         parseConnectionSettings(&newConfig, &cityChanged);
@@ -296,7 +303,7 @@ void ConfigWebServer::handleSave()
     // the OLD arrangement -- silently, and only on the AP-mode path that posts
     // every field at once.
     bool hardwareChanged = false;
-    if (tab == "hardware" || tab == "all")
+    if (tabSubmitted(tab.c_str(), "hardware", apModeActive))
     {
         const HwProfile before = newConfig.hwProfile;
         parseHardwareSettings(&newConfig);
@@ -308,18 +315,18 @@ void ConfigWebServer::handleSave()
         displaySizeChanged = (newConfig.geometry != currentConfig->geometry);
         hardwareChanged = (memcmp(&before, &newConfig.hwProfile, sizeof(HwProfile)) != 0);
     }
-    if (tab == "transit" || tab == "all")
+    if (tabSubmitted(tab.c_str(), "transit", apModeActive))
     {
         parseTransitSettings(&newConfig);
         parsePragueSettings(&newConfig);
         parseBerlinSettings(&newConfig);
         parseMqttSettings(&newConfig);
     }
-    if (tab == "display" || tab == "all")
+    if (tabSubmitted(tab.c_str(), "display", apModeActive))
     {
         parseDisplaySettings(&newConfig);
     }
-    if (tab == "optional" || tab == "all")
+    if (tabSubmitted(tab.c_str(), "optional", apModeActive))
     {
         parseOptionalSettings(&newConfig);
     }
@@ -541,12 +548,17 @@ void ConfigWebServer::parseDisplaySettings(Config* config)
         }
     }
 
-    // Checkboxes: safe to set here because this only runs when tab == "display"
+    // Checkboxes: absent == unchecked. Safe ONLY because tabSubmitted() guarantees
+    // this function runs solely when the display tab was actually submitted -- it
+    // used to also run on any tab == "all" post, including AP mode's, which renders
+    // no display tab and so cleared all three.
     config->showPlatform = server->hasArg("show_platform");
     config->scrollEnabled = server->hasArg("scroll_enabled");
     config->showMultipleTimes = server->hasArg("show_multi_times");
 
-    // Line color map (always update when not in AP mode to handle empty case)
+    // Line color map (always update when not in AP mode to handle empty case).
+    // Belt-and-braces since tabSubmitted() stops this whole function running in AP
+    // mode -- kept because an empty map is meaningful here and a wrong one is not.
     if (!apModeActive)
     {
         String colorMapValue = server->hasArg("line_color_map")

@@ -16,6 +16,7 @@ All notable changes to SpojBoard firmware will be documented in this file.
 - The **panel arrangement setting moved to the Hardware tab**, next to the wiring. Both describe the panels you attached rather than what is drawn on them, and both only take effect at boot, so changing them together now costs one restart instead of two. It is also reachable during setup (AP) mode, where the Display tab is not shown
 
 ### Fixed
+- Saving from the setup (AP) portal no longer silently switches off settings it never showed you. Platform symbols, destination scrolling, dual departure times, debug logging and weather were all turned off by any save made during setup, because the form reported sending every tab while only showing two
 - Saving a wiring change now actually restarts the device. It used to save the setting, announce a restart, and not perform one — so the new channel order or pin map sat unapplied until the next power cycle
 - The restart screen names the reason it is restarting. Anything that was not a transit-provider change previously claimed "WiFi Network Changed" and showed an SSID nobody had touched
 
