@@ -298,7 +298,7 @@ void ConfigWebServer::handleSave()
     if (tab == "display" || tab == "all")
     {
         parseDisplaySettings(&newConfig);
-        displaySizeChanged = (newConfig.panelRows != currentConfig->panelRows);
+        displaySizeChanged = (newConfig.geometry != currentConfig->geometry);
     }
     if (tab == "optional" || tab == "all")
     {
@@ -473,12 +473,16 @@ void ConfigWebServer::parseTransitSettings(Config* config)
 
 void ConfigWebServer::parseDisplaySettings(Config* config)
 {
-    if (server->hasArg("panel_rows"))
+    if (server->hasArg("panel_geom"))
     {
-        int newPanelRows = server->arg("panel_rows").toInt();
-        if (newPanelRows < 1) newPanelRows = 1;
-        if (newPanelRows > 2) newPanelRows = 2;
-        config->panelRows = newPanelRows;
+        // Names the ARRANGEMENT, not the pixel size -- 4x 64x32 and 2x 64x64 are
+        // both 128x64 and are not interchangeable (TA-0303).
+        const int g = server->arg("panel_geom").toInt();
+        if (g >= 1 && g <= 3)
+        {
+            config->geometry = (PanelGeometry)g;
+            config->panelRows = geometryPanelRows(config->geometry);
+        }
     }
 
     if (server->hasArg("brightness"))
@@ -492,7 +496,7 @@ void ConfigWebServer::parseDisplaySettings(Config* config)
 
     if (server->hasArg("num_deps"))
     {
-        int maxDeps = (config->panelRows * 32 / 8) - 1;
+        const int maxDeps = geometryMaxDepartureRows(config->geometry);
         config->numDepartures = server->arg("num_deps").toInt();
         if (config->numDepartures < 1)
             config->numDepartures = 1;
@@ -781,7 +785,7 @@ void ConfigWebServer::handleResetDisplayPins()
     Config newConfig = *currentConfig;
     newConfig.hwProfile.useCustomPins = false;
     newConfig.hwProfile.pins = hwCompiledDefaultPins();
-    newConfig.hwProfile.order = DEFAULT_RGB_ORDER;
+    newConfig.hwProfile.order = hwDefaultRgbOrder(newConfig.geometry);
     newConfig.hwProfile.driver = 0;
 
     server->send(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
@@ -1060,15 +1064,13 @@ void ConfigWebServer::githubOtaProgressCallback(size_t progress, size_t total)
 // Only used to PRESELECT an option in the update UI -- an r9 binary runs at any
 // geometry, so nothing here gates what can be installed.
 //
-// Since TA-0269 §3 this is the BUILD's own geometry, not a guess derived from
-// config. That closes the gap the old note described: panelRows counts ROWS of
-// 64x32 panels, so panelRows == 2 means FOUR panels (4x32) and could never
-// express 2x64 (two 64x64 panels) at all -- both are 128x64 pixels, so the
-// pixel size alone cannot identify the hardware. A compiled-in token can.
+// Since TA-0303 this reads the runtime geometry setting. The old panelRows
+// could not express it -- panelRows counts ROWS of pixels, so 4x 64x32 and
+// 2x 64x64 are both 2 and both 128x64 -- which is why `geometry` names the
+// arrangement instead of counting rows.
 static const char* currentDisplayToken(const Config* cfg)
 {
-    (void)cfg;
-    return DISPLAY_VARIANT_NAME;
+    return geometryToken(cfg ? cfg->geometry : PanelGeometry::Chain2x32);
 }
 
 void ConfigWebServer::handleCheckUpdate()

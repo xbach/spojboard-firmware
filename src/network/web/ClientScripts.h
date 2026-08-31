@@ -475,10 +475,12 @@ function serializeLineColors() {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    var panelRowsSel = document.getElementById('panelRows');
-    if (panelRowsSel) {
-        panelRowsSel.addEventListener('change', function() {
-            var maxDeps = (parseInt(this.value) * 32 / 8) - 1;
+    var panelGeomSel = document.getElementById('panelGeom');
+    if (panelGeomSel) {
+        panelGeomSel.addEventListener('change', function() {
+            // The value names an ARRANGEMENT (1=2x32, 2=4x32, 3=2x64), so it is
+            // not an arithmetic row count -- both 128x64 options give 7 rows.
+            var maxDeps = (this.value === '1') ? 3 : 7;
             var numDeps = document.getElementById('numDepartures');
             if (numDeps) {
                 numDeps.max = maxDeps;

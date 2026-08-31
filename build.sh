@@ -4,17 +4,16 @@
 
 set -e
 
-# Build environments defined in platformio.ini.
+# Build environments defined in platformio.ini. One per BOARD -- panel
+# arrangement is a runtime setting (TA-0303), so a single binary drives 128x32,
+# the 2x2 grid and chained 64x64 panels alike. The display-tokenised envs are
+# gone; they compiled to firmware that differed only in a value now stored in
+# NVS.
 #
-# "matrixportal_s3" and "esp32_s3_n8r2" are the 2x32 builds and emit the BARE
-# asset name; the two suffixed envs emit display-tokenised names (TA-0269 SS3).
-#
-# Which of these a RELEASE actually publishes is a separate decision from which
-# ones build here: r8 devices parse the release JSON unfiltered into an 8KB
-# document that overflows at FOUR assets, so a release carrying every variant is
-# invisible to them. See TA-0269 "Left" item 1.
-VARIANTS=("matrixportal_s3" "matrixportal_s3_4x32" "matrixportal_s3_2x64" \
-          "esp32_s3_n8r2" "esp32_s3_n8r2_4x32" "esp32_s3_n8r2_2x64")
+# Keeping the asset list short still matters: r8 devices parse the release JSON
+# unfiltered into an 8KB document that overflows at FOUR assets, so a release
+# carrying many variants is invisible to them.
+VARIANTS=("matrixportal_s3" "esp32_s3_n8r2")
 
 # Parse arguments
 BUILD_VARIANT=""
@@ -35,12 +34,8 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Options:"
             echo "  -e, --env VARIANT   Build specific variant only, one of:"
-            echo "                        matrixportal_s3        128x32, 2x 64x32 (bare asset name)"
-            echo "                        matrixportal_s3_4x32   128x64, 4x 64x32"
-            echo "                        matrixportal_s3_2x64   128x64, 2x 64x64"
-            echo "                        esp32_s3_n8r2          128x32, 2x 64x32 (bare asset name)"
-            echo "                        esp32_s3_n8r2_4x32     128x64, 4x 64x32"
-            echo "                        esp32_s3_n8r2_2x64     128x64, 2x 64x64"
+            echo "                        matrixportal_s3   Adafruit MatrixPortal ESP32-S3"
+            echo "                        esp32_s3_n8r2     Generic ESP32-S3 N8R2 DevKit"
             echo "  -c, --clean         Clean dist/ before building"
             echo "  -h, --help          Show this help"
             echo ""

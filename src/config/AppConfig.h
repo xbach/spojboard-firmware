@@ -5,6 +5,7 @@
 #include <cstdint>
 #include "../api/DepartureData.h" // STOP_IDS_BUF_SIZE (stop-ID list buffer)
 #include "HardwareProfile.h"     // HubPins / RgbOrder / HwProfile (TA-0302)
+#include "PanelGeometry.h"       // PanelGeometry / GeometrySpec (TA-0303)
 
 // ============================================================================
 // Firmware Version
@@ -38,48 +39,6 @@
 #define VARIANT_DISPLAY_NAME HARDWARE_DISPLAY_NAME
 
 // ============================================================================
-// Display Variant Identification  (TA-0269 §3)
-// ============================================================================
-// Panel GEOMETRY is a build-time property, not a runtime setting. Panel height
-// changes the address-line count and, on the MatrixPortal, the G/B pin order --
-// and a runtime selector cannot express a pin map. Guessing wrong gives a dead
-// display, with no working display left to diagnose it on.
-//
-//   1 = 2x32   2x 64x32 chained horizontally     128x32
-//   2 = 4x32   4x 64x32 in a 2x2 serpentine      128x64
-//   3 = 2x64   2x 64x64 chained horizontally     128x64
-//
-// The token is <panel count>x<panel height>, so it describes the hardware
-// rather than the pixel size: 4x32 and 2x64 are BOTH 128x64 and cannot be told
-// apart by resolution alone.
-//
-// NO DISPLAY TOKEN MAY EVER BEGIN WITH 'r'. r8's OTA parser takes the asset
-// name up to the FIRST "-r", so a token like "rgb" truncates the board field
-// and makes an r8 device accept another board's firmware. r9+ finds the release
-// field by exact r<digits> shape, but r8 devices are in the field and cannot be
-// changed, so the constraint is permanent. Pinned by test/test_r8compat.
-#ifndef DISPLAY_VARIANT
-#define DISPLAY_VARIANT 1 // Default: 2x32, the geometry every release has shipped
-#endif
-
-#if DISPLAY_VARIANT == 3
-#define DISPLAY_VARIANT_NAME "2x64"
-#define PANEL_HEIGHT 64
-#define PANELS_NUMBER 2
-#define DISPLAY_PANEL_ROWS 2 // 128x64
-#elif DISPLAY_VARIANT == 2
-#define DISPLAY_VARIANT_NAME "4x32"
-#define PANEL_HEIGHT 32
-#define PANELS_NUMBER 4
-#define DISPLAY_PANEL_ROWS 2 // 128x64
-#else
-#define DISPLAY_VARIANT_NAME "2x32"
-#define PANEL_HEIGHT 32
-#define PANELS_NUMBER 2
-#define DISPLAY_PANEL_ROWS 1 // 128x32
-#endif
-
-// ============================================================================
 // GitHub OTA Configuration
 // ============================================================================
 #define GITHUB_REPO_OWNER "xbach"
@@ -93,9 +52,10 @@
 // ============================================================================
 // Hardware Configuration (HUB75 Display)
 // ============================================================================
-#define PANEL_WIDTH 64
-// PANEL_HEIGHT / PANELS_NUMBER / DISPLAY_PANEL_ROWS come from DISPLAY_VARIANT above.
-#define MAX_POSSIBLE_DISPLAY_ROWS 7 // Maximum departure rows for largest supported display (128x64)
+// Panel arrangement is a RUNTIME setting (TA-0303) -- see PanelGeometry.h for
+// the full list of arrangements and why pixel size cannot identify hardware.
+// Only the ceiling is compile-time, because it sizes static arrays.
+#define MAX_POSSIBLE_DISPLAY_ROWS 7 // Largest supported display (128x64) -> 7 departure rows
 
 // ============================================================================
 // Pin Mapping (TA-0302)
@@ -141,15 +101,22 @@
 // Expressed as an order rather than a second pin table, this stops being a
 // special case: it is the default value of a setting the user can change, which
 // is what discussion #8 asked for.
-#if HARDWARE_VARIANT == 1 && DISPLAY_VARIANT != 3
-#define DEFAULT_RGB_ORDER RgbOrder::RBG
-#elif HARDWARE_VARIANT == 2
-#define DEFAULT_RGB_ORDER RgbOrder::RGB
-#elif HARDWARE_VARIANT == 1
-#define DEFAULT_RGB_ORDER RgbOrder::RGB
+// Since geometry became runtime (TA-0303) this is a function of the attached
+// panels, not of the build. It is only a DEFAULT: it seeds the setting when NVS
+// holds no value. A device that later changes panel height keeps whatever order
+// it has stored -- so swapping 32-high panels for 64-high ones on a MatrixPortal
+// means changing the channel order too. The Hardware tab's test pattern shows
+// this immediately, and docs/WIRING.md says so.
+inline RgbOrder hwDefaultRgbOrder(PanelGeometry geometry)
+{
+#if HARDWARE_VARIANT == 2
+    (void)geometry;
+    return RgbOrder::RGB;
 #else
-#define DEFAULT_RGB_ORDER RgbOrder::RBG
+    // MatrixPortal (and the unknown-board fallback, which uses its pin map).
+    return (geometrySpec(geometry).panelHeight >= 64) ? RgbOrder::RGB : RgbOrder::RBG;
 #endif
+}
 
 // The factory pin map, in connector order. A device with no stored profile --
 // or with one that fails validation -- falls back to exactly this.
@@ -206,7 +173,11 @@ struct Config
     int numDepartures;      // Number of departures to display (1-3 rows on LED matrix)
     int minDepartureTime;   // Minimum departure time in minutes (filter out departures < this)
     int brightness;         // Display brightness (0-255)
-    int panelRows;          // Panel row count: 1 = 128x32 (2 panels), 2 = 128x64 (4 panels)
+    // Panel arrangement (TA-0303). THE source of truth -- panelRows below is
+    // derived from it and is lossy, because 4x 64x32 and 2x 64x64 are both two
+    // rows of pixels. See PanelGeometry.h for every arrangement.
+    PanelGeometry geometry;
+    int panelRows;          // DERIVED from `geometry`; kept so downstream code and NVS keep meaning
     char lineColorMap[256]; // Line color mappings (format: "A=GREEN,B=YELLOW,9*=CYAN")
     char platformSymbolMap[256]; // Platform-to-arrow mappings (format: "B=3,ID:U693Z2P=7")
     char city[16];          // Transit city: "Prague" or "Berlin"

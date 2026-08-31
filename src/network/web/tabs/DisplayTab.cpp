@@ -214,31 +214,30 @@ String buildDisplayTab(const Config* config)
     // Panel Configuration (requires restart)
     html += "<div class='form-group'>";
     html += "<div class='form-group-title'>Panel Configuration</div>";
-    html += "<label for='panelRows'>DISPLAY SIZE</label>";
-#if DISPLAY_VARIANT == 1
-    html += "<select id='panelRows' name='panel_rows'>";
+    html += "<label for='panelGeom'>PANEL ARRANGEMENT</label>";
+    // Every supported arrangement, named by the PANELS -- not by the pixel size.
+    // Two of the three are 128x64, so resolution alone cannot tell the user
+    // which one they have; they have to count panels. The 2x 64x64 entry also
+    // covers a single 128x64 module, which is the identical configuration in
+    // code (see PanelGeometry.h and docs/WIRING.md).
+    html += "<select id='panelGeom' name='panel_geom'>";
+
     html += "<option value='1'";
-    if (config->panelRows == 1) html += " selected";
-    html += ">128x32 (2 panels)</option>";
+    if (config->geometry == PanelGeometry::Chain2x32) html += " selected";
+    html += ">128x32 - 2x 64x32 panels, chained</option>";
+
     html += "<option value='2'";
-    if (config->panelRows == 2) html += " selected";
-    html += ">128x64 (4 panels)</option>";
+    if (config->geometry == PanelGeometry::Grid4x32) html += " selected";
+    html += ">128x64 - 4x 64x32 panels, 2x2 grid</option>";
+
+    html += "<option value='3'";
+    if (config->geometry == PanelGeometry::Chain2x64) html += " selected";
+    html += ">128x64 - 2x 64x64 chained, or one 128x64 module</option>";
+
     html += "</select>";
-    html += "<div class='help-text'>Changing display size will reboot the device. Only select 128x64 if 4 panels are connected.</div>";
-#else
-    // Geometry-specific build (TA-0269 §3): the panel arrangement is compiled in,
-    // so this is reported, not chosen. The control stays a <select> carrying the
-    // one legal value rather than becoming static text, so the form still posts
-    // panel_rows and parseDisplaySettings needs no special case -- and the value
-    // it posts is the only one this binary can drive.
-    html += "<select id='panelRows' name='panel_rows'>";
-    html += "<option value='" + String(DISPLAY_PANEL_ROWS) + "' selected>";
-    html += String(128) + "x" + String(DISPLAY_PANEL_ROWS * 32) + " (" + String(PANELS_NUMBER);
-    html += " panels, " + String(DISPLAY_VARIANT_NAME) + ")</option>";
-    html += "</select>";
-    html += "<div class='help-text'>Fixed by this firmware build (" + String(DISPLAY_VARIANT_NAME);
-    html += "). To change panel hardware, install the matching build from the System tab.</div>";
-#endif
+    html += "<div class='help-text'>Changing this reboots the device. Pick the one that matches the "
+            "PANELS you have: both 128x64 options are the same pixel size but different hardware. "
+            "If the colours look wrong afterwards, set the channel order on the Hardware tab.</div>";
     html += "</div>"; // End form-group
 
     // Basic Display Settings
@@ -260,7 +259,7 @@ String buildDisplayTab(const Config* config)
     // Number of departures (max depends on display size)
     html += "<div>";
     html += "<label for='numDepartures'>NUMBER OF DEPARTURES</label>";
-    int maxDeps = (config->panelRows * 32 / 8) - 1;
+    const int maxDeps = geometryMaxDepartureRows(config->geometry);
     html += "<input type='number' id='numDepartures' name='num_deps' min='1' max='";
     html += String(maxDeps);
     html += "' value='";

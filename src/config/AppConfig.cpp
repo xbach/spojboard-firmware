@@ -57,6 +57,20 @@ void loadConfig(Config& config)
         }
     }
 
+    // Panel arrangement (TA-0303). Devices updating from r9 have no `dispGeom`
+    // key, only the old `panelRows`, so migrate from it -- a stored 2 means the
+    // 2x2 grid, because that is what the UI has always labelled it.
+    if (preferences.isKey("dispGeom"))
+    {
+        const int g = preferences.getInt("dispGeom", (int)PanelGeometry::Chain2x32);
+        config.geometry = (g >= 1 && g <= 3) ? (PanelGeometry)g : PanelGeometry::Chain2x32;
+    }
+    else
+    {
+        config.geometry = geometryFromLegacyPanelRows(preferences.getInt("panelRows", 1));
+    }
+    config.panelRows = geometryPanelRows(config.geometry);
+
     // Display hardware profile (TA-0302). Absent keys mean a device updating
     // from an older release boots on the compiled defaults, unchanged.
     config.hwProfile.useCustomPins = preferences.getBool("hwCustom", false);
@@ -71,28 +85,16 @@ void loadConfig(Config& config)
     }
     {
         // An out-of-range stored order would index past the permutation table.
-        const int order = preferences.getInt("hwRgbOrder", (int)DEFAULT_RGB_ORDER);
-        config.hwProfile.order = (order >= 0 && order <= (int)RgbOrder::BGR) ? (RgbOrder)order : DEFAULT_RGB_ORDER;
+        const RgbOrder fallback = hwDefaultRgbOrder(config.geometry);
+        const int order = preferences.getInt("hwRgbOrder", (int)fallback);
+        config.hwProfile.order = (order >= 0 && order <= (int)RgbOrder::BGR) ? (RgbOrder)order : fallback;
     }
     config.hwProfile.driver = (uint8_t)constrain(preferences.getInt("hwDriver", 0), 0, 5);
 
     config.refreshInterval = constrain(preferences.getInt("refresh", 60), 10, 300);
     config.minDepartureTime = constrain(preferences.getInt("minDepTime", 3), 0, 30);
     config.brightness = constrain(preferences.getInt("brightness", 90), 0, 255);
-    config.panelRows = constrain(preferences.getInt("panelRows", 1), 1, 2);
-#if DISPLAY_VARIANT != 1
-    // Geometry-specific build: the compiled panel arrangement is the truth, so
-    // the stored value only decides how many rows the user gets, and it cannot
-    // be allowed to disagree with the panel that is physically attached.
-    //
-    // Deliberately NOT applied on the default 2x32 build. TA-0269 §7 detects a
-    // 4-panel owner who landed on a 2x32 image by exactly one condition --
-    // compiled variant is 2x32 AND stored panelRows == 2 -- and saveConfig()
-    // writes this field back, so forcing it here on a 2x32 build would erase the
-    // only surviving evidence of what hardware the device actually has.
-    config.panelRows = DISPLAY_PANEL_ROWS;
-#endif
-    int maxDeps = (config.panelRows * 32 / 8) - 1; // 3 for 128x32, 7 for 128x64
+    const int maxDeps = geometryMaxDepartureRows(config.geometry);
     config.numDepartures = constrain(preferences.getInt("numDeps", 3), 1, maxDeps);
     strlcpy(config.lineColorMap, preferences.getString("lineColorMap", DEFAULT_LINE_COLOR_MAP).c_str(), sizeof(config.lineColorMap));
     if (strlen(config.lineColorMap) == 0)
@@ -189,6 +191,7 @@ void saveConfig(const Config& config)
         preferences.remove("stopIds");
     }
 
+    preferences.putInt("dispGeom", (int)config.geometry);
     preferences.putBool("hwCustom", config.hwProfile.useCustomPins);
     preferences.putBytes("hwPins", &config.hwProfile.pins, sizeof(config.hwProfile.pins));
     preferences.putInt("hwRgbOrder", (int)config.hwProfile.order);

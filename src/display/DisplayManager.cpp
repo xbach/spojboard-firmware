@@ -181,19 +181,20 @@ DisplayManager::~DisplayManager()
 
 bool DisplayManager::begin(int brightness, int panelRows)
 {
-    // Geometry is a BUILD-TIME property (TA-0269 §3). The argument is retained
-    // only so the call site and Config field can be removed in one later pass
-    // (§9); it is deliberately ignored, because a binary built for 64-high
-    // panels cannot render on 32-high ones whatever NVS says.
-    panelRows = DISPLAY_PANEL_ROWS;
+    // Panel arrangement is a RUNTIME setting (TA-0303). Everything below is
+    // derived from one table in PanelGeometry.h, so the three sites that used to
+    // recompute (panelRows * 32 / 8) - 1 independently cannot drift apart.
+    const PanelGeometry geometry = config ? config->geometry
+                                          : geometryFromLegacyPanelRows(panelRows);
+    const GeometrySpec spec = geometrySpec(geometry);
 
-    layout.displayWidth = 128;
-    layout.displayHeight = panelRows * 32;
+    layout.displayWidth = spec.displayWidth;
+    layout.displayHeight = spec.displayHeight;
     layout.rowHeight = 8;
-    layout.maxDepartureRows = (layout.displayHeight / layout.rowHeight) - 1;
+    layout.maxDepartureRows = geometryMaxDepartureRows(geometry);
     layout.statusBarY = layout.displayHeight - layout.rowHeight;
     layout.statusBarBaseline = layout.displayHeight - 1;
-    layout.panelCount = PANELS_NUMBER;
+    layout.panelCount = spec.chainLength;
 
     // The wiring is a runtime setting (TA-0302). hwResolvePins() applies the
     // configured channel order and falls back to the compiled default map if the
@@ -209,7 +210,7 @@ bool DisplayManager::begin(int brightness, int panelRows)
     {
         profile.useCustomPins = false;
         profile.pins = hwCompiledDefaultPins();
-        profile.order = DEFAULT_RGB_ORDER;
+        profile.order = hwDefaultRgbOrder(geometry);
         profile.driver = 0;
     }
     const HubPins hp = hwResolvePins(profile, hwCompiledDefaultPins());
@@ -220,9 +221,9 @@ bool DisplayManager::begin(int brightness, int panelRows)
         hp.lat, hp.oe, hp.clk};
 
     HUB75_I2S_CFG mxconfig(
-        PANEL_WIDTH,
-        PANEL_HEIGHT,
-        layout.panelCount,
+        spec.panelWidth,
+        spec.panelHeight,
+        spec.chainLength,
         _pins);
 
     mxconfig.clkphase = false;
@@ -244,7 +245,7 @@ bool DisplayManager::begin(int brightness, int panelRows)
     //
     // 4x32 and 2x64 allocate an IDENTICAL 64KB here (32 rows x 128px vs 16 rows
     // x 256px), so this applies unchanged to both.
-    layout.reducedColorDepth = (panelRows > 1);
+    layout.reducedColorDepth = geometryReducedColorDepth(geometry);
     if (layout.reducedColorDepth)
     {
         mxconfig.setPixelColorDepthBits(5);
@@ -278,7 +279,7 @@ bool DisplayManager::begin(int brightness, int panelRows)
     // horizontal chain -- 2x32 and 2x64 alike -- is already presented by the DMA
     // driver as one wide framebuffer, so VirtualMatrixPanel would remap
     // coordinates that are already correct.
-#if DISPLAY_VARIANT == 2
+    if (spec.serpentine)
     {
         // 4x 64x32 as 2 rows x 2 cols, serpentine chain.
         //
@@ -292,23 +293,23 @@ bool DisplayManager::begin(int brightness, int panelRows)
         // test suite can see it. Verify against hardware, never against a doc:
         // CLAUDE.md named CHAIN_TOP_LEFT_DOWN here for a long time and was wrong.
         virtualDisplay = new VirtualMatrixPanel_T<CHAIN_TOP_RIGHT_DOWN>(
-            2, 2, PANEL_WIDTH, PANEL_HEIGHT);
+            2, 2, spec.panelWidth, spec.panelHeight);
         virtualDisplay->setDisplay(*dmaDisplay);
         gfx = virtualDisplay;
         Serial.printf("Display initialized: %dx%d (%s, %d panels, virtual)\n",
                       layout.displayWidth, layout.displayHeight,
-                      DISPLAY_VARIANT_NAME, layout.panelCount);
+                      geometryToken(geometry), layout.panelCount);
     }
-#else
+    else
     {
         // Horizontal chain: draw directly to the DMA display
         virtualDisplay = nullptr;
         gfx = dmaDisplay;
         Serial.printf("Display initialized: %dx%d (%s, %d panels)\n",
                       layout.displayWidth, layout.displayHeight,
-                      DISPLAY_VARIANT_NAME, layout.panelCount);
+                      geometryToken(geometry), layout.panelCount);
     }
-#endif
+
 
     // Adafruit_GFX constructs with wrap=true, which snaps any cursor at or beyond
     // the right edge back to x=0 one yAdvance down -- and getTextBounds() carries
