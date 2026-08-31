@@ -60,7 +60,25 @@ Force an immediate API fetch. Redirects to `/` after triggering.
 Restart the device. Returns an HTML status page before rebooting.
 
 #### `POST /clear-config`
-Factory reset: erases all NVS settings and reboots into AP mode.
+Factory reset: erases all NVS settings and reboots into AP mode. Available in AP mode.
+
+**Requires `confirm=RESET`.** The confirmation is enforced here, not only in the UI — a destructive
+endpoint whose sole protection is a dialog in the page that calls it is protected against nothing.
+
+```bash
+curl -X POST -d 'confirm=RESET' http://<device>/clear-config
+```
+
+Without it, `400`:
+
+```json
+{"ok": false, "error": "Factory reset requires confirm=RESET"}
+```
+
+`hw_variant` survives the wipe: it records which board this is, and a reset does not change that.
+Everything else goes, **including panel arrangement and wiring** — on 64px panels or a custom pin
+map the display comes back wrong until it is set again on the Hardware tab, which is reachable in AP
+mode for exactly this reason.
 
 #### `POST /hw-test`
 Draw the panel colour test: three bars labelled R, G and B. If a letter sits on the wrong colour, the RGB channel order is wrong. The pattern stays on the panel until something else repaints it. Available in AP mode.
@@ -77,6 +95,65 @@ Restore the built-in panel wiring — pin map, channel order and driver chip —
 ```json
 {"ok": true, "rebooting": true}
 ```
+
+---
+
+### Configuration Backup
+
+Both routes are available in **AP mode**: restoring a backup and resetting to factory are what a
+user reaches for when a device has dropped into setup mode.
+
+#### `GET /config-export`
+Download every setting as JSON. Sent with
+`Content-Disposition: attachment; filename="spojboard-<deviceCode>-config.json"`, where the device
+code is the same one used by the hostname and AP SSID.
+
+> **The file contains `wifiPassword`, `pragueApiKey`, `mqttPassword` and `tickerApiKey` in
+> plaintext.** That is deliberate — it is what makes the file a working backup and a way to clone a
+> second unit — but it means the file is a secret. Do not attach it to a bug report.
+
+The document is stamped with `schema`, `release` and `board`. Typical size ~1.9KB; ~3.6KB with every
+string field full.
+
+#### `POST /config-import`
+Apply a configuration document, then reboot.
+
+The body is the **raw JSON document** — `Content-Type: application/json`, read from
+`arg("plain")` — not a form and not multipart. A urlencoded 4KB config roughly doubles on the wire
+and makes the device build three large heap buffers to decode it again; a raw body arrives once.
+
+Opt-ins ride in the query string, both defaulting off:
+
+| Param | Effect |
+|---|---|
+| `geometry=1` | also restore the panel arrangement (`dispGeom`). Describes the **panels**, so it applies across board types |
+| `wiring=1` | also restore the pin map, channel order and driver. Describes **this controller's GPIOs**, so it is refused on a board mismatch even when asked |
+
+```bash
+curl -X POST -H 'Content-Type: application/json' \
+     --data-binary @spojboard-9B9D2C-config.json \
+     'http://<device>/config-import?geometry=1'
+```
+
+```json
+{"ok": true, "fields": 41, "boardMismatch": false, "wiringRefused": false,
+ "geometryApplied": true, "wiringApplied": false, "fileBoard": "matrixportal_s3"}
+```
+
+**Any key the file omits keeps the value already on the device**, so a backup taken before a
+firmware update still restores cleanly after one, and an export from a build that predates a field
+cannot blank it. Unknown keys are ignored rather than rejected, which is what lets an older firmware
+read a newer export.
+
+Nothing is written unless the whole document is valid — the import is applied to a copy and only
+persisted on success, so a truncated or malformed file leaves NVS byte-identical. Errors are `400`:
+
+```json
+{"ok": false, "error": "That file is not valid JSON, or is truncated or too large."}
+```
+
+A body over 8192 bytes is `413`. Every imported value passes the same clamps a boot-time load
+applies, so no import can produce a configuration the device would have rejected at startup.
 
 ---
 

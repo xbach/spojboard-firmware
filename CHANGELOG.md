@@ -8,11 +8,17 @@ All notable changes to SpojBoard firmware will be documented in this file.
 - **Panel wiring is now configurable** on a new Hardware tab: RGB channel order, panel driver chip, and an optional custom pin map. A panel whose colours come out wrong — orange looking pink, sky looking teal — is now a setting rather than a custom firmware build
 - A **test pattern** button draws three bars labelled R, G and B, so a channel swap takes two seconds to spot instead of guesswork
 - A **restore built-in wiring** button that reboots back to the factory pin map. Both it and the Hardware tab work in setup (AP) mode, so a blank panel can always be recovered without a USB cable
+- **Configuration backup.** A new Configuration Backup section on the System tab downloads every setting as a JSON file and restores one. Useful before a firmware update, for setting up a second unit without retyping a 300-character API key, and for keeping a copy of a working setup
+- A restored file only changes the settings it actually contains, so a backup taken before a firmware update still restores cleanly afterwards. Nothing is written unless the whole file is valid — a truncated or edited-badly file leaves the device exactly as it was
+- **Panel arrangement and panel wiring are restored only if you tick the box for them.** They describe the hardware in front of you rather than what is shown on it, so a backup from another unit cannot silently rearrange your display. Panel wiring additionally will not restore across different board types, where the pin numbers do not mean the same thing
+- The backup file is plain text you can open and edit, and it **contains your WiFi password and API keys in the clear** — the download button says so. Keep it somewhere private and do not attach it to a bug report
+- The **System tab is now available in setup (AP) mode.** Restoring a backup and factory-resetting are what you reach for when a device has dropped into setup mode, so they no longer sit behind the problem they fix. Firmware updates and network status stay hidden there, since neither works without a network
 
 ### Changed
 - **Panel arrangement is chosen in the settings again**, and now names the panels instead of counting rows: 2x 64x32 chained (128x32), 4x 64x32 in a 2x2 grid (128x64), or 2x 64x64 chained (128x64). Both 128x64 options are the same pixel size but different hardware, so the list says which panels each one means
 - A **single 128x64 module** is supported by the 2x 64x64 setting — the two are identical as far as the display driver is concerned, so no separate firmware is needed
 - Existing settings carry over: a display set to 128x32 stays 128x32, and one set to 128x64 becomes the 4-panel grid, which is what that option has always meant
+- **Factory reset now asks you to type RESET** rather than clicking through two pop-ups, and the device itself requires that word — so a stray click or a script cannot wipe a device. Its warning now also says that panel arrangement and wiring are erased too, which on 64px panels or custom wiring means the display comes back wrong until you set it again on the Hardware tab
 - The **panel arrangement setting moved to the Hardware tab**, next to the wiring. Both describe the panels you attached rather than what is drawn on them, and both only take effect at boot, so changing them together now costs one restart instead of two. It is also reachable during setup (AP) mode, where the Display tab is not shown
 
 ### Fixed
@@ -23,6 +29,7 @@ All notable changes to SpojBoard firmware will be documented in this file.
 - Saving from the setup (AP) portal no longer silently switches off settings it never showed you. Platform symbols, destination scrolling, dual departure times, debug logging and weather were all turned off by any save made during setup, because the form reported sending every tab while only showing two
 - Saving a wiring change now actually restarts the device. It used to save the setting, announce a restart, and not perform one — so the new channel order or pin map sat unapplied until the next power cycle
 - The restart screen names the reason it is restarting. Anything that was not a transit-provider change previously claimed "WiFi Network Changed" and showed an SSID nobody had touched
+- A factory reset no longer forgets which board it is. The stored board type was erased along with everything else, so the next boot re-recorded whatever firmware happened to be flashed — quietly disarming the check that stops the wrong firmware running on a board
 
 ## [r9] - 2026-08-22
 
