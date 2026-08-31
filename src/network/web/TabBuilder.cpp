@@ -1,7 +1,7 @@
 #include "TabBuilder.h"
 #include "WebUtils.h"
 
-String buildHeader(bool apModeActive, bool restModeActive, bool restModeManual)
+String buildHeader(bool apModeActive, bool restModeActive)
 {
     String html = "<div class=\"header\">";
     html += "<div class=\"header-top\">";
@@ -27,9 +27,19 @@ String buildHeader(bool apModeActive, bool restModeActive, bool restModeManual)
         html += "<button class=\"action-btn\" onclick=\"window.location.href='/ticker'\" title=\"Ticker Mode\">$</button>";
 
         // Rest mode toggle button (STA mode only)
-        String restClass = (restModeActive && restModeManual) ? "action-btn active" : "action-btn";
-        html += "<button id=\"restModeBtn\" class=\"" + restClass + "\" onclick=\"toggleRestMode()\" title=\"";
-        html += (restModeActive && restModeManual) ? "Disable Rest Mode" : "Enable Rest Mode";
+        // Rendered from restModeActive ALONE. It used to require
+        // (restModeActive && restModeManual), so during a SCHEDULED rest -- when
+        // restModeManual is false -- the button drew inactive and the handler,
+        // reading its own class back as state, asked to enable a rest that was
+        // already running. Nothing happened, and there was no way to wake the panel.
+        //
+        // State travels in a data- attribute, never a CSS class: a class is
+        // presentation, and the next restyle is free to change it (TA-0254).
+        String restClass = restModeActive ? "action-btn active" : "action-btn";
+        html += "<button id=\"restModeBtn\" class=\"" + restClass + "\"";
+        html += " data-rest-active=\"" + String(restModeActive ? "1" : "0") + "\"";
+        html += " onclick=\"toggleRestMode()\" title=\"";
+        html += restModeActive ? "Wake Display" : "Enable Rest Mode";
         html += "\">💤</button>";
     }
     else

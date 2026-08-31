@@ -11,13 +11,23 @@
 #include "core/TransitOrchestrator.h" // recalculateETAs
 #include "utils/Logger.h"
 #include "utils/TimeUtils.h" // getCurrentTime
-#include "utils/RestMode.h"  // isInRestPeriod
+#include "utils/RestMode.h"   // isInRestPeriod
+#include "utils/RestPolicy.h" // resolveSchedule / resolveManual (TA-0254)
 
 // Loop-local bookkeeping (moved from main.cpp — used only by these helpers).
 static unsigned long lastDisplayUpdate = 0;
 static unsigned long lastEtaRecalc = 0; // For 10-second ETA recalculation
 static bool needsDisplayUpdate = false;
-static int lastRestCheckMinute = -1; // Last minute when rest check triggered (0-59)
+// -1 doubles as "evaluate at the next opportunity": at boot, and after a config
+// save. An edge-triggered schedule cannot assert itself until it FLIPS, and a flip
+// cannot happen before the first evaluation -- so without this the panel keeps
+// whatever state it booted into until the clock next reaches :00 or :30.
+#define REST_CHECK_IMMEDIATE (-1)
+static int lastRestCheckMinute = REST_CHECK_IMMEDIATE; // Last minute checked (0-59)
+
+// The schedule's last opinion. Edge-triggering is the whole design: see
+// utils/RestPolicy.h. Nothing outside resolveSchedule() may interpret this.
+static int8_t lastScheduleOpinion = SCHEDULE_UNKNOWN;
 
 // ============================================================================
 // setup() helpers
@@ -109,56 +119,92 @@ void monitorWiFiConnection()
     wasConnected = isConnected;
 }
 
+void applyRestDecision(const RestDecision& d)
+{
+    // The label can move without the panel moving (pressing for the state the
+    // schedule already wants), so both flags are assigned either way.
+    restModeActive = d.restActive;
+    restModeManual = d.manual;
+
+    // Only a real state change has side effects. `manual` is a web-UI label; it
+    // does not touch the panel, so it must not trigger a redraw or a refetch.
+    if (!d.changed)
+        return;
+
+    if (!d.restActive)
+    {
+        // WAKING IS MORE THAN BRIGHTNESS. API polling paused while we slept, so
+        // whatever feeds the panel has to be restarted or the board comes back
+        // showing stale rows that never refresh. This lived open-coded in BOTH
+        // the scheduler and the manual handler; it is here once precisely so a
+        // future wake path cannot restore the light and forget the data.
+        displayManager.setBrightness(config.brightness);
+
+        if (!tickerModeActive)
+        {
+            awaitingDepartures = true; // Show loading state until fresh data arrives
+            apiFetchRequest.fetchDeparturesNow = true;
+        }
+        else
+        {
+            apiFetchRequest.fetchTickerNow = true;
+        }
+        apiFetchRequest.fetchWeatherNow = true; // Always (status bar)
+    }
+
+    signalDisplayUpdate();
+}
+
+int8_t currentScheduleOpinion()
+{
+    return lastScheduleOpinion;
+}
+
+void requestRestModeReevaluation()
+{
+    // Cheap and idempotent: with no flip resolveSchedule() does nothing, so a
+    // manual override survives an unrelated config save. A save that CHANGES the
+    // rest windows does flip it, and the schedule correctly takes back control.
+    lastRestCheckMinute = REST_CHECK_IMMEDIATE;
+}
+
 void checkScheduledRestMode()
 {
-    // Check rest mode at :00 and :30 minutes (twice per hour, synchronized to clock)
-    // Skip periodic check if rest mode was manually activated via REST API
-    if (!wifiManager.isAPMode() && !restModeManual)
+    // NOTE: no `!restModeManual` gate. There used to be one, to stop a
+    // level-triggered scheduler from immediately undoing a manual press -- and it
+    // meant one press disarmed the schedule until the next press. Edge-triggering
+    // removes the need, so re-adding any gate here reintroduces that bug.
+    if (wifiManager.isAPMode())
+        return;
+
+    struct tm timeinfo;
+    if (!getCurrentTime(&timeinfo))
+        return;
+
+    const int currentMinute = timeinfo.tm_min;
+    const bool immediate = (lastRestCheckMinute == REST_CHECK_IMMEDIATE);
+    const bool atCheckpoint =
+        (currentMinute == 0 || currentMinute == 30) && currentMinute != lastRestCheckMinute;
+
+    if (!immediate && !atCheckpoint)
+        return;
+
+    lastRestCheckMinute = currentMinute;
+
+    const bool restNow = isInRestPeriod(config.restModePeriods);
+    const RestDecision d =
+        resolveSchedule(restModeActive, restModeManual, lastScheduleOpinion, restNow);
+    lastScheduleOpinion = d.opinion;
+
+    if (d.changed)
     {
-        struct tm timeinfo;
-        if (getCurrentTime(&timeinfo))
-        {
-            int currentMinute = timeinfo.tm_min;
-
-            // Trigger check at :00 and :30 minutes (avoid duplicate checks in same minute)
-            if ((currentMinute == 0 || currentMinute == 30) && currentMinute != lastRestCheckMinute)
-            {
-                lastRestCheckMinute = currentMinute;
-                bool shouldBeInRest = isInRestPeriod(config.restModePeriods);
-
-                if (shouldBeInRest && !restModeActive)
-                {
-                    // Enter rest mode (scheduled)
-                    restModeActive = true;
-                    signalDisplayUpdate();
-                    logTimestamp();
-                    debugPrintln("RestMode: Activated (scheduled) - display off, API polling paused");
-                }
-                else if (!shouldBeInRest && restModeActive)
-                {
-                    // Exit rest mode (scheduled period ended)
-                    restModeActive = false;
-                    displayManager.setBrightness(config.brightness); // Restore brightness from config
-
-                    if (!tickerModeActive)
-                    {
-                        awaitingDepartures = true; // Show loading state until fresh data arrives
-                        apiFetchRequest.fetchDeparturesNow = true;
-                    }
-                    else
-                    {
-                        apiFetchRequest.fetchTickerNow = true; // Resume ticker fetch
-                    }
-
-                    // Signal API task for immediate refresh
-                    apiFetchRequest.fetchWeatherNow = true; // Always (status bar)
-                    signalDisplayUpdate();
-                    logTimestamp();
-                    debugPrintln("RestMode: Deactivated (scheduled) - resuming normal operation");
-                }
-            }
-        }
+        logTimestamp();
+        debugPrintln(d.restActive
+                         ? "RestMode: Activated (scheduled) - display off, API polling paused"
+                         : "RestMode: Deactivated (scheduled) - resuming normal operation");
     }
+
+    applyRestDecision(d);
 }
 
 void serviceEtaRecalc()

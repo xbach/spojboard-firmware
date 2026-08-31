@@ -140,6 +140,7 @@ extern char apiErrorMsg[64];
 // ============================================================================
 extern volatile bool demoModeActive;       // Demo mode: stops API polling and display updates
 extern volatile bool restModeActive;       // Rest mode: pauses API polling, turns off display
-extern volatile bool restModeManual;       // Rest mode activated via REST API (skip periodic check)
+extern volatile bool restModeManual;       // UI LABEL ONLY: panel disagrees with the schedule.
+                                          // Never gate on it -- see utils/RestPolicy.h (TA-0254)
 extern volatile bool awaitingDepartures;   // True until first fetch completes (shows "Loading")
 extern volatile bool tickerModeActive;     // Ticker mode (candlestick chart)

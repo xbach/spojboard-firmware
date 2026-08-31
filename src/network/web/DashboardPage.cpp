@@ -44,7 +44,7 @@ void sendDashboardPage(
     // Chunk 1: CSS + page structure (~12KB)
     {
         String structure = FPSTR(HTML_HEADER);
-        structure += buildHeader(apModeActive, restModeActive, restModeManual);
+        structure += buildHeader(apModeActive, restModeActive);
         structure += buildStatusBanner(apModeActive, demoModeActive, restModeActive, restModeManual, apiError, apiErrorMsg,
                                   apSSID, "");
         structure += buildTabBar(apModeActive);

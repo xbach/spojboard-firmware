@@ -6,11 +6,12 @@
 /**
  * Build header section with title and action bar
  * @param apModeActive Whether device is in AP mode
- * @param restModeActive Whether rest mode is active
- * @param restModeManual Whether rest mode was manually triggered
+ * @param restModeActive Whether rest mode is active. The rest button renders from
+ *        THIS ALONE -- restModeManual is a label, not state, and keying the button
+ *        to it made the button dead during a scheduled rest (TA-0254).
  * @return HTML string for header
  */
-String buildHeader(bool apModeActive, bool restModeActive, bool restModeManual);
+String buildHeader(bool apModeActive, bool restModeActive);
 
 /**
  * Build tab navigation bar

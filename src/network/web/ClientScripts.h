@@ -211,7 +211,11 @@ const char SCRIPT_REST_MODE_TOGGLE[] PROGMEM = R"rawliteral(
 <script>
 async function toggleRestMode() {
     const btn = document.getElementById('restModeBtn');
-    const isCurrentlyActive = btn.classList.contains('active');
+    // Read STATE, not presentation. This used to be classList.contains('active'),
+    // so the button's behaviour depended on how it happened to be styled -- and
+    // during a scheduled rest it was styled inactive while the panel was off, so
+    // the press asked for a rest that was already running and did nothing.
+    const isCurrentlyActive = btn.dataset.restActive === '1';
     const newState = !isCurrentlyActive;
 
     btn.disabled = true;

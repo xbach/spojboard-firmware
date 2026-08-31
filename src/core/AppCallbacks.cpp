@@ -6,6 +6,8 @@
 
 #include "core/AppState.h"
 #include "core/DisplayBridge.h"   // signalDisplayUpdate()
+#include "core/AppRuntime.h"     // applyRestDecision (TA-0254)
+#include "utils/RestPolicy.h"    // resolveManual
 #include "display/DisplayColors.h" // COLOR_YELLOW
 #include "utils/Logger.h"
 
@@ -47,6 +49,11 @@ void onConfigSave(const Config& newConfig, bool needsRestart, const char* tab)
     }
     else
     {
+        // A saved schedule must apply now, not at the next :00/:30. Idempotent:
+        // with no flip the evaluation does nothing, so an unrelated save cannot
+        // cancel a manual override (utils/RestPolicy.h).
+        requestRestModeReevaluation();
+
         // Tab-aware refresh: only trigger API refetch when transit/connection settings change
         bool needsApiFetch = (strcmp(tab, "transit") == 0 || strcmp(tab, "all") == 0);
         bool needsWeatherFetch = (strcmp(tab, "optional") == 0 || strcmp(tab, "all") == 0);
@@ -160,40 +167,27 @@ void onDemoStop()
 
 void onRestMode(bool enabled)
 {
-    if (enabled && !restModeActive)
+    // Thin adapter. All arbitration lives in utils/RestPolicy.h; all side effects
+    // live in applyRestDecision(). This used to open-code both, and its two guards
+    //     if (enabled && !restModeActive) ... else if (!enabled && restModeActive)
+    // matched NEITHER branch during a scheduled rest -- the button was a silent
+    // no-op with no way to wake the panel. resolveManual() has no such hole: a
+    // press always produces a decision.
+    //
+    // The scheduler's opinion is deliberately NOT passed back in: a press is a
+    // disagreement, not a lesson. It is read only to decide whether this press
+    // counts as an override for the UI label.
+    const RestDecision d = resolveManual(restModeActive, enabled, currentScheduleOpinion());
+
+    if (d.changed)
     {
-        // Enter rest mode (manual via REST API)
-        restModeActive = true;
-        restModeManual = true; // Mark as manually activated - skip periodic checks
-        signalDisplayUpdate();
-
         logTimestamp();
-        debugPrintln("RestMode: Activated via REST API - display off, API polling paused");
+        debugPrintln(d.restActive
+                         ? "RestMode: Activated via REST API - display off, API polling paused"
+                         : "RestMode: Deactivated via REST API - resuming normal operation");
     }
-    else if (!enabled && restModeActive)
-    {
-        // Exit rest mode
-        restModeActive = false;
-        restModeManual = false; // Clear manual flag
-        displayManager.setBrightness(config.brightness); // Restore brightness from config
 
-        if (!tickerModeActive)
-        {
-            awaitingDepartures = true; // Show loading state until fresh data arrives
-            apiFetchRequest.fetchDeparturesNow = true;
-        }
-        else
-        {
-            apiFetchRequest.fetchTickerNow = true; // Resume ticker fetch
-        }
-
-        // Signal API task for immediate refresh
-        apiFetchRequest.fetchWeatherNow = true; // Always (status bar)
-        signalDisplayUpdate();
-
-        logTimestamp();
-        debugPrintln("RestMode: Deactivated via REST API - resuming normal operation");
-    }
+    applyRestDecision(d);
 }
 
 // ============================================================================

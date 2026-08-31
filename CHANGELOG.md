@@ -16,6 +16,10 @@ All notable changes to SpojBoard firmware will be documented in this file.
 - The **panel arrangement setting moved to the Hardware tab**, next to the wiring. Both describe the panels you attached rather than what is drawn on them, and both only take effect at boot, so changing them together now costs one restart instead of two. It is also reachable during setup (AP) mode, where the Display tab is not shown
 
 ### Fixed
+- The sleep button now works during a **scheduled** rest. It was dead in exactly the case you would reach for it: the panel dark on a schedule, the button drawn as if rest were off, and pressing it doing nothing at all
+- A manual sleep or wake no longer switches the schedule off for good. Previously one press meant the rest schedule never ran again until you pressed it a second time; now a manual choice holds until the schedule next changes its mind, and then the schedule takes over again
+- Waking the panel by any route resumes departure and ticker fetching, not just the backlight
+- A saved rest schedule applies immediately instead of waiting up to half an hour for the next check
 - Saving from the setup (AP) portal no longer silently switches off settings it never showed you. Platform symbols, destination scrolling, dual departure times, debug logging and weather were all turned off by any save made during setup, because the form reported sending every tab while only showing two
 - Saving a wiring change now actually restarts the device. It used to save the setting, announce a restart, and not perform one — so the new channel order or pin map sat unapplied until the next power cycle
 - The restart screen names the reason it is restarting. Anything that was not a transit-provider change previously claimed "WiFi Network Changed" and showed an SSID nobody had touched
