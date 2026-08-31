@@ -29,6 +29,7 @@ All notable changes to SpojBoard firmware will be documented in this file.
 - Saving from the setup (AP) portal no longer silently switches off settings it never showed you. Platform symbols, destination scrolling, dual departure times, debug logging and weather were all turned off by any save made during setup, because the form reported sending every tab while only showing two
 - Saving a wiring change now actually restarts the device. It used to save the setting, announce a restart, and not perform one — so the new channel order or pin map sat unapplied until the next power cycle
 - The restart screen names the reason it is restarting. Anything that was not a transit-provider change previously claimed "WiFi Network Changed" and showed an SSID nobody had touched
+- **Weather refresh now accepts the range the form offers.** The field advertises 5 to 120 minutes, but saving silently forced anything outside 10 to 60 back into that narrower band — type 90, get 60; type 5, get 10, with no message either way. Every value the form allows is now kept
 - A factory reset no longer forgets which board it is. The stored board type was erased along with everything else, so the next boot re-recorded whatever firmware happened to be flashed — quietly disarming the check that stops the wrong firmware running on a board
 
 ## [r9] - 2026-08-22

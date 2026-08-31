@@ -697,10 +697,6 @@ void ConfigWebServer::parseOptionalSettings(Config* config)
     if (server->hasArg("weather_refresh"))
     {
         config->weatherRefreshInterval = server->arg("weather_refresh").toInt();
-        if (config->weatherRefreshInterval < 10)
-            config->weatherRefreshInterval = 10;
-        if (config->weatherRefreshInterval > 60)
-            config->weatherRefreshInterval = 60;
     }
 
     // Rest mode periods
