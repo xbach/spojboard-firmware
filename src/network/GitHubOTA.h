@@ -5,6 +5,7 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 #include "OTAUpdateManager.h"
+#include "OtaAssetSelect.h"
 
 // ============================================================================
 // GitHub OTA Update Manager
@@ -20,13 +21,9 @@ class GitHubOTA
     // Most geometry builds a single release could plausibly carry for ONE board.
     static constexpr int MAX_ASSET_OPTIONS = 6;
 
-    struct AssetOption
-    {
-        char name[64];    // Asset filename
-        char url[256];    // Download URL
-        char display[16]; // Geometry token, "" for a bare (geometry-agnostic) build
-        size_t size;      // File size in bytes
-    };
+    // The selection policy lives in OtaAssetSelect so it can be tested off the
+    // device (test_otaselect). This alias keeps every existing call site.
+    using AssetOption = OtaAssetOption;
 
     struct ReleaseInfo
     {

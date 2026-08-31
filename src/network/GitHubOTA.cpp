@@ -98,57 +98,11 @@ bool GitHubOTA::validateFirmwareFilename(const char* filename)
 
 int GitHubOTA::collectAssetOptions(JsonDocument& doc, AssetOption* out, int maxOptions)
 {
-    JsonArray assets = doc["assets"];
-    if (assets.isNull())
-    {
-        return 0;
-    }
-
-    // TWO PASSES, most specific first, so options[0] is the best default and a
-    // caller that ignores the rest still behaves sensibly. GitHub lists assets
-    // in upload order, which is not something to depend on.
-    //
-    //   pass 0: spojboard-<board>-<display>-r<n>-<id>.bin   geometry builds
-    //   pass 1: spojboard-<board>-r<n>-<id>.bin             bare build
-    //
-    // A release with no geometry builds yields one bare option and updates
-    // every device. A release with geometry builds yields several and the user
-    // chooses -- an r9 binary works at any geometry (panelRows is runtime
-    // config), so there is nothing here that could pick correctly for them.
-    int count = 0;
-    for (int pass = 0; pass < 2 && count < maxOptions; pass++)
-    {
-        const OtaAssetMatch want = (pass == 0) ? OtaAssetMatch::Display : OtaAssetMatch::Bare;
-
-        for (JsonObject asset : assets)
-        {
-            if (count >= maxOptions)
-            {
-                break;
-            }
-
-            const char* name = asset["name"];
-            const char* url = asset["browser_download_url"];
-            int size = asset["size"] | 0;
-
-            if (!name || !url || size <= 0)
-            {
-                continue;
-            }
-
-            OtaAssetInfo info = otaClassifyAsset(name, VARIANT_NAME);
-            if (info.match != want)
-            {
-                continue;
-            }
-
-            strlcpy(out[count].name, name, sizeof(out[count].name));
-            strlcpy(out[count].url, url, sizeof(out[count].url));
-            strlcpy(out[count].display, info.display, sizeof(out[count].display));
-            out[count].size = (size_t)size;
-            count++;
-        }
-    }
+    // Policy lives in OtaAssetSelect, where it is testable off-device
+    // (test_otaselect). Keeping it there rather than here is what makes the
+    // "which assets is this board offered, in what order" question answerable
+    // without flashing anything.
+    const int count = otaCollectAssetOptions(doc, VARIANT_NAME, out, maxOptions);
 
     logTimestamp();
     Serial.print("Assets for ");
