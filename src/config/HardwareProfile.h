@@ -52,4 +52,20 @@ HwPinError hwValidatePins(const HubPins& pins);
 // colour and always pass through untouched.
 HubPins hwApplyRgbOrder(const HubPins& wired, RgbOrder order);
 
+// A device's stored display wiring. `pins` is always in connector order; the
+// order is applied on top, so a stock-wired panel with transposed channels
+// needs no pin edits at all.
+struct HwProfile
+{
+    bool useCustomPins;
+    HubPins pins;
+    RgbOrder order;
+};
+
+// The map that reaches the driver. Falls back to `compiledDefault` when the
+// stored map is absent or fails validation -- NVS survives OTA and migrations,
+// so a stored map can be anything by the time it is read, and the driver must
+// never receive one that validation rejects.
+HubPins hwResolvePins(const HwProfile& profile, const HubPins& compiledDefault);
+
 #endif // HARDWARE_PROFILE_H

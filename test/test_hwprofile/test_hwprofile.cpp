@@ -116,6 +116,51 @@ void test_nonexistent_gpio_is_rejected(void)
     TEST_ASSERT_TRUE(hwValidatePins(q) == HwPinError::NotAGpio);
 }
 
+// -------------------------------------------------------------------- resolve
+
+// What actually reaches the driver. The order is applied whether or not the
+// pins are custom: a stock-wired board with green and blue transposed is the
+// common case (discussion #8), and it must not require touching pin numbers.
+void test_stock_pins_still_take_the_configured_order(void)
+{
+    HwProfile prof;
+    prof.useCustomPins = false;
+    prof.pins = wiredPins(); // ignored
+    prof.order = RgbOrder::RBG;
+
+    const HubPins out = hwResolvePins(prof, wiredPins());
+    TEST_ASSERT_EQUAL_INT(40, out.g1);
+    TEST_ASSERT_EQUAL_INT(41, out.b1);
+}
+
+void test_custom_pins_are_used_when_valid(void)
+{
+    HwProfile prof;
+    prof.useCustomPins = true;
+    prof.pins = wiredPins();
+    prof.pins.clk = 12; // a legal, different GPIO
+    prof.order = RgbOrder::RGB;
+
+    TEST_ASSERT_EQUAL_INT(12, hwResolvePins(prof, wiredPins()).clk);
+}
+
+// The fail-safe, and the reason this function exists at all. NVS survives OTA
+// and migrations, so a stored map can be anything by the time it is read. The
+// driver must never be handed one that validation rejects -- the symptom would
+// be a dead panel on a device whose only local output is that panel.
+void test_an_invalid_custom_map_falls_back_to_the_compiled_default(void)
+{
+    HwProfile prof;
+    prof.useCustomPins = true;
+    prof.pins = wiredPins();
+    prof.pins.clk = 28; // SPI flash -- fatal
+    prof.order = RgbOrder::RGB;
+
+    const HubPins out = hwResolvePins(prof, wiredPins());
+    TEST_ASSERT_EQUAL_INT(2, out.clk);
+    TEST_ASSERT_EQUAL_INT(42, out.r1);
+}
+
 int main(int, char**)
 {
     UNITY_BEGIN();
@@ -126,5 +171,8 @@ int main(int, char**)
     RUN_TEST(test_duplicate_pin_is_rejected);
     RUN_TEST(test_flash_pins_are_rejected);
     RUN_TEST(test_nonexistent_gpio_is_rejected);
+    RUN_TEST(test_stock_pins_still_take_the_configured_order);
+    RUN_TEST(test_custom_pins_are_used_when_valid);
+    RUN_TEST(test_an_invalid_custom_map_falls_back_to_the_compiled_default);
     return UNITY_END();
 }

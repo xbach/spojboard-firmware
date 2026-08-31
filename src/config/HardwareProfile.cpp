@@ -74,3 +74,9 @@ HwPinError hwValidatePins(const HubPins& pins)
 
     return HwPinError::None;
 }
+
+HubPins hwResolvePins(const HwProfile& profile, const HubPins& compiledDefault)
+{
+    const bool usable = profile.useCustomPins && hwValidatePins(profile.pins) == HwPinError::None;
+    return hwApplyRgbOrder(usable ? profile.pins : compiledDefault, profile.order);
+}
