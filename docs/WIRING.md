@@ -8,6 +8,20 @@ This document explains the correct physical wiring for different hardware varian
 
 The firmware detects whether you're using a MatrixPortal S3 or generic ESP32-S3 and configures the pins accordingly.
 
+**If your panel needs something different, you no longer need a custom build.** The **Hardware** tab
+in the web interface exposes the wiring as settings:
+
+| Setting | Use it when |
+|---|---|
+| RGB channel order | Colours are wrong — orange looks pink, sky looks teal, yellow looks violet |
+| Panel driver chip | The panel stays blank or ghosts (some panels need an FM6126A/ICN2038S-style init) |
+| Custom pin map | You hand-wired the panel to different GPIOs |
+
+The tab also has a **test pattern** (three bars labelled R, G and B — if a letter sits on the wrong
+colour, the channel order is wrong) and a **restore built-in wiring** button that reboots back to the
+defaults below. Both are reachable in AP mode, so a blanked panel can always be recovered without a
+USB cable. Changes apply on reboot.
+
 ## MatrixPortal ESP32-S3
 
 **Connection:** Direct HUB75 connector on board
@@ -69,13 +83,17 @@ Cable Color   HUB75 Label   →   ESP32-S3 GPIO
 
 ### How It Works
 
-The firmware detects that you're running the `esp32_s3_n8r2` variant and automatically maps:
-- `G1_PIN` → GPIO 41 (where standard HUB75 green wire connects)
-- `B1_PIN` → GPIO 40 (where standard HUB75 blue wire connects)
-- `G2_PIN` → GPIO 39 (where standard HUB75 green wire connects)
-- `B2_PIN` → GPIO 37 (where standard HUB75 blue wire connects)
+There is **one** pin table for both boards — the GPIOs above, in HUB75 connector order. The
+MatrixPortal's "non-standard connector" is not a different set of pins: it presents green and blue
+transposed, which the firmware expresses as a **channel order** (`RBG`) applied on top of the same
+table. The generic board uses `RGB`.
 
-This compensates for the MatrixPortal's non-standard connector layout, so you can use any standard HUB75 cable or tutorial.
+That is why you can use any standard HUB75 cable or tutorial on either board, and why a panel that
+wants a different order is a settings change rather than a rebuild.
+
+One wrinkle worth knowing: the transposition applies to **32-high panels only**. 64-high panels want
+the standard order on the same MatrixPortal, so the `2x64` build defaults to `RGB`. If you swap panel
+heights and the colours go strange, the channel order is the setting to change.
 
 ## Standard HUB75 Pinout Reference
 
@@ -92,6 +110,45 @@ Bottom Row (Pins 9-16):
 │ A  │ B  │ C  │ D  │CLK │LAT │ OE │GND │
 └────┴────┴────┴────┴────┴────┴────┴────┘
 ```
+
+## Panel Geometry
+
+Panel arrangement is chosen at **build time** — panel height changes how many address lines the
+driver uses, so each arrangement is a separate firmware binary:
+
+| Build | Panels | Pixels | Notes |
+|---|---|---|---|
+| `matrixportal_s3` / `esp32_s3_n8r2` | 2x 64x32 chained | 128x32 | The default, and what every release has shipped |
+| `..._4x32` | 4x 64x32 in a 2x2 serpentine | 128x64 | Needs the coordinate remapper |
+| `..._2x64` | 2x 64x64 chained | 128x64 | Plain horizontal chain; uses the E address line |
+
+`4x32` and `2x64` are both 128x64 pixels, so resolution alone does not tell you which build you
+need — count the panels.
+
+### A single 128x64 module uses the `2x64` build
+
+If your display is **one** 128x64 module with a single HUB75 connector rather than two chained
+64x64 panels, flash `2x64`. No separate build exists, and none is needed.
+
+The reason is that the driver only ever uses the panel width and the chain length **multiplied
+together**. Both descriptions produce the same numbers:
+
+| | width x height, chain | pixels per row | rows per frame |
+|---|---|---|---|
+| Two 64x64 chained | 64 x 64, chain 2 | 128 | 32 |
+| One 128x64 module | 128 x 64, chain 1 | 128 | 32 |
+
+Same framebuffer, same address lines, same bounds — the driver cannot tell them apart. The only
+physical difference is the cabling: one connector instead of two with a ribbon between them. The
+shift-register chain the panel sees is the same length either way.
+
+**The one exception is scan type, not panel count.** A minority of 128x64 modules use a
+non-standard internal scan map (typically 1/16-scan "outdoor" panels) and need a scan remap that
+this firmware does not currently apply for `2x64`. You cannot identify these from the pixel
+dimensions. The symptom is distinctive: **interleaved or garbled rows** — the image is there but
+shredded across the panel — as opposed to wrong colours (channel order) or the top and bottom
+halves showing the same content (the E address line not reaching the panel). If you see that,
+open an issue with a photo; it needs firmware support, not a setting.
 
 ## Power Connections
 
@@ -150,10 +207,13 @@ A 2A supply provides 2.8× safety margin over measured peaks, while a 3A supply 
 
 ## Troubleshooting
 
-**Colors are wrong on generic ESP32-S3:**
-- Verify you've swapped green/blue wires as documented above
-- Check that all wires are firmly connected
-- Ensure common ground between ESP32 and panel power supply
+**Colors are wrong (orange looks pink, sky looks teal):**
+- This is a channel-order problem, not a wiring fault. Open the **Hardware** tab, press **Test
+  pattern**, and read the three bars: if the letter `R` is not on the red bar, change **RGB channel
+  order** and reboot
+- `RGB` is the standard cable order; `RBG` is what a MatrixPortal needs with 64x32 panels
+- If the panel is hand-wired, check that all wires are firmly connected and that ESP32 and panel
+  share a common ground
 
 **Panel doesn't light up:**
 - Check panel has separate 5V power supply connected
