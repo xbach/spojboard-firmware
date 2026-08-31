@@ -6,7 +6,7 @@ Common issues and solutions when using SpojBoard.
 
 - [WiFi Connection Issues](#wifi-connection-issues)
 - [API Issues](#api-issues)
-- [Display Issues](#display-issues)
+- [Display Issues](#display-issues) — wrong colours, blank/scrambled panels, panel arrangement
 - [Firmware Update Issues](#firmware-update-issues)
 
 ## WiFi Connection Issues
@@ -115,13 +115,26 @@ Common issues and solutions when using SpojBoard.
 
 ### Display Shows Wrong Colors
 
-**Symptoms:** Colors appear incorrect or washed out.
+**Symptoms:** Colors appear incorrect or washed out. Orange looks pink, sky blue looks teal, yellow looks violet.
 
 **Solutions:**
+- **Start with the test pattern.** Open the **Hardware** tab and press **Test pattern**: three bars appear, labelled R, G and B. If a letter is not sitting on its own colour, the channel order is wrong — change **RGB channel order** and reboot. `RGB` is the standard cable order; `RBG` is what a MatrixPortal needs with 64×32 panels. Consistently shifted colours are almost always this, not a cable fault
+- **After swapping panel heights:** the MatrixPortal's green/blue transposition applies to 64×32 panels only, so moving to 64×64 panels usually means switching the channel order to `RGB`
 - Check HUB75 cable connections (loose connections can cause color issues)
 - Verify RGB data pins are correctly connected
 - Try reseating all connections
 - **Level shifting:** If using a generic ESP32-S3 (not MatrixPortal S3), the 3.3V signal levels may be too low for your panel. HUB75 panels are 5V logic devices and some batches won't work reliably at 3.3V. Add a 74AHCT245 level shifter, or switch to a MatrixPortal S3 which includes level shifters on-board
+
+### Panel Blank, Ghosting, Scrambled, or Half-Lit
+
+**Symptoms:** Nothing on the panel, heavy ghosting, interleaved rows, or the top and bottom halves showing the same thing.
+
+**Solutions:**
+- **Wrong panel arrangement** is the first thing to check: **Display → Panel arrangement** must match the panels you actually have. Two of the three options are 128×64 pixels but different hardware, so count the panels. Picking wrong scrambles the image; nothing is damaged
+- **Blank or ghosting** can be a driver chip that needs its own init sequence — try **Hardware → Panel driver chip** (FM6126A and ICN2038S are the common ones)
+- **Top and bottom halves identical** on a 64-high panel means the E address line is not reaching it — check that wire
+- **Interleaved or shredded rows** on a single 128×64 module means it uses a non-standard internal scan map, which needs firmware support. Open an issue with a photo
+- If you changed the pin map by hand and the panel went dark, press **Restore built-in wiring** on the Hardware tab — it works in setup (AP) mode, so it never needs a working panel
 
 ### Physical Display Issues
 

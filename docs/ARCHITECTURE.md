@@ -99,7 +99,7 @@ HUB75 Hardware
 - **`DEPS_PER_STOP = 12`** ([DepartureData.h:10](../src/api/DepartureData.h#L10)) - Departures requested per stop (Golemio) and the accumulator/temp-buffer sizing factor.
 - **`BVG_MAX_RESULTS = 10`** ([BvgAPI.h](../src/api/BvgAPI.h)) - BVG clamps its own `results=` request to this. A busy hub's BVG payload is >2.7 KB/departure, so 12 would overflow the 32 KB read cap and truncate (`IncompleteInput`). Golemio's compact payload has no such limit and requests the full `DEPS_PER_STOP`.
 - **`MAX_TEMP_DEPARTURES = 144`** (MqttAPI only) - MQTT's server-aggregate scratch buffer (`DEPS_PER_STOP × 12`). Golemio/BVG no longer use a per-client temp buffer — they write straight into the per-stop `StopResult.departures` (capped at `MAX_DEPARTURES`); the cross-stop accumulator lives in `apiFetchTask`.
-- **`config.numDepartures`** - User setting for display rows. Max depends on display size: `(panelRows * 32 / 8) - 1`, i.e. 3 on 128×32 (`panelRows=1`, default) or 7 on 128×64 (`panelRows=2`).
+- **`config.numDepartures`** - User setting for display rows. The maximum comes from `geometryMaxDepartureRows(config.geometry)` in `src/config/PanelGeometry.h` — 3 on 128×32, 7 on either 128×64 arrangement. That one function is the only place the limit is derived; three call sites used to compute `(panelRows * 32 / 8) - 1` independently.
 
 **Important:** `config.numDepartures` only controls how many rows to show on the LED matrix, not API fetch size. Golemio always requests `DEPS_PER_STOP` (12) per stop; BVG requests `BVG_MAX_RESULTS` (10) to stay within its read cap. Fetching more than displayed gives the sorter and secondEta matcher more to work with. Users don't need to understand API response sizes.
 
@@ -170,8 +170,8 @@ HUB75 Hardware
 │    - rowsToDraw = min(24, 2, 3) = 2                             │
 │    - for (i = 0; i < 2; i++): drawDeparture(i, departures[i])   │
 │    Only first 2 departures shown on LED matrix (user setting)    │
-│    Physical maximum is (panelRows*32/8)-1 rows: 3 on 128×32     │
-│    (panelRows=1, default) or 7 on 128×64 (panelRows=2), with    │
+│    Physical maximum from geometryMaxDepartureRows(): 3 on       │
+│    128×32, 7 on either 128×64 arrangement, with                 │
 │    the bottom row reserved for the date/time status bar         │
 └──────────────────────────────────────────────────────────────────┘
 ```
@@ -305,6 +305,7 @@ Layered architecture with zero circular dependencies:
 │ Layer 4: Network Services                               │
 │   WiFiManager, CaptivePortal, ConfigWebServer           │
 │   OTAUpdateManager                                       │
+│   OtaAssetName, OtaAssetSelect    (pure, host-tested)   │
 └─────────────────────────────────────────────────────────┘
                         ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -316,6 +317,7 @@ Layered architecture with zero circular dependencies:
 ┌─────────────────────────────────────────────────────────┐
 │ Layer 2: Data Layer                                     │
 │   AppConfig, DepartureData                              │
+│   PanelGeometry, HardwareProfile  (pure, host-tested)   │
 └─────────────────────────────────────────────────────────┘
                         ↓
 ┌─────────────────────────────────────────────────────────┐

@@ -16,21 +16,35 @@ Save configuration settings. Uses form-encoded data with a `tab` parameter to sc
 
 **Content-Type:** `application/x-www-form-urlencoded`
 
-**Tab values:** `connection`, `transit`, `display`, `optional`, `all`
+**Tab values:** `connection`, `transit`, `display`, `optional`, `hardware`, `all`
 
 | Tab | Key Fields |
 |-----|-----------|
 | `connection` | `ssid`, `password`, `city` (Prague/Berlin/MQTT) |
 | `transit` | `refresh` (10-300s), `min_dep_time` (0-30), `prague_stops`, `berlin_stops`, `api_key`, MQTT fields |
-| `display` | `brightness` (0-255), `num_deps` (1-3), `language`, `show_platform`, `scroll_enabled`, `show_multi_times`, `line_color_map`, `platform_symbol_map` |
+| `display` | `panel_geom` (1-3, see below), `brightness` (0-255), `num_deps` (1 to 3 or 7 depending on arrangement), `language`, `show_platform`, `scroll_enabled`, `show_multi_times`, `line_color_map`, `platform_symbol_map` |
 | `optional` | `debug_mode`, `weather_enabled`, `weather_lat`, `weather_lon`, `weather_refresh`, `rest_periods` |
+| `hardware` | `hw_rgb_order` (0-5), `hw_driver` (0-5), `hw_custom_pins` (checkbox), `hw_r1` … `hw_clk` (GPIO 0-48) |
+
+**`panel_geom`** names the panel ARRANGEMENT, not the pixel size — two of the three are 128×64:
+
+| Value | Panels | Pixels |
+|-------|--------|--------|
+| `1` | 2× 64×32 chained | 128×32 |
+| `2` | 4× 64×32, 2×2 grid | 128×64 |
+| `3` | 2× 64×64 chained, **or one 128×64 module** | 128×64 |
+
+**`hw_rgb_order`**: `0` RGB (standard cable), `1` RBG (MatrixPortal with 64×32 panels), `2` GRB, `3` GBR, `4` BRG, `5` BGR.
+**`hw_driver`**: `0` SHIFTREG (default), `1` FM6124, `2` FM6126A, `3` ICN2038S, `4` MBI5124, `5` DP3246.
+
+A custom pin map that fails validation (duplicate pins, GPIO 22-25 or above 48, or the SPI-flash pins 26-32) is stored so the form shows it back, but is **ignored at boot** in favour of the built-in map — the driver is never handed a map validation rejects.
 
 **Response (no restart needed):**
 ```json
 {"success": true, "message": "Configuration saved"}
 ```
 
-**Response (restart needed):** HTML page with restart animation (triggers when WiFi, city changed, or in AP mode).
+**Response (restart needed):** HTML page with restart animation (triggers when WiFi, city or panel arrangement changed, when any `hardware` field changed, or in AP mode).
 
 ---
 
@@ -44,6 +58,22 @@ Restart the device. Returns an HTML status page before rebooting.
 
 #### `POST /clear-config`
 Factory reset: erases all NVS settings and reboots into AP mode.
+
+#### `POST /hw-test`
+Draw the panel colour test: three bars labelled R, G and B. If a letter sits on the wrong colour, the RGB channel order is wrong. The pattern stays on the panel until something else repaints it. Available in AP mode.
+
+```json
+{"ok": true}
+```
+
+Returns `503` with `{"ok": false, "error": "not wired"}` if the display callback is unavailable.
+
+#### `POST /reset-display-pins`
+Restore the built-in panel wiring — pin map, channel order and driver chip — and reboot. The recovery path for a panel left dark by a wrong-but-valid pin map, and deliberately **not** gated on the stored map being invalid. Available in AP mode, so it never requires a working panel.
+
+```json
+{"ok": true, "rebooting": true}
+```
 
 ---
 

@@ -32,7 +32,8 @@ Standalone operation with web-based configuration, no external server required f
 - **Extended Character Support**: Custom 8-bit ISO-8859-2 fonts with automatic UTF-8 conversion (ž, š, č, ř, ň, ť, ď, ß, etc.)
 - **Adaptive Font Rendering**: Automatically switches to condensed font for long destination names based on available space (accounting for ETA, platform, and dual ETA layout)
 - **Optional Scrolling**: Enable scrolling for long destination names that exceed display width (disabled by default)
-- **Selectable Panel Size**: 128×32 (two panels, up to 3 departure rows) by default, or 128×64 (four panels, up to 7 departure rows) via `panelRows=2` (requires reboot)
+- **Selectable Panel Arrangement**: pick your panels in the web interface and reboot - no separate firmware. 128×32 (2× 64×32, up to 3 departure rows) by default; 128×64 (up to 7 rows) as either 4× 64×32 in a 2×2 grid, or 2× 64×64 chained - which also covers a **single 128×64 module**
+- **Configurable Panel Wiring**: RGB channel order, panel driver chip and an optional custom GPIO pin map, all as settings. A panel whose colours come out wrong (orange looking pink, sky looking teal) is fixed in the UI rather than with a custom build. Includes a test pattern and a one-click restore of the built-in wiring, both reachable in setup mode
 - **Ticker Mode** (easter egg): Candlestick price chart for stocks (e.g. AAPL) or crypto (e.g. BTC/USD) via the Twelve Data API
 - **Headsign Shortening**: Automatic shortening of long Czech words (e.g., "Nádraží" → "Nádr.", "nádraží" → "nádr.") to maximize display space
 - **Trip Filtering**: Configurable minimum departure time (default 3 minutes) to hide departures that are too soon to catch
@@ -47,7 +48,9 @@ Standalone operation with web-based configuration, no external server required f
 
 ## Hardware
 
-SpojBoard supports two hardware variants. The firmware automatically detects and configures the correct pin mapping - just flash the right firmware for your board.
+SpojBoard supports two hardware variants. The firmware configures the correct pin mapping for your board automatically - just flash the right firmware for your board.
+
+**One firmware per board covers every panel arrangement.** Panel size and layout are settings, not separate downloads, so a release publishes exactly one file per board.
 
 **A note on logic levels:** HUB75 panels are 5V logic devices, but the ESP32-S3 outputs 3.3V. Many panels work at 3.3V by accident (the input threshold is close enough), but this is out of spec and not guaranteed across all panel batches. Level shifters (3.3V → 5V) ensure reliable operation with any panel.
 
@@ -61,7 +64,7 @@ SpojBoard supports two hardware variants. The firmware automatically detects and
 ### Option 1: MatrixPortal S3 (Recommended)
 
 - **Board**: [Adafruit MatrixPortal ESP32-S3](https://www.adafruit.com/product/5778)
-- **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total). Optionally 4 panels for 128×64 (`panelRows=2`)
+- **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total). Also supports 128×64 - 4× 64×32, 2× 64×64, or one 128×64 module - selected in the web interface
 - **Power**: 5V 2A minimum (3A recommended) via USB-C
 - **Wiring**: Built-in HUB75 connector - just plug in your panels
 - **Level shifting**: Includes 2× 74AHCT245 level shifters, works reliably with all HUB75 panels
@@ -69,7 +72,7 @@ SpojBoard supports two hardware variants. The firmware automatically detects and
 ### Option 2: Generic ESP32-S3 N8R2
 
 - **Board**: ESP32-S3-DevKitC-1 or similar (8MB flash minimum)
-- **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total). Optionally 4 panels for 128×64 (`panelRows=2`)
+- **Display**: 2× HUB75 64×32 LED Matrix panels (128×32 total). Also supports 128×64 - 4× 64×32, 2× 64×64, or one 128×64 module - selected in the web interface
 - **Power**: 5V 2A minimum (3A recommended) via screw terminals on panels
 - **Wiring**: Standard HUB75 rainbow cable to GPIO pins
 
@@ -151,8 +154,9 @@ The built-in web server provides a tabbed configuration interface with per-tab s
   - Berlin: Stop IDs
   - MQTT: Broker, topics, field mappings - see [MQTT Guide](docs/MQTT.md)
   - Refresh interval, minimum departure time, number of departures
-- **Display Tab** (🖥): Brightness, custom line colors with wildcard patterns and restore-to-defaults, dual ETA toggle, scrolling
+- **Display Tab** (🖥): Panel arrangement, brightness, custom line colors with wildcard patterns and restore-to-defaults, dual ETA toggle, scrolling
 - **Optional Tab** (⭐): Weather display, rest mode periods, debug mode (STA mode only)
+- **Hardware Tab** (🔌): RGB channel order, panel driver chip, optional custom pin map, panel test pattern, restore built-in wiring. **Also shown in AP mode** - a panel blanked by a bad pin map is a plausible reason to be there
 - **System Tab** (⚙): System info, firmware updates, actions (STA mode only)
 - **Action Bar**: Force refresh, demo mode, rest mode toggle (context-aware per mode)
 - **Status Banners**: AP mode, demo mode, rest mode (manual/scheduled), API errors
@@ -167,6 +171,7 @@ The built-in web server provides a tabbed configuration interface with per-tab s
 | Display | Shows AP credentials | Shows departures |
 | Web UI | Setup focused | Full dashboard |
 | Demo Mode | Available | Available |
+| Panel wiring (Hardware tab) | Available | Available |
 
 ## Getting Your Stop ID
 

@@ -22,18 +22,34 @@ The information below is for advanced users who want to create custom hardware v
 
 The SpojBoard firmware can run on any ESP32-S3 board with sufficient GPIO pins and flash memory. The main differences are pin configuration and physical wiring - the software architecture remains the same.
 
-### Creating a Custom Hardware Variant
+### A different pin map no longer needs a custom build
 
-If you need a different pin mapping than the built-in variants, you can:
+**Wire it however you like and set the pins in the web interface.** The **Hardware** tab exposes all
+14 HUB75 GPIOs, the RGB channel order and the panel driver chip; changes apply on reboot. The pin map
+is validated before it is used — duplicates, GPIO 22-25 or above 48, and the SPI-flash pins 26-32 are
+rejected, and a rejected map falls back to the built-in one rather than reaching the driver. If a
+valid-but-wrong map leaves the panel dark, **Restore built-in wiring** (also on that tab, and
+available in setup mode) puts it back without a USB cable.
+
+The **panel arrangement** — 2× 64×32, 4× 64×32 in a 2×2 grid, or 2× 64×64 / one 128×64 module — is a
+setting too, under Display.
+
+### Creating a custom hardware variant (rarely needed now)
+
+A separate build environment is only worth it when something other than wiring differs — flash size,
+partition layout, USB mode. In that case:
 
 1. Add a new environment in `platformio.ini` with `custom_hardware_variant`
-2. Define pin mappings in `src/config/AppConfig.h` using `#if HARDWARE_VARIANT == X`
+2. Set the board's default pin map in `src/config/AppConfig.h` (one connector-order table, plus
+   `hwDefaultRgbOrder()` if the board transposes channels like the MatrixPortal does)
 3. Build with `pio run -e your_variant`
+
+Those macros are only the **factory default** a device falls back to; the stored profile wins.
 
 ### Requirements
 
 - ESP32-S3 development board with **at least 8MB flash** (for OTA updates)
-- **13 available GPIO pins** for HUB75 interface
+- **13 available GPIO pins** for the HUB75 interface — **14 if you use 64-high panels**, which need the E address line
 - USB-C cable for programming
 - External 5V power supply (see main README for details)
 
