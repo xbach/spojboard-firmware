@@ -1,11 +1,16 @@
 #ifndef APPCONFIG_H
 #define APPCONFIG_H
 
-#include <Preferences.h>
 #include <cstdint>
 #include "../api/DepartureData.h" // STOP_IDS_BUF_SIZE (stop-ID list buffer)
 #include "HardwareProfile.h"     // HubPins / RgbOrder / HwProfile (TA-0302)
 #include "PanelGeometry.h"       // PanelGeometry / GeometrySpec (TA-0303)
+
+// NOTE: <Preferences.h> is deliberately NOT included here. Nothing in this
+// header needs it -- only AppConfig.cpp touches NVS -- and keeping it out is
+// what lets `Config` be built and inspected on the desktop, which is how
+// ConfigJson (TA-0307) is natively tested. Adding it back silently breaks
+// test/test_configjson.
 
 // ============================================================================
 // Firmware Version

@@ -1,6 +1,7 @@
 #include "AppConfig.h"
 #include "../utils/Logger.h"
 #include <Arduino.h>
+#include <Preferences.h> // moved off AppConfig.h so the header stays desktop-buildable
 
 void loadConfig(Config& config)
 {
