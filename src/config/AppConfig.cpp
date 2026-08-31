@@ -249,8 +249,22 @@ void clearConfig()
     Preferences preferences;
     preferences.begin("transport", false); // Read-write
 
+    // `hw_variant` is IDENTITY, not configuration: it records which board this
+    // device actually is, and a factory reset does not change that. Left to be
+    // wiped, verifyHardware() would treat the next boot as a first boot and
+    // re-stamp the variant of whatever firmware happens to be flashed --
+    // silently re-arming the firmware/hardware mismatch guard on a possibly
+    // WRONG value, which is the one thing that guard exists to prevent.
+    // Read it out, clear, put it back. (TA-0307)
+    const int storedVariant = preferences.getInt("hw_variant", -1);
+
     // Clear all keys in the namespace
     preferences.clear();
+
+    if (storedVariant != -1)
+    {
+        preferences.putInt("hw_variant", storedVariant);
+    }
 
     preferences.end();
 
