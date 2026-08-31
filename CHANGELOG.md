@@ -14,6 +14,10 @@ All notable changes to SpojBoard firmware will be documented in this file.
 - A **single 128x64 module** is supported by the 2x 64x64 setting — the two are identical as far as the display driver is concerned, so no separate firmware is needed
 - Existing settings carry over: a display set to 128x32 stays 128x32, and one set to 128x64 becomes the 4-panel grid, which is what that option has always meant
 
+### Fixed
+- Saving a wiring change now actually restarts the device. It used to save the setting, announce a restart, and not perform one — so the new channel order or pin map sat unapplied until the next power cycle
+- The restart screen names the reason it is restarting. Anything that was not a transit-provider change previously claimed "WiFi Network Changed" and showed an SSID nobody had touched
+
 ## [r9] - 2026-08-22
 
 ### Fixed

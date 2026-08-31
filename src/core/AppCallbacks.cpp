@@ -25,7 +25,7 @@ void onAPIStatus(const char* message)
 // Callback Functions for ConfigWebServer
 // ============================================================================
 
-void onConfigSave(const Config& newConfig, bool wifiChanged, const char* tab)
+void onConfigSave(const Config& newConfig, bool needsRestart, const char* tab)
 {
     // Update config. RACE 3 fix (TA-0225): the struct copy is the multi-byte write that
     // apiFetchTask's snapshot could otherwise read torn — guard it with configMutex.
@@ -39,9 +39,9 @@ void onConfigSave(const Config& newConfig, bool wifiChanged, const char* tab)
     // Apply brightness immediately
     displayManager.setBrightness(config.brightness);
 
-    if (wifiChanged)
+    if (needsRestart)
     {
-        // Restart to apply new WiFi settings
+        // Restart to apply the settings that are only read at boot
         delay(1000);
         ESP.restart();
     }

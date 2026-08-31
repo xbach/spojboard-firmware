@@ -335,20 +335,41 @@ void ConfigWebServer::handleSave()
         html += "<div style='flex:1;'><strong>Device is restarting...</strong></div>";
         html += "</div>";
 
-        // Configuration change card
+        // Configuration change card.
+        //
+        // EVERY condition in the restart set above needs a line here. This used to be a
+        // binary if(cityChanged)/else, so every reason added after it was written -- a
+        // panel arrangement change, a wiring change -- announced "WiFi Network Changed"
+        // and named an SSID nobody had touched. An else branch that asserts a SPECIFIC
+        // cause is wrong for every cause somebody adds later, so the fallback below is
+        // deliberately generic and therefore stays true.
+        //
+        // The reasons can co-occur (an AP-mode setup save, or any tab == "all" post),
+        // so they are LISTED rather than selected between.
         html += "<div class='card'>";
+        html += "<h2 style='margin-top:0; color:#67e8f9; font-size:18px;'>Restart Required</h2>";
+        html += "<ul style='margin:12px 0; padding-left:20px; font-size:14px; line-height:1.8;'>";
+        if (wifiChanged)
+        {
+            html += "<li>WiFi network &mdash; connecting to <strong style='color:#2ed573;'>" + String(newConfig.wifiSsid) + "</strong></li>";
+        }
         if (cityChanged)
         {
-            html += "<h2 style='margin-top:0; color:#67e8f9; font-size:18px;'>🌍 Transit Provider Changed</h2>";
-            html += "<p style='margin:12px 0; font-size:14px;'>New provider: <strong style='color:#2ed573;'>" + String(newConfig.city) + "</strong></p>";
-            html += "<p style='color:#999; font-size:13px;'>The device needs to restart to initialize the new transit API configuration.</p>";
+            html += "<li>Transit provider &mdash; now <strong style='color:#2ed573;'>" + String(newConfig.city) + "</strong></li>";
         }
-        else
+        if (displaySizeChanged)
         {
-            html += "<h2 style='margin-top:0; color:#67e8f9; font-size:18px;'>📡 WiFi Network Changed</h2>";
-            html += "<p style='margin:12px 0; font-size:14px;'>Connecting to: <strong style='color:#2ed573;'>" + String(newConfig.wifiSsid) + "</strong></p>";
-            html += "<p style='color:#999; font-size:13px;'>The device will restart and attempt to connect to the new network.</p>";
+            html += "<li>Panel arrangement &mdash; now <strong style='color:#2ed573;'>" + String(geometryToken(newConfig.geometry)) + "</strong></li>";
         }
+        if (hardwareChanged)
+        {
+            html += "<li>Panel wiring &mdash; the pin map and channel order reach the driver only at boot</li>";
+        }
+        if (!wifiChanged && !cityChanged && !displaySizeChanged && !hardwareChanged)
+        {
+            html += "<li>Setup complete &mdash; restarting to apply the saved settings</li>";
+        }
+        html += "</ul>";
         html += "</div>";
 
         // What to expect section
@@ -357,7 +378,7 @@ void ConfigWebServer::handleSave()
         html += "<ul style='margin:8px 0; padding-left:20px; color:#999; font-size:13px; line-height:1.8;'>";
         html += "<li>Device restarts in <strong style='color:#f5f5f5;'>~3 seconds</strong></li>";
         html += "<li>Boot and connection takes <strong style='color:#f5f5f5;'>10-15 seconds</strong></li>";
-        if (!cityChanged && !apModeActive) {
+        if (!apModeActive) {
             html += "<li>If WiFi fails, device returns to <strong style='color:#fcd34d;'>AP mode</strong></li>";
         }
         html += "<li>Access dashboard at device's new IP address</li>";
@@ -404,7 +425,13 @@ void ConfigWebServer::handleSave()
 
     // Call the callback to notify main.cpp
     // Pass true for restart if either WiFi or city changed
-    onSaveCallback(newConfig, wifiChanged || cityChanged || displaySizeChanged, tab.c_str());
+    // hardwareChanged belongs here: the wiring reaches the driver only in
+    // DisplayManager::begin(), so without a restart the profile is saved to NVS and
+    // silently not applied -- while the page above says "Device is restarting...".
+    // Keep this disjunction and the restart-page condition above in step; they are
+    // the same question asked twice.
+    onSaveCallback(newConfig, wifiChanged || cityChanged || displaySizeChanged || hardwareChanged,
+                   tab.c_str());
 }
 
 // ============================================================================
@@ -789,6 +816,9 @@ void ConfigWebServer::handleResetDisplayPins()
     newConfig.hwProfile.driver = 0;
 
     server->send(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
+    // needsRestart is false ON PURPOSE: this handler restarts itself below, after the
+    // response is on the wire. Passing true would restart inside the callback instead,
+    // which is the same outcome by a less obvious route -- not a missing flag.
     onSaveCallback(newConfig, false, "hardware");
 
     delay(500);

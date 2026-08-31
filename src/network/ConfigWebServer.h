@@ -22,7 +22,7 @@ class ConfigWebServer
 {
   public:
     // Callback types for configuration events
-    typedef void (*ConfigSaveCallback)(const Config& newConfig, bool wifiChanged, const char* tab);
+    typedef void (*ConfigSaveCallback)(const Config& newConfig, bool needsRestart, const char* tab);
     typedef void (*RefreshCallback)();
     typedef void (*RebootCallback)();
     typedef void (*DemoStartCallback)(const Departure* demoDepartures, int demoCount);

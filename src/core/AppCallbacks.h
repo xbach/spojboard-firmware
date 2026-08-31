@@ -13,7 +13,11 @@
 #include "api/DepartureData.h" // Departure
 
 void onAPIStatus(const char* message);
-void onConfigSave(const Config& newConfig, bool wifiChanged, const char* tab);
+// `needsRestart` is NOT "the WiFi changed" -- it is the union of every change that
+// only takes effect at boot (WiFi, city, panel arrangement, panel wiring). It was
+// called wifiChanged, and a caller adding a new boot-only setting then had no name
+// telling them to include it; the wiring profile was omitted for exactly that reason.
+void onConfigSave(const Config& newConfig, bool needsRestart, const char* tab);
 void onRefresh();
 void onReboot();
 void onDemoStart(const Departure* demoDepartures, int demoCount);
