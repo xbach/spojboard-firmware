@@ -98,6 +98,7 @@ void sendDashboardPage(
         String scripts = FPSTR(SCRIPT_TAB_NAVIGATION);
         scripts += FPSTR(SCRIPT_CITY_SWITCH);
         scripts += FPSTR(SCRIPT_DISPLAY_TAB);
+        scripts += FPSTR(SCRIPT_HARDWARE); // both modes -- recovery must work in AP
         scripts += FPSTR(SCRIPT_CONFIG_SAVE);
         sendChunk(server, scripts);
     }

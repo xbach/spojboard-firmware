@@ -216,7 +216,7 @@ void setup()
 
     // Initialize web server with callbacks
     webServer.setCallbacks(onConfigSave, onRefresh, onReboot, onDemoStart, onDemoStop, onRestMode,
-                           onTickerStart, onTickerStop, onTickerMode);
+                           onTickerStart, onTickerStop, onTickerMode, onHwTestPattern);
     webServer.setDisplayManager(&displayManager); // For OTA progress updates
     if (!webServer.begin())
     {

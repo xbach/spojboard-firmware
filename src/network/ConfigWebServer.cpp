@@ -29,6 +29,7 @@ ConfigWebServer::ConfigWebServer()
       demoModeActive(false), restModeActive(false), restModeManual(false), tickerModeActive(false),
       onSaveCallback(nullptr), onRefreshCallback(nullptr), onRebootCallback(nullptr),
       onDemoStartCallback(nullptr), onDemoStopCallback(nullptr), onRestModeCallback(nullptr),
+      onHwTestCallback(nullptr),
       onTickerStartCallback(nullptr), onTickerStopCallback(nullptr), onTickerModeCallback(nullptr)
 {
     otaManager = new OTAUpdateManager();
@@ -71,6 +72,12 @@ bool ConfigWebServer::begin()
                { handleRefresh(); });
     server->on("/reboot", HTTP_POST, [this]()
                { handleReboot(); });
+    // Panel wiring aids (TA-0302). Both available in AP mode: a panel blanked by
+    // a bad map is a plausible reason the user is there.
+    server->on("/hw-test", HTTP_POST, [this]()
+               { handleHwTest(); });
+    server->on("/reset-display-pins", HTTP_POST, [this]()
+               { handleResetDisplayPins(); });
     server->on("/clear-config", HTTP_POST, [this]()
                { handleClearConfig(); });
     server->on("/update", HTTP_GET, [this]()
@@ -153,7 +160,8 @@ void ConfigWebServer::setCallbacks(ConfigSaveCallback onSave, RefreshCallback on
                                   DemoStartCallback onDemoStart, DemoStopCallback onDemoStop,
                                   RestModeCallback onRestMode,
                                   TickerStartCallback onTickerStart, TickerStopCallback onTickerStop,
-                                  TickerModeCallback onTickerMode)
+                                  TickerModeCallback onTickerMode,
+                                  HwTestCallback onHwTest)
 {
     onSaveCallback = onSave;
     onRefreshCallback = onRefresh;
@@ -161,6 +169,7 @@ void ConfigWebServer::setCallbacks(ConfigSaveCallback onSave, RefreshCallback on
     onDemoStartCallback = onDemoStart;
     onDemoStopCallback = onDemoStop;
     onRestModeCallback = onRestMode;
+    onHwTestCallback = onHwTest;
     onTickerStartCallback = onTickerStart;
     onTickerStopCallback = onTickerStop;
     onTickerModeCallback = onTickerMode;
@@ -742,6 +751,44 @@ void ConfigWebServer::handleRefresh()
 
     server->sendHeader("Location", "/");
     server->send(302, "text/plain", "");
+}
+
+void ConfigWebServer::handleHwTest()
+{
+    if (onHwTestCallback != nullptr)
+    {
+        onHwTestCallback();
+        server->send(200, "application/json", "{\"ok\":true}");
+    }
+    else
+    {
+        server->send(503, "application/json", "{\"ok\":false,\"error\":\"not wired\"}");
+    }
+}
+
+void ConfigWebServer::handleResetDisplayPins()
+{
+    // The recovery path that needs no working panel: restore the compiled map
+    // and reboot. Deliberately not gated on the current profile being invalid --
+    // a VALID map can still be the wrong one, and that is the case where the
+    // user cannot see anything to tell us so.
+    if (currentConfig == nullptr || onSaveCallback == nullptr)
+    {
+        server->send(503, "application/json", "{\"ok\":false,\"error\":\"not wired\"}");
+        return;
+    }
+
+    Config newConfig = *currentConfig;
+    newConfig.hwProfile.useCustomPins = false;
+    newConfig.hwProfile.pins = hwCompiledDefaultPins();
+    newConfig.hwProfile.order = DEFAULT_RGB_ORDER;
+    newConfig.hwProfile.driver = 0;
+
+    server->send(200, "application/json", "{\"ok\":true,\"rebooting\":true}");
+    onSaveCallback(newConfig, false, "hardware");
+
+    delay(500);
+    ESP.restart();
 }
 
 void ConfigWebServer::handleReboot()

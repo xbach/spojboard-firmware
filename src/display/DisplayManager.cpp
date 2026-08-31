@@ -954,6 +954,32 @@ bool DisplayManager::updateInfoText()
     return false;
 }
 
+void DisplayManager::drawColorTest()
+{
+    clearScreen();
+
+    const int barWidth = layout.displayWidth / 3;
+    const uint16_t bars[3] = {COLOR_RED, COLOR_GREEN, COLOR_BLUE};
+    const char* labels[3] = {"R", "G", "B"};
+
+    gfx->setFont(fontMedium);
+    gfx->setTextColor(COLOR_BLACK);
+
+    for (int i = 0; i < 3; i++)
+    {
+        const int x = i * barWidth;
+        // The last bar absorbs the rounding remainder so no unlit column is
+        // left at the right edge looking like a dead panel column.
+        const int w = (i == 2) ? (layout.displayWidth - x) : barWidth;
+        gfx->fillRect(x, 0, w, layout.displayHeight, bars[i]);
+
+        // Label in black ON the bar: the letter and the colour under it are the
+        // whole diagnostic, so they must not be separated.
+        gfx->setCursor(x + (w / 2) - 2, (layout.displayHeight / 2) + 3);
+        gfx->print(labels[i]);
+    }
+}
+
 void DisplayManager::drawStatus(const char *line1, const char *line2, uint16_t color)
 {
     clearScreen();

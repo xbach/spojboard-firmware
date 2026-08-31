@@ -18,6 +18,13 @@ void onRefresh();
 void onReboot();
 void onDemoStart(const Departure* demoDepartures, int demoCount);
 void onDemoStop();
+
+/**
+ * Draw the panel colour test (TA-0302). Called from the web layer via callback
+ * so the display lock stays in this layer -- ConfigWebServer must not take
+ * displayHwMutex itself, because lower layers never depend on higher ones.
+ */
+void onHwTestPattern();
 void onRestMode(bool enabled);
 void onTickerStart();
 void onTickerStop();

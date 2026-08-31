@@ -597,6 +597,37 @@ function factoryReset() {
 )rawliteral";
 
 // Configuration form save with per-tab field collection
+const char SCRIPT_HARDWARE[] PROGMEM = R"rawliteral(
+<script>
+function hwTestPattern() {
+    var s = document.getElementById('hwActionStatus');
+    if (s) s.textContent = 'Drawing test pattern...';
+    fetch('/hw-test', { method: 'POST' })
+        .then(function(r) { return r.json(); })
+        .then(function(j) {
+            if (s) s.textContent = j.ok
+                ? 'Test pattern on the panel. Each letter must sit on its own colour.'
+                : 'Test pattern unavailable.';
+        })
+        .catch(function() { if (s) s.textContent = 'Request failed.'; });
+}
+
+function hwResetPins() {
+    var s = document.getElementById('hwActionStatus');
+    if (s) s.textContent = 'Restoring built-in wiring and rebooting...';
+    fetch('/reset-display-pins', { method: 'POST' })
+        .then(function() {
+            if (s) s.textContent = 'Rebooting with the built-in wiring. Reload in ~20s.';
+        })
+        .catch(function() {
+            // The device reboots mid-request, so a network error here is the
+            // expected outcome rather than a failure.
+            if (s) s.textContent = 'Rebooting with the built-in wiring. Reload in ~20s.';
+        });
+}
+</script>
+)rawliteral";
+
 const char SCRIPT_CONFIG_SAVE[] PROGMEM = R"rawliteral(
 <script>
 document.addEventListener('DOMContentLoaded', function() {

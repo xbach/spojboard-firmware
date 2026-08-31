@@ -95,6 +95,14 @@ public:
     void drawStatus(const char* line1, const char* line2, uint16_t color);
 
     /**
+     * Full-panel colour test (TA-0302): three bars labelled R, G and B.
+     * If the letter R sits on a green bar the channel order is wrong -- which
+     * turns "are my channels swapped?" into a two-second look instead of a
+     * guess. Caller must hold displayHwMutex.
+     */
+    void drawColorTest();
+
+    /**
      * Draw OTA firmware update progress
      * @param progress Bytes uploaded so far
      * @param total Total bytes to upload

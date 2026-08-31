@@ -118,6 +118,16 @@ String buildHardwareTab(const Config* config)
     html += "</div>";
     html += "</div>"; // form-group
 
+    // ------------------------------------------------------------- actions
+    html += "<div class='form-group'>";
+    html += "<div class='form-group-title'>Check &amp; Recover</div>";
+    html += "<button type='button' class='btn-secondary' onclick='hwTestPattern()'>Test pattern</button> ";
+    html += "<button type='button' class='btn-secondary' onclick='hwResetPins()'>Restore built-in wiring &amp; reboot</button>";
+    html += "<div class='help-text' id='hwActionStatus' style='margin-top:10px;'>The test pattern draws "
+            "three bars labelled R, G and B. If a letter sits on the wrong colour, change the channel "
+            "order above.</div>";
+    html += "</div>";
+
     html += "</div>"; // tab-hardware
     return html;
 }

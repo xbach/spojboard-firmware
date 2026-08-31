@@ -31,6 +31,9 @@ class ConfigWebServer
     typedef void (*TickerStartCallback)();
     typedef void (*TickerStopCallback)();
     typedef void (*TickerModeCallback)(bool enabled);
+    // Panel colour test (TA-0302). Routed UPWARD rather than drawn here: the
+    // display lock lives in the app layer and lower layers never depend on it.
+    typedef void (*HwTestCallback)();
 
     ConfigWebServer();
     ~ConfigWebServer();
@@ -62,7 +65,8 @@ class ConfigWebServer
                       RestModeCallback onRestMode = nullptr,
                       TickerStartCallback onTickerStart = nullptr,
                       TickerStopCallback onTickerStop = nullptr,
-                      TickerModeCallback onTickerMode = nullptr);
+                      TickerModeCallback onTickerMode = nullptr,
+                      HwTestCallback onHwTest = nullptr);
 
     /**
      * Set display manager for OTA progress updates
@@ -139,6 +143,7 @@ class ConfigWebServer
     DemoStartCallback onDemoStartCallback;
     DemoStopCallback onDemoStopCallback;
     RestModeCallback onRestModeCallback;
+    HwTestCallback onHwTestCallback;
     TickerStartCallback onTickerStartCallback;
     TickerStopCallback onTickerStopCallback;
     TickerModeCallback onTickerModeCallback;
@@ -179,6 +184,8 @@ class ConfigWebServer
     void parseMqttSettings(Config* config);
     void parseDisplaySettings(Config* config);
     void parseHardwareSettings(Config* config); // panel wiring (TA-0302)
+    void handleHwTest();
+    void handleResetDisplayPins();
     void parseOptionalSettings(Config* config);
 
     // OTA progress callbacks (static for use as function pointers)

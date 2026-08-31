@@ -101,6 +101,19 @@ void onDemoStart(const Departure* demoDepartures, int demoCount)
     debugPrintln("Demo mode activated - API polling stopped");
 }
 
+void onHwTestPattern()
+{
+    // Loop context (web handler). Direct DMA-buffer write, so it must be
+    // serialized against the render task. Blocking is fine here: the user asked
+    // for this and expects the panel to change.
+    xSemaphoreTake(displayHwMutex, portMAX_DELAY);
+    displayManager.drawColorTest();
+    xSemaphoreGive(displayHwMutex);
+
+    // Deliberately NOT signalDisplayUpdate(): the pattern should stay up until
+    // something else repaints, so the user can look at it.
+}
+
 void onDemoStop()
 {
     // Exit demo mode: restore previous state (rest mode or normal operation)
