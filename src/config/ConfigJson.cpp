@@ -443,7 +443,12 @@ void configClamp(Config& cfg)
     cfg.minDepartureTime = clampInt(cfg.minDepartureTime, 0, 30);
     cfg.brightness = clampInt(cfg.brightness, 0, 255);
     cfg.numDepartures = clampInt(cfg.numDepartures, 1, geometryMaxDepartureRows(cfg.geometry));
+    // 5..120 is what the Optional tab's number input advertises (min=5 max=120)
+    // and what every release has loaded. parseOptionalSettings() used to narrow
+    // saves to 10..60, so the form offered a range it silently refused to keep;
+    // that clamp is gone and this is the definition.
     cfg.weatherRefreshInterval = clampInt(cfg.weatherRefreshInterval, 5, 120);
+    cfg.mqttPort = clampInt(cfg.mqttPort, 1, 65535);
     cfg.tickerRefreshInterval = clampInt(cfg.tickerRefreshInterval, 120, 600);
 
     if ((int)cfg.hwProfile.order < 0 || (int)cfg.hwProfile.order > (int)RgbOrder::BGR)

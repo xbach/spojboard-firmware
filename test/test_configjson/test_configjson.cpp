@@ -481,6 +481,35 @@ void test_clamp_bounds_departure_rows_by_the_current_geometry(void)
     TEST_ASSERT_EQUAL_INT(7, c.numDepartures);
 }
 
+// mqttPort was clamped on the web-save path but nowhere in configClamp, so an
+// import could store a port no form would ever have accepted.
+void test_clamp_bounds_the_mqtt_port(void)
+{
+    Config c = makeConfig();
+    c.mqttPort = -5;
+    configClamp(c);
+    TEST_ASSERT_EQUAL_INT(1, c.mqttPort);
+
+    c.mqttPort = 999999;
+    configClamp(c);
+    TEST_ASSERT_EQUAL_INT(65535, c.mqttPort);
+}
+
+// The web form advertises min=5 max=120 and loadConfig has always honoured that,
+// but parseOptionalSettings clamped saves to 10..60 -- so the UI offered a range
+// it did not keep. configClamp is the definition; pin it.
+void test_clamp_honours_the_weather_refresh_range_the_form_advertises(void)
+{
+    Config c = makeConfig();
+    c.weatherRefreshInterval = 90; // inside 5..120, outside the old 10..60
+    configClamp(c);
+    TEST_ASSERT_EQUAL_INT(90, c.weatherRefreshInterval);
+
+    c.weatherRefreshInterval = 5; // the form's minimum must survive
+    configClamp(c);
+    TEST_ASSERT_EQUAL_INT(5, c.weatherRefreshInterval);
+}
+
 void test_clamp_restores_an_empty_line_colour_map_to_the_default(void)
 {
     Config c = makeConfig();
@@ -558,6 +587,8 @@ int main(int, char**)
     RUN_TEST(test_an_invalid_pin_map_is_not_imported);
     RUN_TEST(test_clamp_forces_every_field_into_the_boot_time_range);
     RUN_TEST(test_clamp_bounds_departure_rows_by_the_current_geometry);
+    RUN_TEST(test_clamp_bounds_the_mqtt_port);
+    RUN_TEST(test_clamp_honours_the_weather_refresh_range_the_form_advertises);
     RUN_TEST(test_clamp_restores_an_empty_line_colour_map_to_the_default);
     RUN_TEST(test_clamp_is_idempotent);
     RUN_TEST(test_clamp_repairs_an_out_of_range_geometry);

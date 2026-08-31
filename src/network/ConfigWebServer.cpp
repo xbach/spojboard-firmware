@@ -304,13 +304,17 @@ void ConfigWebServer::handleSave()
         parseWifiSettings(&newConfig, &wifiChanged);
         parseConnectionSettings(&newConfig, &cityChanged);
     }
-    // HARDWARE BEFORE DISPLAY, and it must stay that way. The panel arrangement
-    // lives on the hardware tab (it is a boot-only property of the attached
-    // panels, same as the wiring, and the two now cost one reboot between them),
-    // and parseDisplaySettings() clamps num_deps against config->geometry. In the
-    // other order a single tab == "all" post would clamp the new row count against
-    // the OLD arrangement -- silently, and only on the AP-mode path that posts
-    // every field at once.
+    // HARDWARE FIRST, and it must stay that way. The panel arrangement lives on
+    // the hardware tab (a boot-only property of the attached panels, same as the
+    // wiring, and the two now cost one reboot between them), so any parser that
+    // reads config->geometry must run after it. Otherwise a single tab == "all"
+    // post -- the AP-mode path, which submits every field at once -- would read
+    // the OLD arrangement, silently.
+    //
+    // num_deps used to be the reason named here; it no longer is, because
+    // configClamp() bounds it against the FINAL geometry after every parser has
+    // run. The rule survives its original instance: geometry is set here, and
+    // readers come later.
     bool hardwareChanged = false;
     if (tabSubmitted(tab.c_str(), "hardware", apModeActive))
     {
@@ -341,6 +345,15 @@ void ConfigWebServer::handleSave()
     }
 
     newConfig.configured = true;
+
+    // One clamp, after every parser, on the same function loadConfig() and the
+    // JSON importer call. Before this each parser enforced its own ranges, which
+    // is how weather refresh came to advertise min=5 max=120 on the form while
+    // silently narrowing saves to 10..60 -- a UI offering a range it would not
+    // keep. Ranges now live in exactly one place. The parsers keep only
+    // form-level SEMANTICS (an absent checkbox meaning off, an enabled band
+    // meaning at least one row), which are not ranges and do not belong here.
+    configClamp(newConfig);
 
     // If in AP mode, WiFi changed, city changed, or display size changed, show restart message
     if (apModeActive || wifiChanged || cityChanged || displaySizeChanged || hardwareChanged)
@@ -507,19 +520,11 @@ void ConfigWebServer::parseTransitSettings(Config* config)
     if (server->hasArg("refresh"))
     {
         config->refreshInterval = server->arg("refresh").toInt();
-        if (config->refreshInterval < 10)
-            config->refreshInterval = 10;
-        if (config->refreshInterval > 300)
-            config->refreshInterval = 300;
     }
 
     if (server->hasArg("min_dep_time"))
     {
         config->minDepartureTime = server->arg("min_dep_time").toInt();
-        if (config->minDepartureTime < 0)
-            config->minDepartureTime = 0;
-        if (config->minDepartureTime > 30)
-            config->minDepartureTime = 30;
     }
 }
 
@@ -528,20 +533,14 @@ void ConfigWebServer::parseDisplaySettings(Config* config)
     if (server->hasArg("brightness"))
     {
         config->brightness = server->arg("brightness").toInt();
-        if (config->brightness < 0)
-            config->brightness = 0;
-        if (config->brightness > 255)
-            config->brightness = 255;
     }
 
     if (server->hasArg("num_deps"))
     {
-        const int maxDeps = geometryMaxDepartureRows(config->geometry);
+        // Bounded against the geometry by configClamp() after every parser has
+        // run, which is strictly better than doing it here: it uses the FINAL
+        // arrangement rather than whatever this tab happened to see.
         config->numDepartures = server->arg("num_deps").toInt();
-        if (config->numDepartures < 1)
-            config->numDepartures = 1;
-        if (config->numDepartures > maxDeps)
-            config->numDepartures = maxDeps;
     }
 
     if (server->hasArg("language"))
@@ -767,8 +766,6 @@ void ConfigWebServer::parseMqttSettings(Config* config)
     if (server->hasArg("mqtt_port"))
     {
         config->mqttPort = server->arg("mqtt_port").toInt();
-        if (config->mqttPort < 1) config->mqttPort = 1;
-        if (config->mqttPort > 65535) config->mqttPort = 65535;
     }
 
     if (server->hasArg("mqtt_user"))
@@ -1675,8 +1672,6 @@ void ConfigWebServer::handleStartTicker()
     if (server->hasArg("ticker_refresh"))
     {
         newConfig.tickerRefreshInterval = server->arg("ticker_refresh").toInt();
-        if (newConfig.tickerRefreshInterval < 120) newConfig.tickerRefreshInterval = 120;
-        if (newConfig.tickerRefreshInterval > 600) newConfig.tickerRefreshInterval = 600;
     }
 
     // Validate API key is present
@@ -1689,6 +1684,10 @@ void ConfigWebServer::handleStartTicker()
     // Enable and persist
     newConfig.tickerEnabled = true;
     newConfig.configured = true;
+
+    // This path writes config DIRECTLY (see the note below), so it needs its own
+    // clamp -- it never passes through handleSave().
+    configClamp(newConfig);
 
     // Update global config
     // Note: onSaveCallback would restart if WiFi changed, so we save directly here
