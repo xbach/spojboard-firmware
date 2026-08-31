@@ -1,4 +1,5 @@
 #include "AppConfig.h"
+#include "ConfigJson.h" // configClamp() -- the single definition of every range
 #include "../utils/Logger.h"
 #include <Arduino.h>
 #include <Preferences.h> // moved off AppConfig.h so the header stays desktop-buildable
@@ -85,23 +86,26 @@ void loadConfig(Config& config)
         }
     }
     {
-        // An out-of-range stored order would index past the permutation table.
+        // An out-of-range stored order would index past the permutation table;
+        // configClamp() repairs it below.
         const RgbOrder fallback = hwDefaultRgbOrder(config.geometry);
-        const int order = preferences.getInt("hwRgbOrder", (int)fallback);
-        config.hwProfile.order = (order >= 0 && order <= (int)RgbOrder::BGR) ? (RgbOrder)order : fallback;
+        // The FALLBACK (what to use when the key is absent) belongs here,
+        // because it depends on NVS; the RANGE CHECK belongs to configClamp().
+        config.hwProfile.order = (RgbOrder)preferences.getInt("hwRgbOrder", (int)fallback);
     }
-    config.hwProfile.driver = (uint8_t)constrain(preferences.getInt("hwDriver", 0), 0, 5);
+    config.hwProfile.driver = (uint8_t)preferences.getInt("hwDriver", 0);
 
-    config.refreshInterval = constrain(preferences.getInt("refresh", 60), 10, 300);
-    config.minDepartureTime = constrain(preferences.getInt("minDepTime", 3), 0, 30);
-    config.brightness = constrain(preferences.getInt("brightness", 90), 0, 255);
-    const int maxDeps = geometryMaxDepartureRows(config.geometry);
-    config.numDepartures = constrain(preferences.getInt("numDeps", 3), 1, maxDeps);
+    // Ranges are NOT enforced here. Every bound lives once, in configClamp()
+    // below, because the importer (TA-0307) has to apply exactly the same ones
+    // -- and two lists of ranges that must agree is precisely how an import
+    // comes to accept a value a boot would have rejected. Defaults still live
+    // here: a default is what to use when NVS is silent, which is a different
+    // question from what is in range.
+    config.refreshInterval = preferences.getInt("refresh", 60);
+    config.minDepartureTime = preferences.getInt("minDepTime", 3);
+    config.brightness = preferences.getInt("brightness", 90);
+    config.numDepartures = preferences.getInt("numDeps", 3);
     strlcpy(config.lineColorMap, preferences.getString("lineColorMap", DEFAULT_LINE_COLOR_MAP).c_str(), sizeof(config.lineColorMap));
-    if (strlen(config.lineColorMap) == 0)
-    {
-        strlcpy(config.lineColorMap, DEFAULT_LINE_COLOR_MAP, sizeof(config.lineColorMap));
-    }
     strlcpy(config.platformSymbolMap, preferences.getString("pltSymMap", "").c_str(), sizeof(config.platformSymbolMap));
     strlcpy(config.city, preferences.getString("city", "Prague").c_str(), sizeof(config.city));  // Default: Prague for backward compatibility
     strlcpy(config.language, preferences.getString("language", "en").c_str(), sizeof(config.language));  // Default: English
@@ -115,18 +119,24 @@ void loadConfig(Config& config)
     config.weatherEnabled = preferences.getBool("weatherEnable", false);  // Default: disabled
     config.weatherLatitude = preferences.getFloat("weatherLat", 50.0755);  // Default: Prague
     config.weatherLongitude = preferences.getFloat("weatherLon", 14.4378); // Default: Prague
-    config.weatherRefreshInterval = constrain(preferences.getInt("weatherRefresh", 15), 5, 120);
+    config.weatherRefreshInterval = preferences.getInt("weatherRefresh", 15);
 
     // Load ticker mode configuration
     config.tickerEnabled = preferences.getBool("tickerOn", false);
     strlcpy(config.tickerSymbol, preferences.getString("tickerSymbol", "BTC/USD").c_str(), sizeof(config.tickerSymbol));
     strlcpy(config.tickerInterval, preferences.getString("tickerIntvl", "1day").c_str(), sizeof(config.tickerInterval));
     strlcpy(config.tickerApiKey, preferences.getString("tickerApiKey", "").c_str(), sizeof(config.tickerApiKey));
-    config.tickerRefreshInterval = constrain(preferences.getInt("tickerRefresh", 120), 120, 600);
+    config.tickerRefreshInterval = preferences.getInt("tickerRefresh", 120);
 
     config.configured = preferences.getBool("configured", false);
 
     preferences.end();
+
+    // One call, after every raw value is in. Shared with the JSON importer, so
+    // "no import can produce a config a boot-time load would have rejected"
+    // holds by construction rather than by two range lists staying in sync.
+    // Idempotent, so calling it here costs nothing when NVS is already sane.
+    configClamp(config);
 
     // Config loading happens before logger init, so use Serial directly
     logTimestamp();
