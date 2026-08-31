@@ -2,6 +2,18 @@
 
 All notable changes to SpojBoard firmware will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- **Panel wiring is now configurable** on a new Hardware tab: RGB channel order, panel driver chip, and an optional custom pin map. A panel whose colours come out wrong — orange looking pink, sky looking teal — is now a setting rather than a custom firmware build
+- A **test pattern** button draws three bars labelled R, G and B, so a channel swap takes two seconds to spot instead of guesswork
+- A **restore built-in wiring** button that reboots back to the factory pin map. Both it and the Hardware tab work in setup (AP) mode, so a blank panel can always be recovered without a USB cable
+
+### Changed
+- **Panel arrangement is chosen in the settings again**, and now names the panels instead of counting rows: 2x 64x32 chained (128x32), 4x 64x32 in a 2x2 grid (128x64), or 2x 64x64 chained (128x64). Both 128x64 options are the same pixel size but different hardware, so the list says which panels each one means
+- A **single 128x64 module** is supported by the 2x 64x64 setting — the two are identical as far as the display driver is concerned, so no separate firmware is needed
+- Existing settings carry over: a display set to 128x32 stays 128x32, and one set to 128x64 becomes the 4-panel grid, which is what that option has always meant
+
 ## [r9] - 2026-08-22
 
 ### Fixed
