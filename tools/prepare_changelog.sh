@@ -79,8 +79,20 @@ ${GIT_LOG}
 Format rules:
 - Use Keep a Changelog style with ### Added, ### Changed, ### Fixed, ### Performance sections (only include sections that apply)
 - Each item is a single line starting with \`- \`
-- Be concise but descriptive — summarize what changed, not how
-- Group related commits into single entries when appropriate
+
+BE TERSE. These notes are read on a small device screen, not in a blog post:
+- ONE sentence per item, at most 15 words. No second sentence, ever
+- State WHAT changed, from the user's point of view. Never why, never how, never the rationale
+- No bold, no code spans, no em-dash asides, no parenthetical explanations
+- No examples, no symptom descriptions, no 'so that' or 'which means' clauses
+- Aim for 4-10 bullets TOTAL across all sections. Merge aggressively; drop anything minor
+- If an item needs more than 15 words to be clear, it is two items or it does not belong
+
+Good:  - Panel arrangement and wiring are now settings instead of firmware builds
+Good:  - Sleep button works during a scheduled rest
+Bad:   - **Panel wiring is now configurable** on a new Hardware tab: RGB channel order, panel driver chip, and an optional custom pin map. A panel whose colours come out wrong is now a setting rather than a custom build
+
+Also:
 - Do NOT include the ## [rN] header line — I will add that myself
 - Do NOT include chore/meta commits (changelog updates, version bumps, CI changes)
 - Do NOT include any commentary, insight blocks, callouts, horizontal rules, or markdown beyond the ### section headers and bullet lines
