@@ -50,7 +50,7 @@ Five mutexes protect shared data with short lock durations (~1ms); all are creat
 
 - **`displayMutex`** - Protects `DisplayUpdateRequest` struct (display task <-> loop/API)
 - **`apiDataMutex`** - Protects `departures[]`/`departureCount`, `weatherData`, `infoText`, `tickerData`, `stopName`, `apiError`, `apiErrorMsg`, `awaitingDepartures` (API task <-> loop)
-- **`displayHwMutex`** - Serializes all HUB75 DMA-buffer writes: the render task's `render()` vs. direct draws from `onAPIStatus` (API-task ctx) / `onDemoStop` (loop ctx). Leaf lock.
+- **`displayHwMutex`** - Serializes all HUB75 DMA-buffer writes: the render task's `render()` vs. direct draws from `onAPIStatus` (API-task ctx) and, in loop ctx, `onDemoStop`, `onOTADisplayProgress`, the `/hw-test` panel test pattern, and the `updateScroll()`/`updateInfoText()` tickers. Leaf lock. The `network/` layer cannot take it - a web handler that needs to draw routes a callback upward into `core/` instead, which is how `/hw-test` and the OTA progress bar work.
 - **`signalMutex`** - Serializes `signalDisplayUpdate()` against itself (called from both loop and `apiFetchTask`, uses static snapshot buffers). Outer lock — wraps the `apiDataMutex`+`displayMutex` acquisitions.
 - **`configMutex`** - Guards `config` between its writer (`onConfigSave`) and `apiFetchTask`'s per-iteration snapshot. Leaf lock.
 
@@ -261,8 +261,13 @@ The device operates in two modes:
 - Display cleared and brightness set to 0
 - Triggered manually (web UI / REST API) or by scheduled time periods
 - API polling continues (data stays fresh for when display resumes)
-- Manual activation tracked separately (`restModeManual` flag)
-- Scheduled activation follows configured periods (e.g., "23:00-07:00")
+- Scheduled activation follows configured periods (e.g., "23:00-07:00"), and the schedule is
+  **edge-triggered** (`utils/RestPolicy`): it acts only when its own answer flips, never because it
+  was asked again. That is what lets a manual press hold without anything gating the scheduler
+- `restModeManual` is **output only** - a label meaning "the panel currently disagrees with the
+  schedule". Nothing may branch on it; the status banner is its one legitimate reader
+- `applyRestDecision()` (`core/AppRuntime`) is the single place a decision's side effects happen, so
+  waking cannot restore brightness on one path and forget to resume fetching on the other
 
 ### State Transitions
 
@@ -305,13 +310,15 @@ Layered architecture with zero circular dependencies:
 │ Layer 4: Network Services                               │
 │   WiFiManager, CaptivePortal, ConfigWebServer           │
 │   OTAUpdateManager                                       │
-│   OtaAssetName, OtaAssetSelect    (pure, host-tested)   │
+│   OtaAssetName, OtaAssetSelect, TabDispatch             │
+│                                   (pure, host-tested)   │
 └─────────────────────────────────────────────────────────┘
                         ↓
 ┌─────────────────────────────────────────────────────────┐
 │ Layer 3: Hardware Abstraction                           │
 │   DisplayController, DisplayManager, DisplayColors,     │
 │   TimeUtils, RestMode                                   │
+│   RestPolicy                      (pure, host-tested)   │
 └─────────────────────────────────────────────────────────┘
                         ↓
 ┌─────────────────────────────────────────────────────────┐
@@ -380,7 +387,7 @@ GolemioAPI / BvgAPI / MqttAPI
   └─ Uses statusCallback for progress updates
 
 ConfigWebServer
-  ├─ Serves tabbed web interface (5 tabs, per-tab save)
+  ├─ Serves tabbed web interface (6 tabs, per-tab save)
   ├─ Handles demo mode and rest mode via callbacks
   └─ Communicates with main.cpp via callback pattern
 ```

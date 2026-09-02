@@ -26,7 +26,7 @@ Automatically switches to condensed font when destination names exceed 16 charac
 
 ## Web Interface
 
-The web interface was redesigned with a tabbed layout for better organization. Configuration is split across five tabs: Connection, Transit Data, Display, Optional, and System.
+The web interface was redesigned with a tabbed layout for better organization. Configuration is split across six tabs: Connection, Transit Data, Display, Optional, Hardware, and System.
 
 ### Main Configuration Screen
 
@@ -37,9 +37,10 @@ The web interface was redesigned with a tabbed layout for better organization. C
 Web-based configuration interface showing:
 - **Connection tab**: WiFi settings and data source selector (Prague/Berlin/MQTT)
 - **Transit Data tab**: API-specific settings (API keys, stop IDs, refresh interval)
-- **Display tab**: Brightness, line colors, dual ETA toggle, scrolling options
+- **Display tab**: Brightness, number of departures, line colors, platform symbols, dual ETA toggle, scrolling options
 - **Optional tab**: Weather display, rest mode periods, debug mode
-- **System tab**: Device info, configuration backup (download/restore), firmware updates, actions (refresh, reboot, reset)
+- **Hardware tab**: Panel arrangement, RGB channel order, panel driver chip, optional custom pin map, panel test pattern, restore built-in wiring. Also shown in setup (AP) mode
+- **System tab**: Device info, configuration backup (download/restore), firmware updates, actions (refresh, reboot, reset). Also shown in setup (AP) mode
 
 ### Configuration Details
 

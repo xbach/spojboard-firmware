@@ -11,8 +11,10 @@ Standalone operation with web-based configuration, no external server required f
 
 ## Documentation
 
-- **[Wiring Guide](docs/WIRING.md)** - HUB75 pin mapping for all supported hardware variants
+- **[Wiring Guide](docs/WIRING.md)** - HUB75 pin map, panel arrangement, and the runtime wiring settings on the Hardware tab
+- **[Generic ESP32-S3 Guide](docs/GENERIC_ESP32S3.md)** - Wiring a non-MatrixPortal board, including the E line that 64-high panels require
 - **[MQTT Integration Guide](docs/MQTT.md)** - Home Assistant integration, custom data sources, and dual filtering setup
+- **[REST API](docs/REST_API.md)** - Every HTTP route, including configuration backup, restore and factory reset
 - **[Architecture & Data Flow](docs/ARCHITECTURE.md)** - Technical details, pipeline flow, and design rationale
 - **[Font System](docs/FONTS.md)** - Czech character support and custom font creation guide
 - **[Troubleshooting](docs/TROUBLESHOOTING.md)** - Common issues and solutions
@@ -43,7 +45,6 @@ Standalone operation with web-based configuration, no external server required f
 - **Firmware Updates**: GitHub-based OTA updates with user confirmation - check for new releases directly from the web interface
 - **Configuration Backup**: Download every setting as a JSON file and restore it - before a firmware update, to set up a second unit without retyping a 300-character API key, or just to keep a copy of a working setup. A restore only changes the settings the file actually contains, and nothing is written unless the whole file is valid. Panel arrangement and wiring restore only if you ask for them, so a backup from another unit cannot rearrange your display. **The file contains your WiFi password and API keys in plain text** - keep it private
 - **Selective Reset**: A factory reset can optionally keep your WiFi credentials (so the device rejoins your network instead of starting a hotspot) and your panel arrangement and wiring (so the display comes back looking the same). Both off by default, and the reset asks you to type RESET
-- **Optional Telnet Logging**: Remote debugging via telnet (port 23) when debug mode is enabled - mirrors all logs over WiFi
 - **Weather Display**: Optional weather info in status bar showing temperature and condition icon from Open-Meteo API (free, no API key required)
 - **Infotext Display**: Service alerts scroll through the status bar as a ticker, with datetime elements revealing char-by-char as the text passes. Manual infotext injection via web UI or REST API
 - **Rest Mode**: Scheduled display power saving - configure time periods when the display turns off automatically
@@ -161,8 +162,8 @@ The built-in web server provides a tabbed configuration interface with per-tab s
   - Prague: API key, stop IDs
   - Berlin: Stop IDs
   - MQTT: Broker, topics, field mappings - see [MQTT Guide](docs/MQTT.md)
-  - Refresh interval, minimum departure time, number of departures
-- **Display Tab** (🖥): Brightness, custom line colors with wildcard patterns and restore-to-defaults, dual ETA toggle, scrolling
+  - Refresh interval, minimum departure time
+- **Display Tab** (🖥): Brightness, number of departures, language, custom line colors with wildcard patterns and restore-to-defaults, platform symbols, dual ETA toggle, scrolling
 - **Optional Tab** (⭐): Weather display, rest mode periods, debug mode (STA mode only)
 - **Hardware Tab** (🔌): Panel arrangement, RGB channel order, panel driver chip, optional custom pin map, panel test pattern, restore built-in wiring. **Also shown in AP mode** - a panel blanked by a bad pin map is a plausible reason to be there. Arrangement lives here rather than on Display because it describes the panels you attached, not what is drawn on them, and both it and the wiring only take effect at boot - so changing them together costs one restart
 - **System Tab** (⚙): System info, configuration backup, firmware updates (STA only), reboot and reset. **Also shown in AP mode** - restoring a backup and resetting are what you reach for when a device has dropped into setup mode, so they no longer sit behind the problem they fix
@@ -174,7 +175,7 @@ The built-in web server provides a tabbed configuration interface with per-tab s
 | Feature | AP Mode | Normal Mode |
 |---------|---------|-------------|
 | WiFi | Creates its own network | Connects to your network |
-| API Calls | Disabled | Every 30-300s (configurable) |
+| API Calls | Disabled | Every 10-300s (configurable) |
 | ETA Updates | N/A | Every 10s from cache |
 | Display | Shows AP credentials | Shows departures |
 | Web UI | Setup focused | Full dashboard |
@@ -304,7 +305,7 @@ SpojBoard can optionally display current weather in the status bar using the fre
 | Thunderstorm | ⛈ | Red |
 
 ### Temperature Colors
-- **Blue**: Below 8°C (cold)
+- **Cyan**: Below 8°C (cold)
 - **White**: 8-16°C (mild)
 - **Yellow**: 17-25°C (warm)
 - **Red**: Above 25°C (hot)
@@ -337,9 +338,13 @@ You can also enable/disable rest mode manually from the web interface:
 4. Click "Disable Rest Mode" to resume normal operation
 
 **Manual vs Scheduled:**
-- **Manual activation**: Takes priority, overrides schedule, indicated as "Rest Mode Active (Manual)" in status
-- **Scheduled activation**: Follows configured time periods, indicated as "Rest Mode Active (Scheduled)" in status
-- **Status indicator**: Shows whether rest mode is "Manual" or "Scheduled" in the dashboard
+
+The schedule is **edge-triggered**: it acts only when its own answer changes, never because it was asked again. That is what lets a manual choice stick without switching the schedule off.
+
+- **Manual activation**: Sleeps or wakes the panel immediately, whatever the schedule currently says. The choice holds until the schedule next changes its mind, and then the schedule takes over again - one press no longer disarms it for good
+- **Scheduled activation**: Follows the configured time periods. The sleep button stays live during a scheduled rest, so you can wake the panel without editing the schedule
+- **Status indicator**: Shows "Manual" when the panel currently disagrees with the schedule, "Scheduled" when it agrees. This is a label only - nothing in the firmware branches on it
+- **Waking by any route** resumes departure and ticker fetching, not just the backlight, and a saved schedule is applied immediately rather than at the next half-hour check
 
 **Use cases:**
 - Quick display shutoff without editing time periods

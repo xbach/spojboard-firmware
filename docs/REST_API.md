@@ -16,7 +16,12 @@ Save configuration settings. Uses form-encoded data with a `tab` parameter to sc
 
 **Content-Type:** `application/x-www-form-urlencoded`
 
-**Tab values:** `connection`, `transit`, `display`, `optional`, `hardware`, `all`
+**Tab values:** `connection`, `transit`, `display`, `optional`, `hardware`, `system`, `all`
+
+`system` is reachable (it is the active tab when you save from there) but runs no parser - that tab
+holds actions, not settings. `all` runs every parser **only outside AP mode**, where the page really
+did render every tab; an AP-mode save posts `all` while showing only Connection and Hardware, so
+running the rest would read each absent checkbox as unchecked. See `network/TabDispatch.h`.
 
 | Tab | Key Fields |
 |-----|-----------|
@@ -371,9 +376,28 @@ Check GitHub for available firmware updates.
   "releaseNotes": "Bug fixes",
   "fileName": "spojboard-matrixportal_s3-r3-abc123.bin",
   "fileSize": 1048576,
-  "assetUrl": "https://github.com/..."
+  "assetUrl": "https://github.com/...",
+  "currentDisplay": "2x32",
+  "options": [
+    {
+      "name": "spojboard-matrixportal_s3-r3-abc123.bin",
+      "url": "https://github.com/...",
+      "display": "",
+      "size": 1048576
+    }
+  ]
 }
 ```
+
+`currentDisplay` is the panel-arrangement token this device is configured for (`2x32`, `4x32`,
+`2x64`), or empty if unknown. `options[]` lists **every** asset in the release that matches this
+board, geometry-tokenised builds before bare ones. One entry means there is nothing to choose and
+the UI installs it directly; more than one means the release ships per-arrangement builds and the
+user picks, preselected on `currentDisplay`.
+
+The firmware deliberately does not choose for you: a binary runs at any arrangement, because the
+arrangement is runtime config. Board mismatch is the only hard rejection, and it is enforced twice -
+at selection and again in `downloadAndInstall`.
 
 **Response (no update):**
 ```json
@@ -382,6 +406,18 @@ Check GitHub for available firmware updates.
 
 #### `POST /download-update`
 Download and install firmware from the latest GitHub release. Device reboots after successful install.
+
+**Request body (required):**
+```json
+{
+  "assetUrl": "https://github.com/...",
+  "expectedSize": 1048576
+}
+```
+
+Both come from one entry of `/check-update`'s `options[]`. A missing or zero value for either
+returns `400 {"success": false, "error": "Invalid request parameters"}` - this is the route by
+which the user's choice of build is made, so there is no default.
 
 ---
 

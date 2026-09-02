@@ -195,13 +195,20 @@ void test_other_board_release_offers_nothing(void)
 
 // ------------------------------------------- shipped display tokens (TA-0269)
 //
-// The tests above prove the GRAMMAR handles display tokens. This one pins the
-// TOKENS THE BUILD ACTUALLY EMITS -- platformio.ini's custom_display_variant
-// values -- against that grammar, so the producer and the consumer cannot drift
-// apart silently. Adding a fourth geometry means adding it here.
+// The tests above prove the GRAMMAR handles display tokens. This one pins EVERY
+// TOKEN THAT CAN NAME AN ARRANGEMENT against that grammar, so the producer and
+// the consumer cannot drift apart silently. Adding a fourth geometry means
+// adding it here.
 //
-// Keep in sync with: platformio.ini (custom_display_variant) and the
-// DISPLAY_VARIANT block in src/config/AppConfig.h.
+// Keep in sync with: geometryToken() and the arrangement table in
+// src/config/PanelGeometry.h -- that is the single source of these strings.
+//
+// Note the shipping builds currently emit NO display field: geometry is a
+// runtime setting (TA-0303), so one binary per board drives every arrangement
+// and the tokens appear only in `/check-update`'s option list, never in a
+// release asset name. scripts/post_build.py can still stamp one from a
+// `custom_display_variant` env option -- no env sets it today -- and refuses any
+// token beginning with 'r' for the reason spelled out below.
 static const char* SHIPPED_DISPLAY_TOKENS[] = {"2x32", "4x32", "2x64"};
 static const int SHIPPED_DISPLAY_TOKEN_COUNT = 3;
 

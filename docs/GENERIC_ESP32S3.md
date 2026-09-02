@@ -1,6 +1,6 @@
 # Using Generic ESP32-S3 Boards
 
-> **Note:** This document is for reference only. SpojBoard now includes native support for generic ESP32-S3 boards with **automatic pin mapping** - no code changes required!
+> **Note:** This document is for reference only. SpojBoard ships a **pre-built binary per board** and there is now **one pin map for both** - no code changes required!
 >
 > **→ See [Wiring Guide](WIRING.md) for the recommended setup with standard HUB75 cables.**
 
@@ -8,9 +8,15 @@
 
 1. **Flash the ESP32-S3 N8R2 firmware**: `spojboard-esp32_s3_n8r2-r*.bin`
 2. **Wire using standard HUB75 cable**: Follow the pinout in [WIRING.md](WIRING.md)
-3. **Done!** The firmware auto-detects hardware variant and configures pins accordingly.
+3. **Done!** The binary carries the right defaults for that board.
 
 No need to modify `platformio.ini` or `AppConfig.h` - just use the pre-built firmware for your board.
+
+**Nothing is auto-detected.** The board is a compile-time flag baked into each binary, stamped into
+NVS on first boot and only *verified* afterwards - which is what stops the wrong firmware running on
+a board. The two binaries differ in their compiled **default RGB channel order**, not in their pin
+numbers. Since r10 the channel order, the driver chip and the whole pin map are runtime settings on
+the **Hardware tab**, so flashing the "wrong" board binary is recoverable without a USB cable.
 
 ---
 
