@@ -2,7 +2,7 @@
 
 All notable changes to SpojBoard firmware will be documented in this file.
 
-## [r10] - Unreleased
+## [r10] - 2026-09-02
 
 ### Added
 - **Panel wiring is now configurable** on a new Hardware tab: RGB channel order, panel driver chip, and an optional custom pin map. A panel whose colours come out wrong — orange looking pink, sky looking teal — is now a setting rather than a custom firmware build
