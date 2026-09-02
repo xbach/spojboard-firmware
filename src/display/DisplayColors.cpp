@@ -27,7 +27,16 @@ void initColors(MatrixPanel_I2S_DMA* display)
     COLOR_GREEN = display->color565(0, 255, 0);
     COLOR_BLUE = display->color565(0, 0, 255);
     COLOR_ORANGE = display->color565(255, 165, 0);
-    COLOR_PURPLE = display->color565(128, 0, 128);
+    // Every other entry here is a saturated primary or secondary sitting at 0 or 255.
+    // Purple was the one mid-scale colour (128,0,128) -- half intensity by
+    // construction, so it read muddy next to the rest, and it is the DEFAULT for
+    // 5*, 1** and 2** so it is on the panel constantly.
+    //
+    // Both components are multiples of 8, so they survive the RGB565 round trip
+    // exactly (r and b keep only 5 bits). Leaning blue rather than equal R=B is
+    // deliberate: equal parts read as magenta/pink on these panels, while the red
+    // component is what keeps it clearly distinct from COLOR_BLUE on S* lines.
+    COLOR_PURPLE = display->color565(168, 0, 240);
     COLOR_BLACK = display->color565(0, 0, 0);
     COLOR_CYAN = display->color565(0, 255, 255);
 }
