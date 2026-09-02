@@ -15,10 +15,12 @@
 // ============================================================================
 // Firmware Version
 // ============================================================================
-#define FIRMWARE_RELEASE "9"
+#define FIRMWARE_RELEASE "10"
 
-// Build ID is injected by build script (8 hex characters)
-// Generated from build timestamp using DJB2 hash algorithm
+// Build ID is injected by the build script (scripts/build_id.py): the first 8 hex
+// chars of the git HEAD SHA, so the ID a device shows on its System tab is a real
+// git reference. Deliberately NOT derived from a timestamp -- that made every
+// build unique and a dirty tree indistinguishable from a release build.
 #ifndef BUILD_DIRTY
 #define BUILD_DIRTY 0 // Fallback if not set by build system (scripts/build_id.py)
 #endif
