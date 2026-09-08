@@ -648,13 +648,23 @@ void ConfigWebServer::parseHardwareSettings(Config* config)
     HubPins pins = config->hwProfile.pins;
     for (const PinArg& pa : PIN_ARGS)
     {
-        if (server->hasArg(pa.name))
+        if (!server->hasArg(pa.name))
         {
-            const int v = server->arg(pa.name).toInt();
-            if (v >= 0 && v <= 48)
-            {
-                pins.*(pa.field) = (int8_t)v;
-            }
+            continue;
+        }
+
+        // hwParsePin, NOT String::toInt(). toInt() returns 0 on garbage, and 0
+        // passes a 0..48 range guard -- so "abc" would silently become GPIO 0,
+        // which is a real pin AND the boot strapping pin. hwValidatePins
+        // deliberately does not reject strapping pins (these boards drive
+        // GPIO 45 as the A line), so nothing downstream catches it. A field
+        // that will not parse leaves its pin untouched. The range guard still
+        // earns its place: a 4-digit parse succeeds and would truncate on the
+        // cast to int8_t.
+        int v = 0;
+        if (hwParsePin(server->arg(pa.name).c_str(), &v) && v >= 0 && v <= 48)
+        {
+            pins.*(pa.field) = (int8_t)v;
         }
     }
 

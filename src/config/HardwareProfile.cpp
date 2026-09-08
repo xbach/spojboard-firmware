@@ -80,3 +80,28 @@ HubPins hwResolvePins(const HwProfile& profile, const HubPins& compiledDefault)
     const bool usable = profile.useCustomPins && hwValidatePins(profile.pins) == HwPinError::None;
     return hwApplyRgbOrder(usable ? profile.pins : compiledDefault, profile.order);
 }
+
+bool hwParsePin(const char* text, int* out)
+{
+    if (text == nullptr || out == nullptr || text[0] == '\0')
+    {
+        return false;
+    }
+
+    long v = 0;
+    int digits = 0;
+    for (const char* c = text; *c != '\0'; ++c)
+    {
+        if (*c < '0' || *c > '9')
+        {
+            return false; // a sign, a space and a '.' all land here
+        }
+        if (++digits > 4)
+        {
+            return false;
+        }
+        v = v * 10 + (*c - '0');
+    }
+    *out = (int)v;
+    return true;
+}

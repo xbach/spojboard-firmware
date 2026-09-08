@@ -73,4 +73,16 @@ struct HwProfile
 // never receive one that validation rejects.
 HubPins hwResolvePins(const HwProfile& profile, const HubPins& compiledDefault);
 
+// Strict decimal parse for a pin form field. Returns false -- and leaves *out
+// untouched -- for empty input, a sign, any non-digit, or an absurd length.
+//
+// Arduino's String::toInt() returns 0 on garbage, and a `v >= 0 && v <= 48`
+// range guard accepts 0, so "abc" in a pin field silently becomes GPIO 0 -- a
+// real, plausible-looking pin that is also the boot strapping pin. The
+// blocklist in hwValidatePins deliberately does not reject strapping pins
+// (these boards drive GPIO 45 as the A address line), so nothing downstream
+// catches it either. Parse strictly instead of widening the blocklist: the
+// blocklist is right as it is, and the defect is in the parse.
+bool hwParsePin(const char* text, int* out);
+
 #endif // HARDWARE_PROFILE_H

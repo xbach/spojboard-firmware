@@ -161,6 +161,31 @@ void test_an_invalid_custom_map_falls_back_to_the_compiled_default(void)
     TEST_ASSERT_EQUAL_INT(42, out.r1);
 }
 
+// --- hwParsePin (TA-0320, ported back from noticeboard) ---------------------
+void test_hw_parse_pin_accepts_plain_decimals(void)
+{
+    int v = -1;
+    TEST_ASSERT_TRUE(hwParsePin("0", &v));   TEST_ASSERT_EQUAL_INT(0, v);
+    TEST_ASSERT_TRUE(hwParsePin("48", &v));  TEST_ASSERT_EQUAL_INT(48, v);
+    TEST_ASSERT_TRUE(hwParsePin("041", &v)); TEST_ASSERT_EQUAL_INT(41, v);
+}
+
+// The reason it exists: toInt() turns every one of these into 0, which passes a
+// 0..48 range guard and is also the boot strapping pin.
+void test_hw_parse_pin_refuses_garbage_without_writing_out(void)
+{
+    const char* bad[] = {"", " ", "abc", "4a", "a4", "-1", "+4", "4.0", "4 ", " 4", "99999"};
+    for (unsigned i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i)
+    {
+        int v = 12345;
+        TEST_ASSERT_FALSE_MESSAGE(hwParsePin(bad[i], &v), bad[i]);
+        TEST_ASSERT_EQUAL_INT_MESSAGE(12345, v, "must not write *out on failure");
+    }
+    int v = 12345;
+    TEST_ASSERT_FALSE(hwParsePin(nullptr, &v));
+    TEST_ASSERT_FALSE(hwParsePin("4", nullptr));
+}
+
 int main(int, char**)
 {
     UNITY_BEGIN();
@@ -174,5 +199,7 @@ int main(int, char**)
     RUN_TEST(test_stock_pins_still_take_the_configured_order);
     RUN_TEST(test_custom_pins_are_used_when_valid);
     RUN_TEST(test_an_invalid_custom_map_falls_back_to_the_compiled_default);
+    RUN_TEST(test_hw_parse_pin_accepts_plain_decimals);
+    RUN_TEST(test_hw_parse_pin_refuses_garbage_without_writing_out);
     return UNITY_END();
 }
