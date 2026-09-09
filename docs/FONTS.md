@@ -172,11 +172,27 @@ cd fontconvert8-iso8859-2/fontconvert8
 ./fontconvert YourFont.ttf 5 > DepartureMonoCustom5pt8b.h
 ```
 
-### Step 2: Copy to Project
+### Step 2: Add to the shared font repo
+
+**`src/fonts/*.h` are symlinks into the `matrix-fonts` submodule, shared with
+beerboard and noticeboard. Do not `cp` into `src/fonts/` — that replaces the
+symlink with a real file and silently re-forks the fonts.**
 
 ```bash
-cp DepartureMonoCustom5pt8b.h /path/to/spojboard-firmware/src/fonts/
+cp DepartureMonoCustom5pt8b.h ~/code/esp32/matrix-fonts/
+cd ~/code/esp32/matrix-fonts && git add -A && git commit -m "feat: add DepartureMonoCustom5pt"
+
+# then adopt it in each consuming project:
+cd /path/to/spojboard-firmware
+git submodule update --remote vendor/matrix-fonts
+ln -s ../../vendor/matrix-fonts/DepartureMonoCustom5pt8b.h src/fonts/
+git add vendor/matrix-fonts src/fonts && git commit -m "chore(fonts): bump matrix-fonts"
 ```
+
+The submodule bump is deliberate: it pins glyphs to a firmware release, so
+`git checkout r9 && pio run` reproduces r9's rendering.
+
+Design and the divergence this resolved: `taskctl show RE-0057`.
 
 ### Step 3: Include in Code
 
