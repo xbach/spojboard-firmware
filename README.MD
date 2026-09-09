@@ -112,6 +112,21 @@ arrangement.
 
 ## Quick Start
 
+### Get the Source
+
+The fonts live in the [xbach/matrix-fonts](https://github.com/xbach/matrix-fonts) submodule and
+`src/fonts/*.h` are symlinks into it, so the clone must be recursive:
+
+```bash
+git clone --recurse-submodules https://github.com/xbach/spojboard-firmware.git
+```
+
+Already cloned without it? The build fails on a missing `DepartureMono*.h`. Fix in place:
+
+```bash
+git submodule update --init --recursive
+```
+
 ### First Time Setup (AP Mode)
 
 1. **Build & Flash the Firmware**
