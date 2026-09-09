@@ -461,6 +461,8 @@ SpojBoard uses custom 8-bit ISO-8859-2 fonts with automatic UTF-8 conversion to 
 
 For complete details on the font system, UTF-8 conversion, and creating custom fonts, see **[Font System Documentation](docs/FONTS.md)**.
 
+The font files themselves live in **[xbach/matrix-fonts](https://github.com/xbach/matrix-fonts)**, shared with the other xbco matrix firmwares and vendored here as a submodule at `vendor/matrix-fonts/`. `src/fonts/*.h` are symlinks into it, so clone with `--recurse-submodules`.
+
 ## License
 
 This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.
@@ -486,4 +488,5 @@ See the LICENSE file for full details.
 - [Michel Deslierres](https://sigmdel.ca/michel/program/misc/gfxfont_8bit_en.html) - Original UTF-8 to ISO-8859-2 conversion code
 - [Petr Brouzda - fontconvert8-iso8859-2](https://github.com/petrbrouzda/fontconvert8-iso8859-2) - Font conversion tool and UTF-8 conversion implementation
 - [Claude Code](https://claude.ai/code) - AI-assisted development and code refinement
-- [DepartureMono font family](https://departuremono.com/) - Custom 8-bit GFXfonts with ISO-8859-2 character support
+- [DepartureMono font family](https://departuremono.com/) by Helena Zhang & Tobias Fried ([source](https://github.com/rektdeckard/departure-mono), MIT) - the typeface the 8-bit GFXfonts are rasterised from
+- [xbach/matrix-fonts](https://github.com/xbach/matrix-fonts) - the shared ISO-8859-2 GFXfont conversions, vendored as a submodule
