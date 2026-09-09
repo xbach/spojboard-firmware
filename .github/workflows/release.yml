@@ -15,6 +15,10 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
+      with:
+        # src/fonts/*.h are symlinks into the matrix-fonts submodule;
+        # without this the build fails on missing headers.
+        submodules: true
 
     - name: Set up Python
       uses: actions/setup-python@v5

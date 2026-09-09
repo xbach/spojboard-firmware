@@ -1,0 +1,3 @@
+[submodule "vendor/matrix-fonts"]
+	path = vendor/matrix-fonts
+	url = ../matrix-fonts
